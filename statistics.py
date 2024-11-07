@@ -32,6 +32,15 @@ class FullStat:
 
     def draw_hourly_spend(self):
         x =  [stat.spend for stat in self.hours]
-        print(acp.plot(x, {'height': 6}))
+        print(acp.plot(x, {'height': 10}))
 
+    def draw_hourly_cpm(self):
+        x =  [1000.0*stat.spend/stat.impressions for stat in self.hours]
+        print (x)
+        print(acp.plot(x, {'height': 10}))
+
+    def draw_hourly_cpc(self):
         
+        x =  [stat.spend / stat.clicks if stat.clicks else -10 for stat in self.hours]
+        print (x)
+        print(acp.plot(x, {'height': 10}))

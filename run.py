@@ -1,6 +1,10 @@
 import random
 
-from campaigns import Campaign, CampaignFixedCPC, CampaignTargetCPC
+from campaigns import 	Campaign, \
+                        CampaignFixedCPC, \
+                        CampaignTargetCPC, \
+                        CampaignPacedFixedCPC, \
+                        CampaignPacedBudget
 from impression import ImpressionOnOffer    
 from statistics import FullStat
     
@@ -18,7 +22,7 @@ class Simulation:
     def __init__(self, config):
         self.stat = FullStat()
         self.cs : list[Campaign] = []
-        self.CONFIG = config
+        self.CONFIG = config 
     
     def run_one_auction(self, iid, time_s):
         ioo = ImpressionOnOffer(self.CONFIG)
@@ -63,19 +67,24 @@ class Simulation:
             c.print_line_stat()
         print ("TOTAL -- Impressions: %i, Clicks: %i, Spend: %2.2f" % (self.stat.single.impressions, self.stat.single.clicks, self.stat.single.spend))
         print("Total spend by hour:")
-        self.stat.draw_hourly_spend()
-        print("Spend of id 4:")
-        self.cs[4].stat.draw_hourly_spend()
+#        self.stat.draw_hourly_spend()
+        self.stat.draw_hourly_cpm()
+        CID = 6
+        print("Spend of id %i:" % CID)
+        self.cs[CID].stat.draw_hourly_spend()
+        self.cs[CID].stat.draw_hourly_cpm()
 
 def main():
 
     random.seed(10) # get deterministic behavior
     s = Simulation(CONFIG)
-    s.add_campaign(CampaignFixedCPC(cpc = 0.005, daily_budget = 100)) # unlimited budget back-stop campaign
-    s.add_campaign(CampaignFixedCPC(cpc = 0.1, daily_budget = 200))
-    s.add_campaign(CampaignFixedCPC(cpc = 0.1, daily_budget = 200))
-    s.add_campaign(CampaignFixedCPC(cpc = 0.1, daily_budget = 200))
-    s.add_campaign(CampaignTargetCPC(cpc = 0.1, daily_budget = 200, pctr_miscalibration = 0.5))
+    s.add_campaign(CampaignFixedCPC(cpc = 0.05, daily_budget = 100000)) # unlimited budget back-stop campaign
+    s.add_campaign(CampaignFixedCPC(cpc = 0.1, daily_budget = 100))
+    s.add_campaign(CampaignFixedCPC(cpc = 0.1, daily_budget = 100))
+    s.add_campaign(CampaignFixedCPC(cpc = 0.1, daily_budget = 100))
+    s.add_campaign(CampaignTargetCPC(cpc = 0.1, daily_budget = 100, pctr_miscalibration = 1.5))
+    s.add_campaign(CampaignPacedFixedCPC(cpc = 0.3, daily_budget = 100))
+    s.add_campaign(CampaignPacedBudget(daily_budget = 100))
     s.run()
     s.print_stats()
     
