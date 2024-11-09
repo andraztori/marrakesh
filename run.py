@@ -1,10 +1,10 @@
 import random
 
 from campaigns import 	Campaign, \
-                        CampaignFixedCPC, \
+                        CampaignStaticCPC, \
                         CampaignTargetCPC, \
-                        CampaignPacedFixedCPC, \
-                        CampaignPacedBudget
+                        CampaignThrottledStaticCPC, \
+                        CampaignPacedMinCPC
 from impression import ImpressionOnOffer    
 from statistics import FullStat
     
@@ -15,6 +15,7 @@ class CONFIG:
     BASE_CTR_JITTER_PERCENT = 0.01
     BASE_PCTR_CAMPAIGN_JITTER_PERCENT = 0.1
     BASE_PCTR_IMPRESSION_JITTER_PERCENT = 0.1
+    SECOND_PRICE = True
     
 
 
@@ -29,16 +30,40 @@ class Simulation:
         ioo.init_properties(iid, time_s)
         # get highest bid
         win_bid = -1.0
+        virtual_win_bid = -1
         win_c = None
     #    print( "A")
+        
+        bids = []
+        for c in self.cs:
+            bid = c.get_bid(ioo)
+            if bid:
+                bids.append((c, bid, bid * c.hurdle))
+        bids.sort(key=lambda t: t[2], reverse = True)
+        if len(bids) > 0:
+            win_c = bids[0][0]
+            if self.CONFIG.SECOND_PRICE:
+                if len(bids) > 1:
+                    win_bid = bids[1][2] / win_c.hurdle		# adjust for hurdle  
+                else: # a single bidder, what do we do?
+                    win_bid = bids[0][1]
+                    
+            else:
+                win_bid = bids[0][1]
+            
+                    
+        '''
         for c in self.cs:
             new_bid = c.get_bid(ioo)
     #        print (win_bid, win_c, new_bid)
             if new_bid:
-              if new_bid > win_bid or (new_bid == win_bid and random.randrange(2) == 1): # tie breaking
+              virtual_new_bid = new_bid * c.hurdle
+              if virtual_new_bid > virtual_win_bid or \
+                 (virtual_new_bid == virtual_win_bid and random.randrange(2) == 1): # tie breaking
                 win_bid = new_bid
+                virtual_win_bid = virtual_new_bid
                 win_c = c
-        
+        '''
         if win_c:
             win_c.register_impression(ioo, win_bid)
             self.stat.register_impression(ioo, win_bid)
@@ -69,7 +94,7 @@ class Simulation:
         print("Total spend by hour:")
 #        self.stat.draw_hourly_spend()
         self.stat.draw_hourly_cpm()
-        CID = 6
+        CID = 7
         print("Spend of id %i:" % CID)
         self.cs[CID].stat.draw_hourly_spend()
         self.cs[CID].stat.draw_hourly_cpm()
@@ -78,17 +103,23 @@ def main():
 
     random.seed(10) # get deterministic behavior
     s = Simulation(CONFIG)
-    s.add_campaign(CampaignFixedCPC(cpc = 0.05, daily_budget = 100000)) # unlimited budget back-stop campaign
-    s.add_campaign(CampaignFixedCPC(cpc = 0.1, daily_budget = 100))
-    s.add_campaign(CampaignFixedCPC(cpc = 0.1, daily_budget = 100))
-    s.add_campaign(CampaignFixedCPC(cpc = 0.1, daily_budget = 100))
-    s.add_campaign(CampaignTargetCPC(cpc = 0.1, daily_budget = 100, pctr_miscalibration = 1.5))
-    s.add_campaign(CampaignPacedFixedCPC(cpc = 0.3, daily_budget = 100))
-    s.add_campaign(CampaignPacedBudget(daily_budget = 100))
+    s.add_campaign(CampaignStaticCPC(cpc = 0.05, daily_budget = 100000, hurdle = 1.0)) # unlimited budget back-stop campaign
+    s.add_campaign(CampaignStaticCPC(cpc = 0.1, daily_budget = 100, hurdle = 1.0))
+    s.add_campaign(CampaignStaticCPC(cpc = 0.1, daily_budget = 100, hurdle = 1.0))
+    s.add_campaign(CampaignStaticCPC(cpc = 0.1, daily_budget = 100, hurdle = 1.0))
+    s.add_campaign(CampaignTargetCPC(cpc = 0.1, daily_budget = 100, pctr_miscalibration = 1.5, hurdle = 1.0))
+    s.add_campaign(CampaignThrottledStaticCPC(cpc = 0.3, daily_budget = 100, hurdle = 1.0))
+    s.add_campaign(CampaignPacedMinCPC(daily_budget = 200, hurdle = 1.0))
+    s.add_campaign(CampaignPacedMinCPC(daily_budget = 200, hurdle = 1.0, time_start = 13 * 60 * 60, time_end = 18  * 60 * 60))
     s.run()
     s.print_stats()
     
-    
+# things one can show with Corcoran in current state:
+'''
+    1. Single PacedBudget campaign with 2x spend works exactly the same as 2 PacedBudget campagins with half of the spend
+    2. 0.5 Hurdle makes PacedBudget campagin 2x more expensive
+    3. Adding budget increases total spend less than budget, since what matters is replacement cpm
+'''    
     
 
 if __name__ == '__main__':
