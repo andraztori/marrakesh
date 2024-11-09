@@ -67,30 +67,6 @@ class CampaignStaticCPC(Campaign):
         return self.fixed_cpc * ioo.impression_pctr
 
 
-class CampaignTargetCPC(Campaign):
-    # TODO
-    def __init__(self, tags = [], cpc = None, daily_budget = None, pctr_miscalibration = 1.0, hurdle = None, time_start = None, time_end = None):
-        Campaign.__init__(self, tags = tags, daily_budget = daily_budget, hurdle = hurdle, time_start = time_start, time_end = time_end)
-        assert(cpc != None)
-        assert(daily_budget != None)
-        self.target_cpc = cpc
-        self.daily_budget = daily_budget
-        self.pctr_miscalibration = pctr_miscalibration
-        self.type = "TargetCPC"
-        
-    def get_bid(self, ioo: ImpressionOnOffer) -> float:
-        if self.stat.single.spend >= self.daily_budget:
-            return None
-        if ioo.time_s < self.time_start or ioo.time_s >= self.time_end:
-            return None
-        
-        campaign_pctr = ioo.impression_pctr * (self.pctr_miscalibration + random.uniform(0.0, self.CONFIG.BASE_PCTR_CAMPAIGN_JITTER_PERCENT))
-        #return self.fixed_cpc * campaign_pctr
-        
-        
-        
-        return self.target_cpc * campaign_pctr
-
 class CampaignThrottledStaticCPC(Campaign):
     def __init__(self, tags = [], cpc = None, daily_budget = None, hurdle = None, time_start = None, time_end = None):
         Campaign.__init__(self, tags = tags, daily_budget = daily_budget, hurdle = hurdle, time_start = time_start, time_end = time_end)
