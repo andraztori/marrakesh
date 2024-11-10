@@ -1,4 +1,6 @@
 import random
+import numpy as np
+import math
 
 from campaigns import 	Campaign, \
                         CampaignStaticCPC, \
@@ -6,7 +8,7 @@ from campaigns import 	Campaign, \
                         CampaignPacedMinCPC
 from impression import ImpressionOnOffer    
 from statistics import FullStat
-    
+from helpers import sigmoid, inverse_sigmoid
         
 class CONFIG:
     IMPRESSIONS = 100000
@@ -14,29 +16,41 @@ class CONFIG:
     BASE_CTR_JITTER_PERCENT = 0.01
     BASE_PCTR_CAMPAIGN_JITTER_PERCENT = 0.1
     BASE_PCTR_IMPRESSION_JITTER_PERCENT = 0.1
-    SECOND_PRICE = True
-
+    SECOND_PRICE = False
+    CAMPAIGN_EMBEDDING_SIZE = 4
 
 class Simulation:
     def __init__(self, config):
         self.stat = FullStat()
         self.cs : list[Campaign] = []
         self.CONFIG = config 
-    
+        self.rng = np.random.default_rng(seed = 11)
+        self.CONFIG.rng = self.rng
+        self.stat = FullStat()
+        self.campaign_base_embedding = self.rng.normal(loc = 0.0, scale =  1, size = self.CONFIG.CAMPAIGN_EMBEDDING_SIZE)
+        self.CONFIG.campaign_base_embedding = self.campaign_base_embedding
+        self.base_intercept = inverse_sigmoid(CONFIG.BASE_CTR)
+        self.CONFIG.base_intercept = self.base_intercept
+        self.avg_sum_ctr = 0.0
+        self.avg_sum_ctr2 = 0.0
+        self.max_fractional_clicks = 0.0
+        self.got_fractional_clicks = 0.0
+            
     def run_one_auction(self, iid, time_s):
-        ioo = ImpressionOnOffer(self.CONFIG)
-        ioo.init_properties(iid, time_s)
+        ioo = ImpressionOnOffer(iid, time_s, self.CONFIG)
+        self.avg_sum_ctr += ioo.impression_ctr
         # get highest bid
-        win_bid = -1.0
-        virtual_win_bid = -1
-        win_c = None
-    #    print( "A")
-        
         bids = []
+        max_ctr = 0.0
         for c in self.cs:
             bid = c.get_bid(ioo)
+            actual_ctr = sigmoid(ioo.embedding.dot(c.embedding) + self.base_intercept)
+            max_ctr = max(actual_ctr, max_ctr)
+            self.avg_sum_ctr2 += actual_ctr
             if bid:
-                bids.append((c, bid, bid * c.hurdle))
+                bids.append((c, bid, bid * c.hurdle, actual_ctr))
+        self.max_fractional_clicks += max_ctr
+        
         bids.sort(key=lambda t: t[2], reverse = True) 		# sort by hurdle-aware bids
         if len(bids) > 0:
             win_c = bids[0][0]
@@ -47,6 +61,7 @@ class Simulation:
                     win_bid = bids[0][1]
             else:
                 win_bid = bids[0][1]	# simple first price
+            self.got_fractional_clicks += actual_ctr
             win_c.register_impression(ioo, win_bid)
             self.stat.register_impression(ioo, win_bid)
             self.stat_per_ctype[win_c.type].register_impression(ioo, win_bid)
@@ -56,9 +71,11 @@ class Simulation:
     
     
     def run(self):
-        self.stat = FullStat()
         campaign_types = set(c.type for c in self.cs)
-#        print (campaign_types)
+        # We want campaigns to be quite correlated, so we start with a base embedding and add local embedding to it
+        for cs in self.cs:
+            cs.embedding = self.campaign_base_embedding + self.rng.normal(loc = 0.0, scale = 0.5, size = self.CONFIG.CAMPAIGN_EMBEDDING_SIZE)
+#            print(cs.embedding)
         self.stat_per_ctype = {ctype:FullStat() for ctype in campaign_types}
         for iid in range(self.CONFIG.IMPRESSIONS):
             time_s = 24*60*60 *iid / self.CONFIG.IMPRESSIONS  # linear time, for now
@@ -82,6 +99,8 @@ class Simulation:
         print("Spend of id %i:" % CID)
         self.cs[CID].stat.draw_hourly_spend()
         self.cs[CID].stat.draw_hourly_cpm()
+#        print("AVG CTR:", self.avg_sum_ctr / self.CONFIG.IMPRESSIONS, "avg ctr by campaign", self.avg_sum_ctr2 / self.CONFIG.IMPRESSIONS/ len(self.cs))
+        print("Got clicks: %2.2f, Max clicks: %2.2f, Click regret: %2.2f (assuming unlimited budgets)" % (self.got_fractional_clicks, self.max_fractional_clicks, self.max_fractional_clicks-self.got_fractional_clicks)) 
 
 def main():
 
@@ -94,7 +113,7 @@ def main():
     s.add_campaign(CampaignStaticCPC(cpc = 0.1, daily_budget = 100, hurdle = 1.0))
     s.add_campaign(CampaignThrottledStaticCPC(cpc = 0.3, daily_budget = 100, hurdle = 1.0))
     s.add_campaign(CampaignPacedMinCPC(daily_budget = 200, hurdle = 1.0))
-    #s.add_campaign(CampaignPacedMinCPC(daily_budget = 200, hurdle = 1.0, time_start = 13 * 60 * 60, time_end = 18  * 60 * 60))
+    s.add_campaign(CampaignPacedMinCPC(daily_budget = 100, hurdle = 1.0, time_start = 17 * 60 * 60, time_end = 20 * 60 * 60))
     s.run()
     s.print_stats()
     

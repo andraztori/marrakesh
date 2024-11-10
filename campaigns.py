@@ -64,7 +64,7 @@ class CampaignStaticCPC(Campaign):
             return None
         #campaign_pctr = ioo.impression_pctr * (1.0 + random.uniform(0.0, self.CONFIG.BASE_PCTR_CAMPAIGN_JITTER_PERCENT))
         #return self.fixed_cpc * campaign_pctr
-        return self.fixed_cpc * ioo.impression_pctr
+        return self.fixed_cpc * ioo.impression_ctr
 
 
 class CampaignThrottledStaticCPC(Campaign):
@@ -88,7 +88,7 @@ class CampaignThrottledStaticCPC(Campaign):
             return None
         
         
-        return self.fixed_cpc * ioo.impression_pctr
+        return self.fixed_cpc * ioo.impression_ctr
 
 SLOW_T = 1000
 FAST_T = 100
