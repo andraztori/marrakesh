@@ -23,30 +23,24 @@ class Simulation:
     def __init__(self, config):
         self.stat = FullStat()
         self.cs : list[Campaign] = []
-        self.CONFIG = config 
-        self.rng = np.random.default_rng(seed = 11)
-        self.CONFIG.rng = self.rng
-        self.stat = FullStat()
-        self.campaign_base_embedding = self.rng.normal(loc = 0.0, scale =  1, size = self.CONFIG.CAMPAIGN_EMBEDDING_SIZE)
-        self.CONFIG.campaign_base_embedding = self.campaign_base_embedding
-        self.base_intercept = inverse_sigmoid(CONFIG.BASE_CTR)
-        self.CONFIG.base_intercept = self.base_intercept
-        self.avg_sum_ctr = 0.0
-        self.avg_sum_ctr2 = 0.0
+        self.CONFIG = config
+        self.CONFIG.rng = np.random.default_rng(seed = 11)
+        # we want campaigns to have correlated embeddings, so they fight for the same impressions
+        self.CONFIG.campaign_base_embedding = self.CONFIG.rng.normal(loc = 0.0, scale =  1, size = self.CONFIG.CAMPAIGN_EMBEDDING_SIZE)
+        # we want to have base CTR set. This doesn't quite work, since randomness then moves the average toward 50%, but it is in the right direction    
+        self.CONFIG.base_intercept = inverse_sigmoid(CONFIG.BASE_CTR)	
         self.max_fractional_clicks = 0.0
         self.got_fractional_clicks = 0.0
             
     def run_one_auction(self, iid, time_s):
         ioo = ImpressionOnOffer(iid, time_s, self.CONFIG)
-        self.avg_sum_ctr += ioo.impression_ctr
         # get highest bid
         bids = []
         max_ctr = 0.0
         for c in self.cs:
             bid = c.get_bid(ioo)
-            actual_ctr = sigmoid(ioo.embedding.dot(c.embedding) + self.base_intercept)
+            actual_ctr = sigmoid(ioo.embedding.dot(c.embedding) + self.CONFIG.base_intercept)
             max_ctr = max(actual_ctr, max_ctr)
-            self.avg_sum_ctr2 += actual_ctr
             if bid:
                 bids.append((c, bid, bid * c.hurdle, actual_ctr))
         self.max_fractional_clicks += max_ctr
@@ -58,7 +52,7 @@ class Simulation:
                 if len(bids) > 1:
                     win_bid = bids[1][2] / win_c.hurdle		# adjust for the hurdle  
                 else: # a single bidder, what do we do?
-                    win_bid = bids[0][1]
+                    win_bid = bids[0][1]	# let's do the first price
             else:
                 win_bid = bids[0][1]	# simple first price
             self.got_fractional_clicks += actual_ctr
@@ -74,7 +68,7 @@ class Simulation:
         campaign_types = set(c.type for c in self.cs)
         # We want campaigns to be quite correlated, so we start with a base embedding and add local embedding to it
         for cs in self.cs:
-            cs.embedding = self.campaign_base_embedding + self.rng.normal(loc = 0.0, scale = 0.5, size = self.CONFIG.CAMPAIGN_EMBEDDING_SIZE)
+            cs.embedding = self.CONFIG.campaign_base_embedding + self.CONFIG.rng.normal(loc = 0.0, scale = 0.5, size = self.CONFIG.CAMPAIGN_EMBEDDING_SIZE)
 #            print(cs.embedding)
         self.stat_per_ctype = {ctype:FullStat() for ctype in campaign_types}
         for iid in range(self.CONFIG.IMPRESSIONS):
@@ -99,7 +93,6 @@ class Simulation:
         print("Spend of id %i:" % CID)
         self.cs[CID].stat.draw_hourly_spend()
         self.cs[CID].stat.draw_hourly_cpm()
-#        print("AVG CTR:", self.avg_sum_ctr / self.CONFIG.IMPRESSIONS, "avg ctr by campaign", self.avg_sum_ctr2 / self.CONFIG.IMPRESSIONS/ len(self.cs))
         print("Got clicks: %2.2f, Max clicks: %2.2f, Click regret: %2.2f (assuming unlimited budgets)" % (self.got_fractional_clicks, self.max_fractional_clicks, self.max_fractional_clicks-self.got_fractional_clicks)) 
 
 def main():

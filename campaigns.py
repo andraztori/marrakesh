@@ -163,6 +163,7 @@ class CampaignPacedMinCPC(Campaign):
             
         # on win, we possibly want to decrease output_price
         p_time_diff = ioo.time_s - self.last_win_time
+        
         self.exp_avg_pace_slow += (1.0 - math.exp(-p_time_diff/SLOW_T)) * ((price/p_time_diff) - self.exp_avg_pace_slow)
         self.exp_avg_pace_fast += (1.0 - math.exp(-p_time_diff/FAST_T)) * ((price/p_time_diff) - self.exp_avg_pace_fast)
         #print("Exp avg pace: %2.5f" % (self.exp_avg_pace * 1000))
