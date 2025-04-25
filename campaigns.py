@@ -17,6 +17,9 @@ class Campaign:
         self.time_start = time_start or 0
         self.time_end = time_end or 24 * 60 * 60
         self.stat = FullStat()
+        self.win_times = []
+        self.win_prices = []
+        self.diffs = []
 
     def set_cid(self, cid):
         self.cid = cid
@@ -29,6 +32,8 @@ class Campaign:
 
     def register_impression(self, ioo: ImpressionOnOffer, price: float):
         self.stat.register_impression(ioo, price)
+        self.win_prices.append(price)
+        self.win_times.append(ioo.time_s)
         
     def register_click(self, ioo: ImpressionOnOffer, ):
         self.stat.register_click(ioo)
@@ -90,7 +95,7 @@ class CampaignThrottledStaticCPC(Campaign):
         
         return self.fixed_cpc * ioo.impression_ctr
 
-SLOW_T = 1000
+SLOW_T = 10000
 FAST_T = 100
 class CampaignPacedMinCPC(Campaign):
     def __init__(self, tags = [], daily_budget = None, hurdle = None, time_start = None, time_end = None):
@@ -99,8 +104,10 @@ class CampaignPacedMinCPC(Campaign):
         self.daily_budget = daily_budget
         self.type = "PacedMinCPC"
         self.output_price = 0.1
-        self.exp_avg_pace_slow = 0
-        self.exp_avg_pace_fast = 0
+        self.exp_avg_pace_slow = 0.0
+        self.exp_diff = 0.0
+        self.exp_abs_diff = 0.0
+        self.exp_avg_pace_fast = 0.0
         self.last_win_time = -1
         self.last_bid_time = -1
         
@@ -131,9 +138,9 @@ class CampaignPacedMinCPC(Campaign):
         exp_avg_pace_slow = self.exp_avg_pace_slow + (1.0 - math.exp(-p_time_diff/SLOW_T)) * (- self.exp_avg_pace_slow)
         exp_avg_pace_fast = self.exp_avg_pace_fast + (1.0 - math.exp(-p_time_diff/FAST_T)) * (- self.exp_avg_pace_fast)
 
-        if exp_avg_pace_slow < remaining_desired_pace and exp_avg_pace_fast < remaining_desired_pace:
+        if exp_avg_pace_slow < remaining_desired_pace:# and exp_avg_pace_fast < remaining_desired_pace:
 #            print(ioo.iid)
-            proportional = (remaining_desired_pace / exp_avg_pace_slow - 1.0) / 1 + 1.0
+            proportional = (remaining_desired_pace / exp_avg_pace_slow - 1.0) / 1.0 + 1.0
             proportional = min(2, max(0.1, proportional))
             self.output_price = self.output_price * proportional
 #            print("IMP UP iid: %i, Expected avg: %2.5f Slow avg: %2.5f, fast avg: %2.4f, price: %2.4f" % (ioo.iid, remaining_desired_pace, exp_avg_pace_slow, exp_avg_pace_fast, self.output_price))
@@ -163,14 +170,18 @@ class CampaignPacedMinCPC(Campaign):
             
         # on win, we possibly want to decrease output_price
         p_time_diff = ioo.time_s - self.last_win_time
-        
         self.exp_avg_pace_slow += (1.0 - math.exp(-p_time_diff/SLOW_T)) * ((price/p_time_diff) - self.exp_avg_pace_slow)
         self.exp_avg_pace_fast += (1.0 - math.exp(-p_time_diff/FAST_T)) * ((price/p_time_diff) - self.exp_avg_pace_fast)
         #print("Exp avg pace: %2.5f" % (self.exp_avg_pace * 1000))
+        diff = self.exp_avg_pace_slow - remaining_desired_pace
+        self.exp_diff += (1.0 - math.exp(-p_time_diff/FAST_T)) * ((diff) - self.exp_diff)
+        self.exp_abs_diff += (1.0 - math.exp(-p_time_diff/FAST_T)) * ((math.fabs(diff)) - self.exp_abs_diff) 
+#        print (ioo.iid, self.exp_abs_diff, self.exp_diff)
+        self.diffs.append(self.exp_abs_diff)       
         
-        proportional_base = remaining_desired_pace / self.exp_avg_pace_fast
-        if self.exp_avg_pace_fast > remaining_desired_pace:
-            proportional = (proportional_base - 1.0) / 1.0 + 1.0
+        proportional_base = remaining_desired_pace / self.exp_avg_pace_slow
+        if self.exp_avg_pace_slow > remaining_desired_pace:
+            proportional = ((proportional_base - 1.0)) + 1.0
             proportional = min(2, max(0.1, proportional))
             self.output_price = self.output_price * proportional
  #           print("WIN DROP iid: %i, Expected avg: %2.4f Slow avg: %2.4f, fast avg: %2.4f, proportional: %2.4f, next price: %2.4f " % (ioo.iid, remaining_desired_pace, self.exp_avg_pace_slow, self.exp_avg_pace_fast, proportional, self.output_price))

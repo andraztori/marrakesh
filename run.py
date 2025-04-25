@@ -1,5 +1,7 @@
 import random
 import numpy as np
+import matplotlib.pyplot as plt
+
 import math
 
 from campaigns import 	Campaign, \
@@ -27,7 +29,8 @@ class Simulation:
         self.CONFIG.rng = np.random.default_rng(seed = 11)
         # we want campaigns to have correlated embeddings, so they fight for the same impressions
         self.CONFIG.campaign_base_embedding = self.CONFIG.rng.normal(loc = 0.0, scale =  1, size = self.CONFIG.CAMPAIGN_EMBEDDING_SIZE)
-        # we want to have base CTR set. This doesn't quite work, since randomness then moves the average toward 50%, but it is in the right direction    
+        # we want to have base CTR set. 
+        #This doesn't quite work, since randomness then moves the average toward 50%, but it is in the right direction    
         self.CONFIG.base_intercept = inverse_sigmoid(CONFIG.BASE_CTR)	
         self.max_fractional_clicks = 0.0
         self.got_fractional_clicks = 0.0
@@ -68,7 +71,7 @@ class Simulation:
         campaign_types = set(c.type for c in self.cs)
         # We want campaigns to be quite correlated, so we start with a base embedding and add local embedding to it
         for cs in self.cs:
-            cs.embedding = self.CONFIG.campaign_base_embedding + self.CONFIG.rng.normal(loc = 0.0, scale = 0.5, size = self.CONFIG.CAMPAIGN_EMBEDDING_SIZE)
+            cs.embedding = self.CONFIG.campaign_base_embedding + self.CONFIG.rng.normal(loc = 0.0, scale = 0.1, size = self.CONFIG.CAMPAIGN_EMBEDDING_SIZE)
 #            print(cs.embedding)
         self.stat_per_ctype = {ctype:FullStat() for ctype in campaign_types}
         for iid in range(self.CONFIG.IMPRESSIONS):
@@ -89,22 +92,32 @@ class Simulation:
         
         self.stat.draw_hourly_spend()
         self.stat.draw_hourly_cpm()
-        CID = 6
+        CID = 10
+        c = self.cs[CID]
         print("Spend of id %i:" % CID)
-        self.cs[CID].stat.draw_hourly_spend()
-        self.cs[CID].stat.draw_hourly_cpm()
+        c.stat.draw_hourly_spend()
+        c.stat.draw_hourly_cpm()
         print("Got clicks: %2.2f, Max clicks: %2.2f, Click regret: %2.2f (assuming unlimited budgets)" % (self.got_fractional_clicks, self.max_fractional_clicks, self.max_fractional_clicks-self.got_fractional_clicks)) 
+        START=000
+        END=1000000
+        
+        plt.plot(c.win_times[START:END], c.diffs[START:END])
+        plt.show()
 
 def main():
 
     random.seed(10) # get deterministic behavior
     s = Simulation(CONFIG)
     s.add_campaign(CampaignStaticCPC(cpc = 0.05, daily_budget = 100000, hurdle = 1.0)) # unlimited budget back-stop campaign
-    s.add_campaign(CampaignStaticCPC(cpc = 0.1, daily_budget = 100, hurdle = 1.0))
-    s.add_campaign(CampaignStaticCPC(cpc = 0.1, daily_budget = 100, hurdle = 1.0))
-    s.add_campaign(CampaignStaticCPC(cpc = 0.1, daily_budget = 100, hurdle = 1.0))
-    s.add_campaign(CampaignStaticCPC(cpc = 0.1, daily_budget = 100, hurdle = 1.0))
+    s.add_campaign(CampaignStaticCPC(cpc = 0.1, daily_budget = 200, hurdle = 1.0))
+    s.add_campaign(CampaignStaticCPC(cpc = 0.1, daily_budget = 200, hurdle = 1.0))
+    s.add_campaign(CampaignStaticCPC(cpc = 0.1, daily_budget = 200, hurdle = 1.0))
+    s.add_campaign(CampaignStaticCPC(cpc = 0.1, daily_budget = 200, hurdle = 1.0))
+    s.add_campaign(CampaignStaticCPC(cpc = 0.1, daily_budget = 200, hurdle = 1.0))
+    s.add_campaign(CampaignStaticCPC(cpc = 0.1, daily_budget = 200, hurdle = 1.0))
+    s.add_campaign(CampaignStaticCPC(cpc = 0.1, daily_budget = 200, hurdle = 1.0))
     s.add_campaign(CampaignThrottledStaticCPC(cpc = 0.3, daily_budget = 100, hurdle = 1.0))
+    s.add_campaign(CampaignPacedMinCPC(daily_budget = 200, hurdle = 1.0))
     s.add_campaign(CampaignPacedMinCPC(daily_budget = 200, hurdle = 1.0))
     s.add_campaign(CampaignPacedMinCPC(daily_budget = 100, hurdle = 1.0, time_start = 17 * 60 * 60, time_end = 20 * 60 * 60))
     s.run()
