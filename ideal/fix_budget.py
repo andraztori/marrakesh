@@ -223,7 +223,7 @@ def update_axis(axis, p: Parameters):
     a.plot(min_cost_cpm_A, s_A.get_probability(min_cost_cpm_A), 'C0o', label='Optimal Bid A')
     a.plot(min_cost_cpm_B, s_B.get_probability(min_cost_cpm_B), 'C1o', label='Optimal Bid B')
     
-    a.legend() 
+    a.legend(loc='upper left') 
 
     a = axis[1, 0]
     
@@ -232,7 +232,7 @@ def update_axis(axis, p: Parameters):
     a.plot(l1, l_cpm_B, label='Cpm B')#, l3)#, l4, l5)
     a.vlines(min_cost_cpm_A, 0, MAX_CPM, colors='C0')
     a.hlines(max_value, 0, MAX_CPM, colors='C0')
-    a.legend()
+    a.legend(loc='upper left')
 
     a = axis[0, 1]
     
@@ -411,6 +411,8 @@ class MainWindow(Gtk.ApplicationWindow):
         #self.set_child(sw)
         self.box1 = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing = 10)
         self.box2 = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        self.box2.set_size_request(300, -1)  # Fixed width of 300 pixels, height can expand
+        self.box2.set_hexpand(False)  # Prevent horizontal expansion
         self.box3 = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         
         
