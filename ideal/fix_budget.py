@@ -103,7 +103,7 @@ class Parameters:
 
 
 
-def update_axis(axis, p: Parameters):
+def update_axis(axis, p: Parameters, save_to_png=False):
     s_A = Sigmoid(p.sigmoid_A_scale, p.sigmoid_A_offset, p.sigmoid_A_value)
     s_B = Sigmoid(p.sigmoid_B_scale, p.sigmoid_B_offset, p.sigmoid_B_value) 
 
@@ -236,7 +236,7 @@ def update_axis(axis, p: Parameters):
     
     a.legend(loc='lower right') 
 
-    a = axis[1][0]
+    a = axis[0][1]
     
     a.set_xlim(right = MAX_CPM)
     a.plot(l1, l_total_cost, label='Total cost')#, l3)#, l4, l5)
@@ -245,7 +245,7 @@ def update_axis(axis, p: Parameters):
     a.hlines(max_value, 0, MAX_CPM, colors='C0')
     a.legend(loc='upper left')
 
-    a = axis[0][1]
+    a = axis[1][0]
     
     a.set_xlim(right = MAX_CPM)
     a.plot(l1, l_total_cost, label='Total value')#, l3)#, l4, l5)
@@ -266,6 +266,21 @@ def update_axis(axis, p: Parameters):
 #    a.vlines(min_cost_cpm_A, 0, p.percent_to_buy, colors='C0')
     a.legend()
 
+    # Save plots to PNG if requested
+    if save_to_png:
+        # Get the figures from the axes
+        fig1 = axis[0][0].figure
+        fig2 = axis[1][0].figure
+        fig3 = axis[0][1].figure
+        fig4 = axis[1][1].figure
+        
+        # Save each figure
+        fig1.savefig('plot1_win_probability.png', dpi=300, bbox_inches='tight')
+        fig2.savefig('plot2_total_value.png', dpi=300, bbox_inches='tight')
+        fig3.savefig('plot3_total_cost.png', dpi=300, bbox_inches='tight')
+        fig4.savefig('plot4_min_price.png', dpi=300, bbox_inches='tight')
+        
+        print("Plots saved as PNG files")
     '''
     # Calculate value vs budget curve
     budget_step = 0.1
@@ -306,7 +321,7 @@ def update_axis(axis, p: Parameters):
             l_value_per_cost.append(0)
     
     # Plot value vs budget curve in bottom right with two y-axes
-    a = axis[1, 1]
+    a = axis[1][1]
     a.clear()
     # Remove any existing second y-axis before creating a new one
     for ax in a.figure.axes:
@@ -365,12 +380,12 @@ class Chart(FigureCanvas):
         self.set_size_request(600, 400)
         plt.ion()
 
-    def update(self):
+    def update(self, save_to_png=False):
         # Clear all axes
         for i in range(0, 2):
             for j in range(0, 2):
                 self.axis[i][j].clear()
-        update_axis(self.axis, self.p)
+        update_axis(self.axis, self.p, save_to_png)
 
         # Redraw all figures
         self.fig1.canvas.draw()
@@ -482,6 +497,11 @@ class MainWindow(Gtk.ApplicationWindow):
         self.box2.append(self.slider_box("Sigma B scale", 0.001, 2.0, 'sigmoid_B_scale'))
         self.box2.append(self.slider_box("Sigma B offset", 0.0, 10.0, 'sigmoid_B_offset'))
         
+        # Add Save Plots button
+        self.save_button = Gtk.Button(label="Save Plots to PNG")
+        self.save_button.connect('clicked', self.save_plots)
+        self.box2.append(self.save_button)
+        
 
     def slider_box(self, label, start_range, end_range, parameter_name):
         assert parameter_name in self.chart.p.__dict__.keys()
@@ -503,6 +523,9 @@ class MainWindow(Gtk.ApplicationWindow):
         b.append(slider)
         return b
 
+    def save_plots(self, button):
+        """Save all four plots as PNG files"""
+        self.chart.update(save_to_png=True)
 
 
 #    def slider_changed(self, slider):
