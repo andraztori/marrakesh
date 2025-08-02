@@ -8,7 +8,6 @@ from matplotlib.backends.backend_gtk4agg import \
     FigureCanvasGTK4Agg as FigureCanvas
 from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
-import threading
 
 EPSILON = 0.0001
 MAX_CPM = 20
@@ -357,15 +356,7 @@ class ChartContainer(Gtk.Box):
     def __init__(self):
         super().__init__(orientation=Gtk.Orientation.VERTICAL)
         
-        # Create 4 separate charts
-        self.chart_top_left = Chart("top_left")      # Probability curves
-        self.chart_top_right = Chart("top_right")    # Total value
-        self.chart_bottom_left = Chart("bottom_left") # Cost curves  
-        self.chart_bottom_right = Chart("bottom_right") # Budget curve
-        
         self.p = Parameters()
-        self.calculation_threads = [None, None, None, None]
-        self.lock = threading.Lock()
         
         # Create grid layout
         self.grid = Gtk.Grid()
