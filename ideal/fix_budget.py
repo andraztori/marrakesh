@@ -224,7 +224,7 @@ def update_axis(axis, p: Parameters):
 #    print ("I1: %f, I2: %f" % (invariant_A, invariant_B))
 #    print ("D1: %f, D2: %f" % (num_der_A, num_der_B))
 
-    a = axis[0, 0]
+    a = axis[0][0]
     a.set_xlim(right = MAX_CPM)
     line1 = a.plot(l_prob_range, l_prob_A, 'C0-', label='Win probability A')
     line2 = a.plot(l_prob_range, l_prob_B, 'C1-', label='Win probability B')
@@ -236,7 +236,7 @@ def update_axis(axis, p: Parameters):
     
     a.legend(loc='lower right') 
 
-    a = axis[1, 0]
+    a = axis[1][0]
     
     a.set_xlim(right = MAX_CPM)
     a.plot(l1, l_total_cost, label='Total cost')#, l3)#, l4, l5)
@@ -245,7 +245,7 @@ def update_axis(axis, p: Parameters):
     a.hlines(max_value, 0, MAX_CPM, colors='C0')
     a.legend(loc='upper left')
 
-    a = axis[0, 1]
+    a = axis[0][1]
     
     a.set_xlim(right = MAX_CPM)
     a.plot(l1, l_total_cost, label='Total value')#, l3)#, l4, l5)
@@ -253,14 +253,14 @@ def update_axis(axis, p: Parameters):
     a.legend()
    
     '''
-    a = axis[0, 1]
+    a = axis[0][1]
     a.set_xlim(right = MAX_CPM)
     a.plot(l1, l_imp_bought_A, label='Imp A bought')#, l3)#, l4, l5)
     a.plot(l1, l_imp_bought_B, label='Imp B bought')#, l3)#, l4, l5)
     a.vlines(min_cost_cpm_A, 0, p.percent_to_buy, colors='C0')
     a.legend()
     '''
-    a = axis[1, 1]
+    a = axis[1][1]
     a.set_xlim(right = 1.0)
     a.plot(l2, l22, label='Minimum price vs. impressions')#, l3)#, l4, l5)
 #    a.vlines(min_cost_cpm_A, 0, p.percent_to_buy, colors='C0')
@@ -342,25 +342,44 @@ def update_axis(axis, p: Parameters):
 
 class Chart(FigureCanvas):
     def __init__(self):
-        self.fig = Figure(figsize=(3, 2.5), dpi=100)
-        self.axis = self.fig.subplots(2, 2)
+        # Create four separate figures instead of one with subplots
+        self.fig1 = Figure(figsize=(6, 4), dpi=100)
+        self.fig2 = Figure(figsize=(6, 4), dpi=100)
+        self.fig3 = Figure(figsize=(6, 4), dpi=100)
+        self.fig4 = Figure(figsize=(6, 4), dpi=100)
+        
+        # Create individual axes for each chart
+        self.axis1 = self.fig1.add_subplot(111)
+        self.axis2 = self.fig2.add_subplot(111)
+        self.axis3 = self.fig3.add_subplot(111)
+        self.axis4 = self.fig4.add_subplot(111)
+        
+        # Store axes in a 2x2 array for compatibility with existing update_axis function
+        self.axis = [[self.axis1, self.axis3], [self.axis2, self.axis4]]
+        
         self.p = Parameters()
         update_axis(self.axis, self.p)
-        super().__init__(self.fig)
-        self.set_size_request(300, 250)
+        
+        # Use the first figure as the main canvas
+        super().__init__(self.fig1)
+        self.set_size_request(600, 400)
         plt.ion()
 
     def update(self):
-        #print("updating to: ", x)
-        for i in range(0,2):
+        # Clear all axes
+        for i in range(0, 2):
             for j in range(0, 2):
-                self.axis[i,j].clear()
+                self.axis[i][j].clear()
         update_axis(self.axis, self.p)
 
-        #self.ax.draw(1)
-        #self.fig.draw()
+        # Redraw all figures
+        self.fig1.canvas.draw()
+        self.fig2.canvas.draw()
+        self.fig3.canvas.draw()
+        self.fig4.canvas.draw()
+        
+        # Redraw the main canvas
         self.draw()
-        #self.ion()
 
 
 
@@ -425,8 +444,33 @@ class MainWindow(Gtk.ApplicationWindow):
  #       self.box2.append(self.button) # Put button in the first of the two vertical boxes
         
         
+        # Create charts
         self.chart = Chart()
-        self.box3.append(self.chart)
+        
+        # Create grid for charts
+        self.charts_grid = Gtk.Grid()
+        self.charts_grid.set_row_spacing(10)
+        self.charts_grid.set_column_spacing(10)
+        
+        # Create separate canvases for each chart
+        self.canvas1 = FigureCanvas(self.chart.fig1)
+        self.canvas2 = FigureCanvas(self.chart.fig2)
+        self.canvas3 = FigureCanvas(self.chart.fig3)
+        self.canvas4 = FigureCanvas(self.chart.fig4)
+        
+        # Set size for each canvas
+        '''self.canvas1.set_size_request(600, 400)
+        self.canvas2.set_size_request(600, 400)
+        self.canvas3.set_size_request(600, 400)
+        self.canvas4.set_size_request(600, 400)
+        '''
+        # Add canvases to grid
+        self.charts_grid.attach(self.canvas1, 0, 0, 1, 1)
+        self.charts_grid.attach(self.canvas2, 1, 0, 1, 1)
+        self.charts_grid.attach(self.canvas3, 0, 1, 1, 1)
+        self.charts_grid.attach(self.canvas4, 1, 1, 1, 1)
+        
+        self.box3.append(self.charts_grid)
         self.check = Gtk.Label(label="Parameters")
         self.box2.append(self.check)
         self.box2.append(self.slider_box("Percent of A", 0.0, 1.0, 'percent_A'))
