@@ -9,9 +9,10 @@ from matplotlib.backends.backend_gtk4agg import \
 from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
 
+
 EPSILON = 0.0001
 MAX_CPM = 20
-STEP = 0.05
+STEP = 0.01
 
 
 class Sigmoid:
@@ -90,7 +91,18 @@ class Parameters:
         self.sigmoid_B_scale = 0.9
         self.sigmoid_B_offset = 9.0
         self.percent_A = 0.5
-    
+
+    def interesting_curves(self):
+        self.sigmoid_A_value = 1.0
+        self.sigmoid_B_value = 1.0
+        self.percent_A = 0.5
+        self.sigmoid_A_scale=0.5
+        self.sigmoid_A_offset=9.0
+        self.sigmoid_B_scale=1.0
+        self.sigmoid_B_offset=7.0
+
+
+
 def update_axis(axis, p: Parameters):
     s_A = Sigmoid(p.sigmoid_A_scale, p.sigmoid_A_offset, p.sigmoid_A_value)
     s_B = Sigmoid(p.sigmoid_B_scale, p.sigmoid_B_offset, p.sigmoid_B_value) 
@@ -214,15 +226,15 @@ def update_axis(axis, p: Parameters):
 
     a = axis[0, 0]
     a.set_xlim(right = MAX_CPM)
-    line1 = a.plot(l_prob_range, l_prob_A, 'C0-', label='Imp A probability')
-    line2 = a.plot(l_prob_range, l_prob_B, 'C1-', label='Imp B probability')
+    line1 = a.plot(l_prob_range, l_prob_A, 'C0-', label='Win probability A')
+    line2 = a.plot(l_prob_range, l_prob_B, 'C1-', label='Win probability B')
     # Add both vertical lines and points using same colors
     a.vlines(min_cost_cpm_A, 0, s_A.get_probability(min_cost_cpm_A), 'C0', linestyles='--', alpha=0.5)
     a.vlines(min_cost_cpm_B, 0, s_B.get_probability(min_cost_cpm_B), 'C1', linestyles='--', alpha=0.5)
     a.plot(min_cost_cpm_A, s_A.get_probability(min_cost_cpm_A), 'C0o', label='Optimal Bid A')
     a.plot(min_cost_cpm_B, s_B.get_probability(min_cost_cpm_B), 'C1o', label='Optimal Bid B')
     
-    a.legend(loc='upper left') 
+    a.legend(loc='lower right') 
 
     a = axis[1, 0]
     
@@ -363,12 +375,6 @@ class ChartContainer(Gtk.Box):
         self.grid.set_row_spacing(10)
         self.grid.set_column_spacing(10)
         
-        # Add charts to grid
-        self.grid.attach(self.chart_top_left, 0, 0, 1, 1)
-        self.grid.attach(self.chart_top_right, 1, 0, 1, 1)
-        self.grid.attach(self.chart_bottom_left, 0, 1, 1, 1)
-        self.grid.attach(self.chart_bottom_right, 1, 1, 1, 1)
-        
         self.append(self.grid)
         
         # Initial update
@@ -393,7 +399,7 @@ class MainWindow(Gtk.ApplicationWindow):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # Things will go here
-        self.set_default_size(1000, 650)
+        self.set_default_size(1400, 850)
         self.set_title("BestBuy")
 
         # A scrolled margin goes outside the scrollbars and viewport.
@@ -402,9 +408,11 @@ class MainWindow(Gtk.ApplicationWindow):
         #self.set_child(sw)
         self.box1 = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing = 10)
         self.box2 = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        self.box2.set_size_request(300, -1)  # Fixed width of 300 pixels, height can expand
-        self.box2.set_hexpand(False)  # Prevent horizontal expansion
         self.box3 = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        
+        # Set fixed width for the left panel (box2)
+        self.box2.set_size_request(350, -1)
+        self.box2.set_hexpand(False)
         
         
 #        self.button = Gtk.Button(label="Hello")
