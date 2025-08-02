@@ -10,9 +10,9 @@ from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
 import threading
 
-EPSILON = 0.00001
+EPSILON = 0.0001
 MAX_CPM = 20
-STEP = 0.01
+STEP = 0.05
 
 
 class Sigmoid:
@@ -220,8 +220,8 @@ def update_axis(axis, p: Parameters):
     # Add both vertical lines and points using same colors
     a.vlines(min_cost_cpm_A, 0, s_A.get_probability(min_cost_cpm_A), 'C0', linestyles='--', alpha=0.5)
     a.vlines(min_cost_cpm_B, 0, s_B.get_probability(min_cost_cpm_B), 'C1', linestyles='--', alpha=0.5)
-    a.plot(min_cost_cpm_A, s_A.get_probability(min_cost_cpm_A), 'C0o', label='Optimal A')
-    a.plot(min_cost_cpm_B, s_B.get_probability(min_cost_cpm_B), 'C1o', label='Optimal B')
+    a.plot(min_cost_cpm_A, s_A.get_probability(min_cost_cpm_A), 'C0o', label='Optimal Bid A')
+    a.plot(min_cost_cpm_B, s_B.get_probability(min_cost_cpm_B), 'C1o', label='Optimal Bid B')
     
     a.legend() 
 
@@ -255,6 +255,7 @@ def update_axis(axis, p: Parameters):
 #    a.vlines(min_cost_cpm_A, 0, p.percent_to_buy, colors='C0')
     a.legend()
 
+    '''
     # Calculate value vs budget curve
     budget_step = 0.1
     for budget_x in range(0, int(10.0/budget_step)):
@@ -292,7 +293,7 @@ def update_axis(axis, p: Parameters):
             l_value_per_cost.append(max_value_for_budget/budget)
         else:
             l_value_per_cost.append(0)
-
+    
     # Plot value vs budget curve in bottom right with two y-axes
     a = axis[1, 1]
     a.clear()
@@ -325,12 +326,11 @@ def update_axis(axis, p: Parameters):
     lines = line1 + line2
     labels = [l.get_label() for l in lines]
     a.legend(lines, labels, loc='upper right')
-
+    '''
 
 
 class Chart(FigureCanvas):
-    def __init__(self, chart_type):
-        self.chart_type = chart_type
+    def __init__(self):
         self.fig = Figure(figsize=(3, 2.5), dpi=100)
         self.axis = self.fig.subplots(2, 2)
         self.p = Parameters()
@@ -384,283 +384,18 @@ class ChartContainer(Gtk.Box):
         self.update()
         plt.ion()
 
-    def calculate_chart_top_left(self, p):
-        """Calculate top left chart (probability curves) asynchronously"""
-        s_A = Sigmoid(p.sigmoid_A_scale, p.sigmoid_A_offset, p.sigmoid_A_value)
-        s_B = Sigmoid(p.sigmoid_B_scale, p.sigmoid_B_offset, p.sigmoid_B_value)
-
-        # Calculate probability curves
-        l_prob_range = []
-        l_prob_A = []
-        l_prob_B = []
-        for cpm_input in range(0, int(MAX_CPM / STEP)):
-            cpm = 1.0 * cpm_input * STEP
-            l_prob_range.append(cpm)
-            l_prob_A.append(s_A.get_probability(cpm))
-            l_prob_B.append(s_B.get_probability(cpm))
-
-        # Find optimal points
-        max_value = 0.0
-        min_cost_cpm_A = 0
-        min_cost_cpm_B = 0
-        for cpm_input in range(0, int(MAX_CPM / STEP)):
-            cpm_A = 1.0 * cpm_input * STEP
-            imp_bought_A = s_A.get_probability(cpm_A) * p.percent_A
-            imp_value_A = imp_bought_A * s_A.value
-            imp_spend_A = imp_bought_A * cpm_A
-            
-            if p.total_budget - imp_spend_A < 0.0:
-                continue
-            imp_spend_B = p.total_budget - imp_spend_A
-            if imp_spend_B < 0:
-                continue
-            
-            cpm_B = s_B.bisect_spend_inverse(imp_spend_B / (1.0 - p.percent_A))
-            if cpm_B <= 0.0:
-                continue
-            imp_bought_B = s_B.get_probability(cpm_B) * (1 - p.percent_A)
-            imp_value_B = imp_bought_B * s_B.value
-            
-            total_value = imp_value_A + imp_value_B
-            if total_value > max_value:
-                max_value = total_value
-                min_cost_cpm_A = cpm_A
-                min_cost_cpm_B = cpm_B
-
-        GLib.idle_add(self.update_chart_top_left, l_prob_range, l_prob_A, l_prob_B, min_cost_cpm_A, min_cost_cpm_B, s_A, s_B)
-
-    def update_chart_top_left(self, l_prob_range, l_prob_A, l_prob_B, min_cost_cpm_A, min_cost_cpm_B, s_A, s_B):
-        """Update top left chart with calculated data"""
-        with self.lock:
-            a = self.chart_top_left.axis
-            a.clear()
-            a.set_xlim(right=MAX_CPM)
-            a.plot(l_prob_range, l_prob_A, 'C0-', label='Imp A probability')
-            a.plot(l_prob_range, l_prob_B, 'C1-', label='Imp B probability')
-            a.vlines(min_cost_cpm_A, 0, s_A.get_probability(min_cost_cpm_A), 'C0', linestyles='--', alpha=0.5)
-            a.vlines(min_cost_cpm_B, 0, s_B.get_probability(min_cost_cpm_B), 'C1', linestyles='--', alpha=0.5)
-            a.plot(min_cost_cpm_A, s_A.get_probability(min_cost_cpm_A), 'C0o', label='Optimal A')
-            a.plot(min_cost_cpm_B, s_B.get_probability(min_cost_cpm_B), 'C1o', label='Optimal B')
-            a.legend()
-            a.set_title('Probability Curves')
-            self.chart_top_left.draw()
-        return False
-
-    def calculate_chart_bottom_left(self, p):
-        """Calculate bottom left chart asynchronously"""
-        s_A = Sigmoid(p.sigmoid_A_scale, p.sigmoid_A_offset, p.sigmoid_A_value)
-        s_B = Sigmoid(p.sigmoid_B_scale, p.sigmoid_B_offset, p.sigmoid_B_value)
-
-        l1 = []
-        l_cpm_B = []
-        l_total_cost = []
-        max_value = 0.0
-        min_cost_cpm_A = 0
-
-        for cpm_input in range(0, int(MAX_CPM / STEP)):
-            cpm_A = 1.0 * cpm_input * STEP
-            imp_bought_A = s_A.get_probability(cpm_A) * p.percent_A
-            imp_value_A = imp_bought_A * s_A.value
-            imp_spend_A = imp_bought_A * cpm_A
-            
-            if p.total_budget - imp_spend_A < 0.0:
-                continue
-            imp_spend_B = p.total_budget - imp_spend_A
-            if imp_spend_B < 0:
-                continue
-                
-            cpm_B = s_B.bisect_spend_inverse(imp_spend_B / (1.0 - p.percent_A))
-            if cpm_B <= 0.0:
-                continue
-            imp_bought_B = s_B.get_probability(cpm_B) * (1 - p.percent_A)
-            imp_value_B = imp_bought_B * s_B.value
-            
-            total_value = imp_value_A + imp_value_B
-            if total_value > max_value:
-                max_value = total_value
-                min_cost_cpm_A = cpm_A
-            
-            l1.append(cpm_A)
-            l_total_cost.append(total_value)
-            l_cpm_B.append(cpm_B)
-
-        GLib.idle_add(self.update_chart_bottom_left, l1, l_total_cost, l_cpm_B, min_cost_cpm_A, max_value)
-
-    def update_chart_bottom_left(self, l1, l_total_cost, l_cpm_B, min_cost_cpm_A, max_value):
-        """Update bottom left chart with calculated data"""
-        with self.lock:
-            a = self.chart_bottom_left.axis
-            a.clear()
-            a.set_xlim(right=MAX_CPM)
-            a.plot(l1, l_total_cost, label='Total cost')
-            a.plot(l1, l_cpm_B, label='Cpm B')
-            a.vlines(min_cost_cpm_A, 0, MAX_CPM, colors='C0')
-            a.hlines(max_value, 0, MAX_CPM, colors='C0')
-            a.legend()
-            a.set_title('Cost Analysis')
-            self.chart_bottom_left.draw()
-        return False
-
-    def calculate_chart_top_right(self, p):
-        """Calculate top right chart asynchronously"""
-        s_A = Sigmoid(p.sigmoid_A_scale, p.sigmoid_A_offset, p.sigmoid_A_value)
-        s_B = Sigmoid(p.sigmoid_B_scale, p.sigmoid_B_offset, p.sigmoid_B_value)
-
-        l1 = []
-        l_total_cost = []
-        max_value = 0.0
-
-        for cpm_input in range(0, int(MAX_CPM / STEP)):
-            cpm_A = 1.0 * cpm_input * STEP
-            imp_bought_A = s_A.get_probability(cpm_A) * p.percent_A
-            imp_value_A = imp_bought_A * s_A.value
-            imp_spend_A = imp_bought_A * cpm_A
-            
-            if p.total_budget - imp_spend_A < 0.0:
-                continue
-            imp_spend_B = p.total_budget - imp_spend_A
-            if imp_spend_B < 0:
-                continue
-                
-            cpm_B = s_B.bisect_spend_inverse(imp_spend_B / (1.0 - p.percent_A))
-            if cpm_B <= 0.0:
-                continue
-            imp_bought_B = s_B.get_probability(cpm_B) * (1 - p.percent_A)
-            imp_value_B = imp_bought_B * s_B.value
-            
-            total_value = imp_value_A + imp_value_B
-            max_value = max(max_value, total_value)
-            
-            l1.append(cpm_A)
-            l_total_cost.append(total_value)
-
-        GLib.idle_add(self.update_chart_top_right, l1, l_total_cost, max_value)
-
-    def update_chart_top_right(self, l1, l_total_cost, max_value):
-        """Update top right chart with calculated data"""
-        with self.lock:
-            a = self.chart_top_right.axis
-            a.clear()
-            a.set_xlim(right=MAX_CPM)
-            a.plot(l1, l_total_cost, label='Total value')
-            a.hlines(max_value, 0, MAX_CPM, colors='C0')
-            a.legend()
-            a.set_title('Value Analysis')
-            self.chart_top_right.draw()
-        return False
-
-    def calculate_budget_curve(self, p):
-        """Calculate bottom right chart (budget curve) asynchronously"""
-        s_A = Sigmoid(p.sigmoid_A_scale, p.sigmoid_A_offset, p.sigmoid_A_value)
-        s_B = Sigmoid(p.sigmoid_B_scale, p.sigmoid_B_offset, p.sigmoid_B_value)
-        
-        l_budget_range = []
-        l_max_value = []
-        l_value_per_cost = []
-        
-        budget_step = 0.1
-        current_max_value = 0.0
-        
-        for budget_x in range(0, int(10.0/budget_step)):
-            budget = budget_x * budget_step
-            l_budget_range.append(budget)
-            
-            max_value_for_budget = 0.0
-            for cpm_input in range(0, int(MAX_CPM / STEP)):
-                cpm_A = 1.0 * cpm_input * STEP
-                imp_bought_A = s_A.get_probability(cpm_A) * p.percent_A
-                imp_value_A = imp_bought_A * s_A.value
-                imp_spend_A = imp_bought_A * cpm_A
-                
-                if budget - imp_spend_A < 0.0:
-                    continue
-                    
-                imp_spend_B = budget - imp_spend_A
-                if imp_spend_B < 0:
-                    continue
-                    
-                cpm_B = s_B.bisect_spend_inverse(imp_spend_B / (1.0 - p.percent_A))
-                if cpm_B <= 0.0:
-                    continue
-                    
-                imp_bought_B = s_B.get_probability(cpm_B) * (1 - p.percent_A)
-                imp_value_B = imp_bought_B * s_B.value
-                
-                total_value = imp_value_A + imp_value_B
-                max_value_for_budget = max(max_value_for_budget, total_value)
-                
-                if abs(budget - p.total_budget) < budget_step/2:
-                    current_max_value = max(current_max_value, total_value)
-            
-            l_max_value.append(max_value_for_budget)
-            if budget > 0:
-                l_value_per_cost.append(max_value_for_budget/budget)
-            else:
-                l_value_per_cost.append(0)
-        
-        GLib.idle_add(self.update_budget_plot, l_budget_range, l_max_value, l_value_per_cost, p.total_budget, current_max_value)
-
-    def update_budget_plot(self, l_budget_range, l_max_value, l_value_per_cost, total_budget, current_value):
-        """Update bottom right chart with calculated data"""
-        with self.lock:
-            # Clear the figure and recreate the axis to handle twinx properly
-            self.chart_bottom_right.fig.clear()
-            a = self.chart_bottom_right.fig.add_subplot(111)
-            self.chart_bottom_right.axis = a
-            
-            a.set_xlim(right=10.0)
-            
-            # Plot total value on left y-axis
-            line1 = a.plot(l_budget_range, l_max_value, 'b-', label='Max value')
-            a.set_xlabel('Budget')
-            a.set_ylabel('Maximum achievable value', color='b')
-            a.tick_params(axis='y', labelcolor='b')
-            
-            # Create second y-axis for value per cost
-            ax2 = a.twinx()
-            line2 = ax2.plot(l_budget_range, l_value_per_cost, 'r-', label='Value per cost')
-            ax2.set_ylabel('Value per cost', color='r')
-            ax2.tick_params(axis='y', labelcolor='r')
-            
-            # Mark current budget point on both curves
-            current_efficiency = current_value/total_budget if total_budget > 0 else 0
-            a.plot(total_budget, current_value, 'bo', label='Current value')
-            ax2.plot(total_budget, current_efficiency, 'ro', label='Current efficiency')
-            
-            # Add combined legend
-            lines = line1 + line2
-            labels = [l.get_label() for l in lines]
-            a.legend(lines, labels, loc='upper right')
-            a.set_title('Budget vs Value')
-            
-            self.chart_bottom_right.draw()
-        return False
 
     def update(self):
-        """Start async calculation for all four charts"""
-        # Create parameter copy for each thread
-        params_copy = Parameters()
-        params_copy.__dict__.update(self.p.__dict__)
-        
-        # Chart calculation functions
-        chart_calculators = [
-            self.calculate_chart_top_left,      # 0: top left
-            self.calculate_chart_bottom_left,   # 1: bottom left  
-            self.calculate_chart_top_right,     # 2: top right
-            self.calculate_budget_curve         # 3: bottom right
-        ]
-        
-        # Start all calculations asynchronously
-        for i, calculator in enumerate(chart_calculators):
-            # Stop previous thread if still running
-            if self.calculation_threads[i] and self.calculation_threads[i].is_alive():
-                pass  # Let it finish, we'll ignore its results
-                
-            # Start new calculation thread
-            thread = threading.Thread(target=calculator, args=(params_copy,))
-            thread.daemon = True
-            thread.start()
-            self.calculation_threads[i] = thread
+        #print("updating to: ", x)
+        for i in range(0,2):
+            for j in range(0, 2):
+                self.axis[i,j].clear()
+        update_axis(self.axis, self.p)
+
+        #self.ax.draw(1)
+        #self.fig.draw()
+        self.draw()
+        #self.ion()
 
 
 class MainWindow(Gtk.ApplicationWindow):
@@ -689,8 +424,8 @@ class MainWindow(Gtk.ApplicationWindow):
  #       self.box2.append(self.button) # Put button in the first of the two vertical boxes
         
         
-        self.chart_container = ChartContainer()
-        self.box3.append(self.chart_container)
+        self.chart = Chart()
+        self.box3.append(self.chart)
         self.check = Gtk.Label(label="Parameters")
         self.box2.append(self.check)
         self.box2.append(self.slider_box("Percent of A", 0.0, 1.0, 'percent_A'))
@@ -704,16 +439,18 @@ class MainWindow(Gtk.ApplicationWindow):
         
 
     def slider_box(self, label, start_range, end_range, parameter_name):
-        assert parameter_name in self.chart_container.p.__dict__.keys()
-        start_value = self.chart_container.p.__dict__[parameter_name]
+        assert parameter_name in self.chart.p.__dict__.keys()
+        start_value = self.chart.p.__dict__[parameter_name]
         slider = Gtk.Scale()
         slider.set_digits(2)  # Number of decimal places to use
         slider.set_range(start_range, end_range)
         slider.set_draw_value(True)  # Show a label with current value
         slider.set_value(start_value)  # Sets the current value/position
         def change_function(self):
-            self.chart_container.p.__dict__[parameter_name] = float(slider.get_value())
-            self.chart_container.update()
+            self.chart.p.__dict__[parameter_name] = float(slider.get_value())
+            self.chart.update()
+        slider.chart = self.chart    
+
         slider.connect('value-changed', change_function)
         slider.set_hexpand(True)
         b = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)

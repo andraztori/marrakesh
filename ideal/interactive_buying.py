@@ -129,10 +129,6 @@ class Chart(FigureCanvas):
         self.axis = self.fig.subplots(2, 2)
         self.p = Parameters()
         update_axis(self.axis, self.p)
-
-#        self.ax = self.fig.add_subplot()
-#        t = np.arange(0.0, 3.0, 0.01)
-#        s = np.sin(2*np.pi*t)
         super().__init__(self.fig)
         
         #canvas = FigureCanvas(fig)  # a Gtk.DrawingArea
