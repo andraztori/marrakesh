@@ -448,9 +448,6 @@ class MainWindow(Gtk.ApplicationWindow):
         self.box2.set_size_request(350, -1)
         self.box2.set_hexpand(False)
         
-        
-#        self.button = Gtk.Button(label="Hello")
-#        self.button.connect('clicked', self.hello)
 
         self.set_child(self.box1)  # Horizontal box to window
         self.box1.append(self.box2)  # Put vert box in that box
