@@ -4,6 +4,7 @@ gi.require_version('Gtk', '4.0')
 from gi.repository import Gtk, Adw, GLib
 
 import math
+import signal
 from matplotlib.backends.backend_gtk4agg import \
     FigureCanvasGTK4Agg as FigureCanvas
 from matplotlib.figure import Figure
@@ -274,11 +275,14 @@ def update_axis(axis, p: Parameters, save_to_png=False):
         fig3 = axis[0][1].figure
         fig4 = axis[1][1].figure
         
-        # Save each figure
-        fig1.savefig('plot1_win_probability.png', dpi=300, bbox_inches='tight')
-        fig2.savefig('plot2_total_value.png', dpi=300, bbox_inches='tight')
-        fig3.savefig('plot3_total_cost.png', dpi=300, bbox_inches='tight')
-        fig4.savefig('plot4_min_price.png', dpi=300, bbox_inches='tight')
+        # Create parameter string for filename
+        param_str = f"tb{p.total_budget}_pa{p.percent_A}_sav{p.sigmoid_A_value}_sas{p.sigmoid_A_scale}_sao{p.sigmoid_A_offset}_sbv{p.sigmoid_B_value}_sbs{p.sigmoid_B_scale}_sbo{p.sigmoid_B_offset}"
+        
+        # Save each figure with parameter string in filename
+        fig1.savefig(f'plot1_win_probability_{param_str}.png', dpi=300, bbox_inches='tight')
+        fig2.savefig(f'plot2_total_value_{param_str}.png', dpi=300, bbox_inches='tight')
+        fig3.savefig(f'plot3_total_cost_{param_str}.png', dpi=300, bbox_inches='tight')
+        fig4.savefig(f'plot4_min_price_{param_str}.png', dpi=300, bbox_inches='tight')
         
         print("Plots saved as PNG files")
     '''
@@ -495,6 +499,11 @@ class MainWindow(Gtk.ApplicationWindow):
         self.save_button.connect('clicked', self.save_plots)
         self.box2.append(self.save_button)
         
+        # Add Interesting Curves button
+        self.interesting_button = Gtk.Button(label="Load Interesting Curves")
+        self.interesting_button.connect('clicked', self.load_interesting_curves)
+        self.box2.append(self.interesting_button)
+        
 
     def slider_box(self, label, start_range, end_range, parameter_name):
         assert parameter_name in self.chart.p.__dict__.keys()
@@ -520,6 +529,11 @@ class MainWindow(Gtk.ApplicationWindow):
         """Save all four plots as PNG files"""
         self.chart.update(save_to_png=True)
 
+    def load_interesting_curves(self, button):
+        """Load interesting curves and update charts"""
+        self.chart.p.interesting_curves()
+        self.chart.update()
+
 
 #    def slider_changed(self, slider):
 #        self.chart.p.percent_to_buy = float(slider.get_value())
@@ -537,6 +551,14 @@ class MyApp(Adw.Application):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.connect('activate', self.on_activate)
+        
+        # Set up signal handler for Ctrl+C
+        signal.signal(signal.SIGINT, self.signal_handler)
+
+    def signal_handler(self, signum, frame):
+        """Handle Ctrl+C gracefully"""
+        print("\nReceived Ctrl+C, shutting down gracefully...")
+        self.quit()
 
     def on_activate(self, app):
         self.win = MainWindow(application=app)
