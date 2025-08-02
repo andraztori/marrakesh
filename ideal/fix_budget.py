@@ -436,10 +436,6 @@ class MainWindow(Gtk.ApplicationWindow):
         self.set_default_size(1400, 850)
         self.set_title("BestBuy")
 
-        # A scrolled margin goes outside the scrollbars and viewport.
-        #sw = Gtk.ScrolledWindow(margin_top=10, margin_bottom=10,
-        #                        margin_start=10, margin_end=10)
-        #self.set_child(sw)
         self.box1 = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing = 10)
         self.box2 = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         self.box3 = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
