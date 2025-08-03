@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 EPSILON = 0.0001
 MAX_CPM = 20
 STEP = 0.01
-
+BUDGET_STEP = 0.25
 
 class Sigmoid:
     def __init__(self, scale, offset, value):
@@ -112,7 +112,7 @@ def update_axis(axis, p: Parameters, save_to_png=False):
     l_cpm_B = []
     l_imp_bought_A = []
     l_imp_bought_B = []
-    l_total_cost = []
+    l_total_value = []
     l_prob_A = []
     l_prob_B = []
     l_prob_Binv = []
@@ -217,7 +217,7 @@ def update_axis(axis, p: Parameters, save_to_png=False):
             else:
                 continue
         l1.append(cpm_A) 
-        l_total_cost.append(total_value)
+        l_total_value.append(total_value)
         l_cpm_B.append(cpm_B)
         l_imp_bought_A.append(imp_bought_A)
         l_imp_bought_B.append(imp_bought_B)
@@ -239,57 +239,38 @@ def update_axis(axis, p: Parameters, save_to_png=False):
 
     a = axis[0][1]
     
+    a.set_ylim(top = max(l_cpm_B))
     a.set_xlim(right = MAX_CPM)
-    a.plot(l1, l_total_cost, label='Total cost')#, l3)#, l4, l5)
-    a.plot(l1, l_cpm_B, label='Cpm B')#, l3)#, l4, l5)
+    a.plot(l1, l_total_value, label='Total cost')
+    a.plot(l1, l_cpm_B, label='Cpm B')
     a.vlines(min_cost_cpm_A, 0, MAX_CPM, colors='C0')
     a.hlines(max_value, 0, MAX_CPM, colors='C0')
-    a.legend(loc='upper left')
+    a.legend(loc='upper right')
 
     a = axis[1][0]
     
     a.set_xlim(right = MAX_CPM)
-    a.plot(l1, l_total_cost, label='Total value')#, l3)#, l4, l5)
-    a.hlines(max_value, 0, MAX_CPM, colors='C0')
+    a.plot(l1, l_total_value, label='Value vs. CPM A')
+    a.hlines(max_value, 0, MAX_CPM, colors='C1')
     a.legend()
    
     '''
     a = axis[0][1]
     a.set_xlim(right = MAX_CPM)
-    a.plot(l1, l_imp_bought_A, label='Imp A bought')#, l3)#, l4, l5)
-    a.plot(l1, l_imp_bought_B, label='Imp B bought')#, l3)#, l4, l5)
+    a.plot(l1, l_imp_bought_A, label='Imp A bought')
+    a.plot(l1, l_imp_bought_B, label='Imp B bought')
     a.vlines(min_cost_cpm_A, 0, p.percent_to_buy, colors='C0')
     a.legend()
     '''
     a = axis[1][1]
     a.set_xlim(right = 1.0)
-    a.plot(l2, l22, label='Minimum price vs. impressions')#, l3)#, l4, l5)
+    a.plot(l2, l22, label='Value for budget')
 #    a.vlines(min_cost_cpm_A, 0, p.percent_to_buy, colors='C0')
     a.legend()
 
-    # Save plots to PNG if requested
-    if save_to_png:
-        # Get the figures from the axes
-        fig1 = axis[0][0].figure
-        fig2 = axis[1][0].figure
-        fig3 = axis[0][1].figure
-        fig4 = axis[1][1].figure
-        
-        # Create parameter string for filename
-        param_str = f"tb{p.total_budget}_pa{p.percent_A}_sav{p.sigmoid_A_value}_sas{p.sigmoid_A_scale}_sao{p.sigmoid_A_offset}_sbv{p.sigmoid_B_value}_sbs{p.sigmoid_B_scale}_sbo{p.sigmoid_B_offset}"
-        
-        # Save each figure with parameter string in filename
-        fig1.savefig(f'plot1_win_probability_{param_str}.png', dpi=300, bbox_inches='tight')
-        fig2.savefig(f'plot2_total_value_{param_str}.png', dpi=300, bbox_inches='tight')
-        fig3.savefig(f'plot3_total_cost_{param_str}.png', dpi=300, bbox_inches='tight')
-        fig4.savefig(f'plot4_min_price_{param_str}.png', dpi=300, bbox_inches='tight')
-        
-        print("Plots saved as PNG files")
-    '''
     # Calculate value vs budget curve
-    budget_step = 0.1
-    for budget_x in range(0, int(10.0/budget_step)):
-        budget = budget_x * budget_step
+    for budget_x in range(0, int(10.0/BUDGET_STEP)):
+        budget = budget_x * BUDGET_STEP
         l_budget_range.append(budget)
         
         # Find maximum value achievable with this budget
@@ -356,8 +337,26 @@ def update_axis(axis, p: Parameters, save_to_png=False):
     lines = line1 + line2
     labels = [l.get_label() for l in lines]
     a.legend(lines, labels, loc='upper right')
-    '''
 
+    # Save plots to PNG if requested
+    if save_to_png:
+        # Get the figures from the axes
+        fig1 = axis[0][0].figure
+        fig2 = axis[1][0].figure
+        fig3 = axis[0][1].figure
+        fig4 = axis[1][1].figure
+        
+        # Create parameter string for filename
+        param_str = f"tb{p.total_budget}_pa{p.percent_A}_sav{p.sigmoid_A_value}_sas{p.sigmoid_A_scale}_sao{p.sigmoid_A_offset}_sbv{p.sigmoid_B_value}_sbs{p.sigmoid_B_scale}_sbo{p.sigmoid_B_offset}"
+        
+        # Save each figure with parameter string in filename
+        fig1.savefig(f'plot1_win_probability_{param_str}.png', dpi=300, bbox_inches='tight')
+        fig2.savefig(f'plot2_total_value_{param_str}.png', dpi=300, bbox_inches='tight')
+        fig3.savefig(f'plot3_total_cost_{param_str}.png', dpi=300, bbox_inches='tight')
+        fig4.savefig(f'plot4_min_price_{param_str}.png', dpi=300, bbox_inches='tight')
+        
+        print("Plots saved as PNG files")
+    
 
 class Chart(FigureCanvas):
     def __init__(self):
