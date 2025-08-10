@@ -487,6 +487,9 @@ class MainWindow(Gtk.ApplicationWindow):
         self.box3.append(self.charts_grid)
         self.check = Gtk.Label(label="Parameters")
         self.box2.append(self.check)
+        
+        # Store references to sliders for updating later
+        self.sliders = {}
         self.box2.append(self.slider_box("Percent of A", 0.0, 1.0, 'percent_A'))
         self.box2.append(self.slider_box("Total budget", 0.0, 10.0, 'total_budget'))
         self.box2.append(self.slider_box("Sigma A value", 0.001, 5.0, 'sigmoid_A_value'))
@@ -520,11 +523,15 @@ class MainWindow(Gtk.ApplicationWindow):
             self.chart.update()
         slider.chart = self.chart    
 
-        slider.connect('value-changed', change_function)
+        signal_id = slider.connect('value-changed', change_function)
         slider.set_hexpand(True)
         b = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
         b.append(Gtk.Label(label=label))
         b.append(slider)
+        
+        # Store reference to slider and signal ID for updating later
+        self.sliders[parameter_name] = {'slider': slider, 'signal_id': signal_id}
+        
         return b
 
     def save_plots(self, button):
@@ -534,18 +541,19 @@ class MainWindow(Gtk.ApplicationWindow):
     def load_interesting_curves(self, button):
         """Load interesting curves and update charts"""
         self.chart.p.interesting_curves()
+        
+        # Update all sliders to reflect the new parameter values
+        for parameter_name, slider_info in self.sliders.items():
+            if parameter_name in self.chart.p.__dict__:
+                slider = slider_info['slider']
+                signal_id = slider_info['signal_id']
+                # Temporarily block the signal to avoid triggering updates
+                slider.handler_block(signal_id)
+                slider.set_value(self.chart.p.__dict__[parameter_name])
+                slider.handler_unblock(signal_id)
+        
         self.chart.update()
 
-
-#    def slider_changed(self, slider):
-#        self.chart.p.percent_to_buy = float(slider.get_value())
-#        self.chart.update()
-
-#    def hello(self, button):
-#        print("Hello world")
-#        if self.check.get_active():
-#            print("Goodbye world!")
-#            self.close()
 
 
 
