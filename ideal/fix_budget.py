@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 
 EPSILON = 0.0001
 MAX_CPM = 20
-STEP = 0.01
+STEP = 0.05
 BUDGET_STEP = 0.25
 
 class Sigmoid:
@@ -41,7 +41,7 @@ class Sigmoid:
             else:
                 min_x = x
                 
-            if steps > 100:
+            if steps > 50:
                 raise ("Didn't find the inverse of %f" % y) 
         return x
         
@@ -56,13 +56,13 @@ class Sigmoid:
         return (math.log(y) - math.log(1 - y)) / self.scale + self.offset
 
     def numeric_derivative(self, x):
-        E = 0.000001
+        E = 0.00001
         a1 = self.get_probability(x-E)
         a2 = self.get_probability(x+E)
         return (a2-a1) / (2 * E)
 
     def numeric_derivative_mul_x(self, x):
-        E = 0.000001
+        E = 0.00001
         x1 = x-E
         x2 = x+E
         a1 = self.get_probability(x1)*x1*.5
@@ -85,6 +85,7 @@ class Sigmoid:
 class Parameters:
     def __init__(self):
         self.total_budget = 2
+        self.total_volume = 2
         self.sigmoid_A_value = 1.0
         self.sigmoid_A_scale = 0.4
         self.sigmoid_A_offset = 8.0
@@ -92,8 +93,11 @@ class Parameters:
         self.sigmoid_B_scale = 0.9
         self.sigmoid_B_offset = 9.0
         self.percent_A = 0.5
+        
 
     def interesting_curves(self):
+        self.total_budget = 2
+        self.total_volume = 2
         self.sigmoid_A_value = 1.0
         self.sigmoid_B_value = 1.0
         self.percent_A = 0.5
@@ -102,6 +106,12 @@ class Parameters:
         self.sigmoid_B_scale=1.0
         self.sigmoid_B_offset=7.0
 
+    def total_volume_A(self):
+        return self.percent_A * self.total_volume	# total volume = 2 impressions
+    
+    def total_volume_B(self):
+        return (1.0 -self.percent_A) * self.total_volume
+        
 
 
 def update_axis(axis, p: Parameters, save_to_png=False):
@@ -141,13 +151,13 @@ def update_axis(axis, p: Parameters, save_to_png=False):
 
         for cpm_input in range(0, int(MAX_CPM / STEP)):
             cpm_A = 1.0 * cpm_input * STEP
-            imp_bought_A = s_A.get_probability(cpm_A) * p.percent_A
+            imp_bought_A = s_A.get_probability(cpm_A) * p.total_volume_A()
             if percent_to_buy - imp_bought_A > 1.0: # impossible 
                 continue
-            cpm_B = s_B.inverse((percent_to_buy - imp_bought_A) / (1 - p.percent_A))
+            cpm_B = s_B.inverse((percent_to_buy - imp_bought_A) / p.total_volume_B())
             if cpm_B <= 0.0:
                 continue
-            imp_bought_B = s_B.get_probability(cpm_B) * (1 - p.percent_A)
+            imp_bought_B = s_B.get_probability(cpm_B) * p.total_volume_B()
             
             if math.fabs((imp_bought_A + imp_bought_B) - percent_to_buy) > EPSILON:	# make sure we've bought enough impressions
                 # it was impossible to buy, just fill in with empty values
@@ -168,7 +178,7 @@ def update_axis(axis, p: Parameters, save_to_png=False):
     min_cost_cpm_B = 0
     for cpm_input in range(0, int(MAX_CPM / STEP)):
         cpm_A = 1.0 * cpm_input * STEP
-        imp_bought_A = s_A.get_probability(cpm_A) * p.percent_A
+        imp_bought_A = s_A.get_probability(cpm_A) * p.total_volume_A()
         imp_value_A = imp_bought_A * s_A.value
         imp_spend_A = imp_bought_A * cpm_A
         
@@ -178,10 +188,10 @@ def update_axis(axis, p: Parameters, save_to_png=False):
         
         if imp_spend_B < 0:
             continue
-        cpm_B = s_B.bisect_spend_inverse(imp_spend_B / (1.0 - p.percent_A))
+        cpm_B = s_B.bisect_spend_inverse(imp_spend_B / p.total_volume_B())
         if cpm_B <= 0.0:
             continue
-        imp_bought_B = s_B.get_probability(cpm_B) * (1 - p.percent_A)
+        imp_bought_B = s_B.get_probability(cpm_B) * p.total_volume_B()
         imp_value_B = imp_bought_B * s_B.value
 #        imp_spend_B2 = imp_bought_B * cpm_B
 #        print("imp spend B1: %f, B2: %f" % (imp_spend_B, imp_spend_B2))
@@ -195,8 +205,6 @@ def update_axis(axis, p: Parameters, save_to_png=False):
             # it was impossible to buy, just fill in with empty values
         #    print("A")
             continue
-#        print ("CPM_B", cpm_B)
-#        print ("CPM_A", cpm_A)
         
  
         total_value = imp_value_A + imp_value_B
@@ -204,26 +212,20 @@ def update_axis(axis, p: Parameters, save_to_png=False):
             max_value = total_value
             min_cost_cpm_A = cpm_A
             min_cost_cpm_B = cpm_B
-            num_der_A = s_A.numeric_derivative(cpm_A)
-            num_der_B = s_B.numeric_derivative(cpm_B)
-            
-            if cpm_A != 0.0 and cpm_B != 0.0 and imp_bought_A != 0.0 and imp_bought_B != 0.0:
-#                print("a: %f, %f" % ( imp_spend_A, imp_spend_B))
-#                invariant_A = (s_A.numeric_derivative_mul_x(cpm_A))* cpm_A + s_A.numeric_inverse_derivative_mul_x(imp_bought_A)*imp_spend_A*2
-#                invariant_B = (s_B.numeric_derivative_mul_x(cpm_B))* cpm_B + s_B.numeric_inverse_derivative_mul_x(imp_bought_B)*imp_spend_B*2
-#                print(s_A.numeric_inverse_derivative_mul_x(imp_bought_A))
-                invariant_A = (s_A.numeric_derivative_mul_x(cpm_A)* cpm_A)/(s_A.numeric_inverse_derivative_mul_x(imp_bought_A) * imp_bought_A)
-                invariant_B = (s_B.numeric_derivative_mul_x(cpm_B)* cpm_B)/(s_B.numeric_inverse_derivative_mul_x(imp_bought_B) * imp_bought_B)
-            else:
-                continue
         l1.append(cpm_A) 
         l_total_value.append(total_value)
         l_cpm_B.append(cpm_B)
         l_imp_bought_A.append(imp_bought_A)
         l_imp_bought_B.append(imp_bought_B)
     
-#    print ("I1: %f, I2: %f" % (invariant_A, invariant_B))
-#    print ("D1: %f, D2: %f" % (num_der_A, num_der_B))
+        
+    invariant_A = s_A.numeric_derivative(min_cost_cpm_A) / s_A.numeric_derivative_mul_x(min_cost_cpm_A) * s_A.value
+    invariant_B = s_B.numeric_derivative(min_cost_cpm_B) / s_B.numeric_derivative_mul_x(min_cost_cpm_B) * s_B.value
+
+
+    print ("I1: %f, I2: %f" % (invariant_A, invariant_B))
+    #print ("D1: %f, D2: %f" % (num_der_A, num_der_B))
+    #print ("C1: %f, C2: %f" % (min_cost_cpm_A, min_cost_cpm_B))
 
     a = axis[0][0]
     a.set_xlim(right = MAX_CPM)
@@ -269,75 +271,76 @@ def update_axis(axis, p: Parameters, save_to_png=False):
     a.legend()
 
     # Calculate value vs budget curve
-    for budget_x in range(0, int(10.0/BUDGET_STEP)):
-        budget = budget_x * BUDGET_STEP
-        l_budget_range.append(budget)
-        
-        # Find maximum value achievable with this budget
-        max_value_for_budget = 0.0
-        for cpm_input in range(0, int(MAX_CPM / STEP)):
-            cpm_A = 1.0 * cpm_input * STEP
-            imp_bought_A = s_A.get_probability(cpm_A) * p.percent_A
-            imp_value_A = imp_bought_A * s_A.value
-            imp_spend_A = imp_bought_A * cpm_A
+    if False: 
+        for budget_x in range(0, int(10.0/BUDGET_STEP)):
+            budget = budget_x * BUDGET_STEP
+            l_budget_range.append(budget)
             
-            if budget - imp_spend_A < 0.0:  # Over budget
-                continue
+            # Find maximum value achievable with this budget
+            max_value_for_budget = 0.0
+            for cpm_input in range(0, int(MAX_CPM / STEP)):
+                cpm_A = 1.0 * cpm_input * STEP
+                imp_bought_A = s_A.get_probability(cpm_A) * p.total_volume_A() 
+                imp_value_A = imp_bought_A * s_A.value
+                imp_spend_A = imp_bought_A * cpm_A
                 
-            imp_spend_B = budget - imp_spend_A
-            if imp_spend_B < 0:
-                continue
+                if budget - imp_spend_A < 0.0:  # Over budget
+                    continue
+                    
+                imp_spend_B = budget - imp_spend_A
+                if imp_spend_B < 0:
+                    continue
+                    
+                cpm_B = s_B.bisect_spend_inverse(imp_spend_B / p.total_volume_B())
+                if cpm_B <= 0.0:
+                    continue
+                    
+                imp_bought_B = s_B.get_probability(cpm_B) * p.total_volume_B()
+                imp_value_B = imp_bought_B * s_B.value
                 
-            cpm_B = s_B.bisect_spend_inverse(imp_spend_B / (1.0 - p.percent_A))
-            if cpm_B <= 0.0:
-                continue
-                
-            imp_bought_B = s_B.get_probability(cpm_B) * (1 - p.percent_A)
-            imp_value_B = imp_bought_B * s_B.value
+                total_value = imp_value_A + imp_value_B
+                max_value_for_budget = max(max_value_for_budget, total_value)
             
-            total_value = imp_value_A + imp_value_B
-            max_value_for_budget = max(max_value_for_budget, total_value)
+            l_max_value.append(max_value_for_budget)
+            # Calculate value per cost (efficiency), avoiding division by zero
+            if budget > 0:
+                l_value_per_cost.append(max_value_for_budget/budget)
+            else:
+                l_value_per_cost.append(0)
         
-        l_max_value.append(max_value_for_budget)
-        # Calculate value per cost (efficiency), avoiding division by zero
-        if budget > 0:
-            l_value_per_cost.append(max_value_for_budget/budget)
-        else:
-            l_value_per_cost.append(0)
-    
-    # Plot value vs budget curve in bottom right with two y-axes
-    a = axis[1][1]
-    a.clear()
-    # Remove any existing second y-axis before creating a new one
-    for ax in a.figure.axes:
-        if ax != a and ax.bbox.bounds == a.bbox.bounds:
-            a.figure.delaxes(ax)
-                
-    a.set_xlim(right=10.0)
-    
-    # Plot total value on left y-axis
-    line1 = a.plot(l_budget_range, l_max_value, 'b-', label='Max value')
-    a.set_xlabel('Budget')
-    a.set_ylabel('Maximum achievable value', color='b')
-    a.tick_params(axis='y', labelcolor='b')
-    
-    # Create second y-axis for value per cost
-    ax2 = a.twinx()
-    line2 = ax2.plot(l_budget_range, l_value_per_cost, 'r-', label='Value per cost')
-    ax2.set_ylabel('Value per cost', color='r')
-    ax2.tick_params(axis='y', labelcolor='r')
-    
-    # Mark current budget point on both curves
-    current_value = max_value if max_value is not None else 0
-    current_efficiency = current_value/p.total_budget if p.total_budget > 0 else 0
-    a.plot(p.total_budget, current_value, 'bo', label='Current value')
-    ax2.plot(p.total_budget, current_efficiency, 'ro', label='Current efficiency')
-    
-    # Add combined legend
-    lines = line1 + line2
-    labels = [l.get_label() for l in lines]
-    a.legend(lines, labels, loc='upper right')
-
+        # Plot value vs budget curve in bottom right with two y-axes
+        a = axis[1][1]
+        a.clear()
+        # Remove any existing second y-axis before creating a new one
+        for ax in a.figure.axes:
+            if ax != a and ax.bbox.bounds == a.bbox.bounds:
+                a.figure.delaxes(ax)
+                    
+        a.set_xlim(right=10.0)
+        
+        # Plot total value on left y-axis
+        line1 = a.plot(l_budget_range, l_max_value, 'b-', label='Max value')
+        a.set_xlabel('Budget')
+        a.set_ylabel('Maximum achievable value', color='b')
+        a.tick_params(axis='y', labelcolor='b')
+        
+        # Create second y-axis for value per cost
+        ax2 = a.twinx()
+        line2 = ax2.plot(l_budget_range, l_value_per_cost, 'r-', label='Value per cost')
+        ax2.set_ylabel('Value per cost', color='r')
+        ax2.tick_params(axis='y', labelcolor='r')
+        
+        # Mark current budget point on both curves
+        current_value = max_value if max_value is not None else 0
+        current_efficiency = current_value/p.total_budget if p.total_budget > 0 else 0
+        a.plot(p.total_budget, current_value, 'bo', label='Current value')
+        ax2.plot(p.total_budget, current_efficiency, 'ro', label='Current efficiency')
+        
+        # Add combined legend
+        lines = line1 + line2
+        labels = [l.get_label() for l in lines]
+        a.legend(lines, labels, loc='upper right')
+        
     # Save plots to PNG if requested
     if save_to_png:
         # Get the figures from the axes
@@ -347,7 +350,7 @@ def update_axis(axis, p: Parameters, save_to_png=False):
         fig4 = axis[1][1].figure
         
         # Create parameter string for filename
-        param_str = f"tb{p.total_budget}_pa{p.percent_A}_sav{p.sigmoid_A_value}_sas{p.sigmoid_A_scale}_sao{p.sigmoid_A_offset}_sbv{p.sigmoid_B_value}_sbs{p.sigmoid_B_scale}_sbo{p.sigmoid_B_offset}"
+        param_str = f"tb{p.total_budget}_tv{p.total_volume}_pa{p.percent_A}_sav{p.sigmoid_A_value}_sas{p.sigmoid_A_scale}_sao{p.sigmoid_A_offset}_sbv{p.sigmoid_B_value}_sbs{p.sigmoid_B_scale}_sbo{p.sigmoid_B_offset}"
         
         # Save each figure with parameter string in filename
         fig1.savefig(f'plot1_win_probability_{param_str}.png', dpi=300, bbox_inches='tight')
