@@ -69,18 +69,6 @@ class Sigmoid:
         a2 = self.get_probability(x2)*x2*.5
         return (a2-a1) / (2 * E)
 
-    def numeric_inverse_derivative_mul_x(self, x):
-        E = 0.000001
-        x*=2
-        x1 = x-E
-        x2 = x+E
-        a1 = self.bisect_spend_inverse(x1)
-        a2 = self.bisect_spend_inverse(x2)
-        return (a2-a1) / (2 * E)
-        
-
-#    def derivative(self, x):
-#        return self.get_probability(x) * (1.0 - self.get_probability(x))
 
 class Parameters:
     def __init__(self):
@@ -96,7 +84,7 @@ class Parameters:
         
 
     def interesting_curves(self):
-        self.total_budget = 2
+        self.total_budget = 14
         self.total_volume = 2
         self.sigmoid_A_value = 1.0
         self.sigmoid_B_value = 1.0
@@ -114,7 +102,7 @@ class Parameters:
         
 
 
-def update_axis(axis, p: Parameters, save_to_png=False):
+def update_axis(axis, p: Parameters, save_to_png=False, show_value_vs_budget=False):
     s_A = Sigmoid(p.sigmoid_A_scale, p.sigmoid_A_offset, p.sigmoid_A_value)
     s_B = Sigmoid(p.sigmoid_B_scale, p.sigmoid_B_offset, p.sigmoid_B_value) 
 
@@ -271,7 +259,7 @@ def update_axis(axis, p: Parameters, save_to_png=False):
     a.legend()
 
     # Calculate value vs budget curve
-    if False: 
+    if show_value_vs_budget: 
         for budget_x in range(0, int(10.0/BUDGET_STEP)):
             budget = budget_x * BUDGET_STEP
             l_budget_range.append(budget)
@@ -340,6 +328,14 @@ def update_axis(axis, p: Parameters, save_to_png=False):
         lines = line1 + line2
         labels = [l.get_label() for l in lines]
         a.legend(lines, labels, loc='upper right')
+    else:
+        # Clear the bottom-right pane when toggle is disabled
+        a = axis[1][1]
+        a.clear()
+        # Remove any existing second y-axis
+        for ax in a.figure.axes:
+            if ax != a and ax.bbox.bounds == a.bbox.bounds:
+                a.figure.delaxes(ax)
         
     # Save plots to PNG if requested
     if save_to_png:
@@ -379,7 +375,8 @@ class Chart(FigureCanvas):
         self.axis = [[self.axis1, self.axis3], [self.axis2, self.axis4]]
         
         self.p = Parameters()
-        update_axis(self.axis, self.p)
+        self.show_value_vs_budget = False  # Default to off
+        update_axis(self.axis, self.p, show_value_vs_budget=self.show_value_vs_budget)
         
         # Use the first figure as the main canvas
         super().__init__(self.fig1)
@@ -391,7 +388,7 @@ class Chart(FigureCanvas):
         for i in range(0, 2):
             for j in range(0, 2):
                 self.axis[i][j].clear()
-        update_axis(self.axis, self.p, save_to_png)
+        update_axis(self.axis, self.p, save_to_png, show_value_vs_budget=self.show_value_vs_budget)
 
         # Redraw all figures
         self.fig1.canvas.draw()
@@ -494,10 +491,16 @@ class MainWindow(Gtk.ApplicationWindow):
         self.box2.append(self.slider_box("Total budget", 0.0, 10.0, 'total_budget'))
         self.box2.append(self.slider_box("Sigma A value", 0.001, 5.0, 'sigmoid_A_value'))
         self.box2.append(self.slider_box("Sigma A scale", 0.001, 2.0, 'sigmoid_A_scale'))
-        self.box2.append(self.slider_box("Sigma A offset", 0.0, 10.0, 'sigmoid_A_offset'))
+        self.box2.append(self.slider_box("Sigma A offset", 0.0, 20.0, 'sigmoid_A_offset'))
         self.box2.append(self.slider_box("Sigma B value", 0.001, 5.0, 'sigmoid_B_value'))
         self.box2.append(self.slider_box("Sigma B scale", 0.001, 2.0, 'sigmoid_B_scale'))
-        self.box2.append(self.slider_box("Sigma B offset", 0.0, 10.0, 'sigmoid_B_offset'))
+        self.box2.append(self.slider_box("Sigma B offset", 0.0, 20.0, 'sigmoid_B_offset'))
+        
+        # Add Value vs. budget curve toggle
+        self.value_budget_toggle = Gtk.CheckButton(label="Value vs. budget curve")
+        self.value_budget_toggle.set_active(False)  # Default to off
+        self.value_budget_toggle.connect('toggled', self.on_value_budget_toggle)
+        self.box2.append(self.value_budget_toggle)
         
         # Add Save Plots button
         self.save_button = Gtk.Button(label="Save Plots to PNG")
@@ -552,6 +555,11 @@ class MainWindow(Gtk.ApplicationWindow):
                 slider.set_value(self.chart.p.__dict__[parameter_name])
                 slider.handler_unblock(signal_id)
         
+        self.chart.update()
+
+    def on_value_budget_toggle(self, toggle_button):
+        """Handle toggle for Value vs. budget curve"""
+        self.chart.show_value_vs_budget = toggle_button.get_active()
         self.chart.update()
 
 
