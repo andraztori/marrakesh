@@ -121,6 +121,8 @@ def update_axis(chart, p: Parameters, save_to_png=False, show_value_vs_budget=Fa
     l_budget_range = []  # For x-axis of value vs budget curve
     l_max_value = []     # For y-axis of value vs budget curve
     l_value_per_cost = [] # For efficiency curve
+    l_marginal_utility_A_budget = []  # Marginal utility A for each budget
+    l_marginal_utility_B_budget = []  # Marginal utility B for each budget
 
     for cpm_input in range(0, int(MAX_CPM / STEP)):
         cpm = 1.0 * cpm_input * STEP
@@ -130,37 +132,7 @@ def update_axis(chart, p: Parameters, save_to_png=False, show_value_vs_budget=Fa
 
     l2 = []
     l22 = []
-    '''
-    for percent_to_buy_x in range(0, 20):
-        percent_to_buy = percent_to_buy_x / 10.0
-        min_cost = 1000.0
-        min_cost_cpm_A = 0
-        min_cost_cpm_B = 0
 
-        for cpm_input in range(0, int(MAX_CPM / STEP)):
-            cpm_A = 1.0 * cpm_input * STEP
-            imp_bought_A = s_A.get_probability(cpm_A) * p.total_volume_A()
-            if percent_to_buy - imp_bought_A > 1.0: # impossible 
-                continue
-            cpm_B = s_B.inverse((percent_to_buy - imp_bought_A) / p.total_volume_B())
-            if cpm_B <= 0.0:
-                continue
-            imp_bought_B = s_B.get_probability(cpm_B) * p.total_volume_B()
-            
-            if math.fabs((imp_bought_A + imp_bought_B) - percent_to_buy) > EPSILON:	# make sure we've bought enough impressions
-                # it was impossible to buy, just fill in with empty values
-                continue
-     
-            total_cost = cpm_A * imp_bought_A + cpm_B * imp_bought_B # this is the function we are trying to find zero-derivate of
-            if total_cost < min_cost:
-                min_cost = total_cost
-                min_cost_cpm_A = cpm_A
-                min_cost_cpm_B = cpm_B
-        if min_cost != 1000.0:
-            l2.append(percent_to_buy)
-            l22.append(min_cost)
-
-    '''
     max_value = 0.0
     min_cost_cpm_A = 0
     min_cost_cpm_B = 0
@@ -204,9 +176,22 @@ def update_axis(chart, p: Parameters, save_to_png=False, show_value_vs_budget=Fa
     marginal_utility_of_spend_B = s_B.value * s_B.numeric_derivative(min_cost_cpm_B) / s_B.numeric_derivative_mul_x(min_cost_cpm_B)
 
 
-    print ("I1: %f, I2: %f" % (marginal_utility_of_spend_A, marginal_utility_of_spend_B))
+#    print ("I1: %f, I2: %f" % (marginal_utility_of_spend_A, marginal_utility_of_spend_B))
     #print ("D1: %f, D2: %f" % (num_der_A, num_der_B))
     #print ("C1: %f, C2: %f" % (min_cost_cpm_A, min_cost_cpm_B))
+    
+    # Display marginal utility values as text on axis5
+    a = chart.axis5
+    a.axis('off')  # Hide axes for text display
+    a.text(0.5, 0.8, f'Marginal Utility of Spend A: {marginal_utility_of_spend_A:.3f}', 
+           transform=a.transAxes, fontsize=14, ha='center', va='center',
+           bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.8))
+    a.text(0.5, 0.6, f'Marginal Utility of Spend B: {marginal_utility_of_spend_B:.3f}', 
+           transform=a.transAxes, fontsize=14, ha='center', va='center',
+           bbox=dict(boxstyle='round', facecolor='lightgreen', alpha=0.8))
+    a.text(0.5, 0.3, f'Optimal CPM A: {min_cost_cpm_A:.2f}  |  Optimal CPM B: {min_cost_cpm_B:.2f}', 
+           transform=a.transAxes, fontsize=12, ha='center', va='center',
+           bbox=dict(boxstyle='round', facecolor='lightyellow', alpha=0.8))
 
     a = chart.axis1
     a.set_xlim(right = MAX_CPM)
@@ -260,12 +245,15 @@ def update_axis(chart, p: Parameters, save_to_png=False, show_value_vs_budget=Fa
 
     # Calculate value vs budget curve
     if show_value_vs_budget: 
-        for budget_x in range(0, int(10.0/BUDGET_STEP)):
+        for budget_x in range(0, int(20.0/BUDGET_STEP)):
             budget = budget_x * BUDGET_STEP
             l_budget_range.append(budget)
             
             # Find maximum value achievable with this budget
             max_value_for_budget = 0.0
+            optimal_cpm_A_for_budget = 0.0
+            optimal_cpm_B_for_budget = 0.0
+            
             for cpm_input in range(0, int(MAX_CPM / STEP)):
                 cpm_A = 1.0 * cpm_input * STEP
                 imp_bought_A = s_A.get_probability(cpm_A) * p.total_volume_A() 
@@ -287,9 +275,27 @@ def update_axis(chart, p: Parameters, save_to_png=False, show_value_vs_budget=Fa
                 imp_value_B = imp_bought_B * s_B.value
                 
                 total_value = imp_value_A + imp_value_B
-                max_value_for_budget = max(max_value_for_budget, total_value)
+                if total_value > max_value_for_budget:
+                    max_value_for_budget = total_value
+                    optimal_cpm_A_for_budget = cpm_A
+                    optimal_cpm_B_for_budget = cpm_B
             
             l_max_value.append(max_value_for_budget)
+            
+            # Calculate marginal utility at optimal points for this budget
+            if optimal_cpm_A_for_budget > 0.001:
+                marginal_utility_A_budget = s_A.value * s_A.numeric_derivative(optimal_cpm_A_for_budget) / s_A.numeric_derivative_mul_x(optimal_cpm_A_for_budget)
+            else:
+                marginal_utility_A_budget = 0
+                
+            if optimal_cpm_B_for_budget > 0.001:
+                marginal_utility_B_budget = s_B.value * s_B.numeric_derivative(optimal_cpm_B_for_budget) / s_B.numeric_derivative_mul_x(optimal_cpm_B_for_budget)
+            else:
+                marginal_utility_B_budget = 0
+                
+            l_marginal_utility_A_budget.append(marginal_utility_A_budget)
+            l_marginal_utility_B_budget.append(marginal_utility_B_budget)
+            
             # Calculate value per cost (efficiency), avoiding division by zero
             if budget > 0:
                 l_value_per_cost.append(max_value_for_budget/budget)
@@ -304,7 +310,7 @@ def update_axis(chart, p: Parameters, save_to_png=False, show_value_vs_budget=Fa
             if ax != a and ax.bbox.bounds == a.bbox.bounds:
                 a.figure.delaxes(ax)
                     
-        a.set_xlim(right=10.0)
+        a.set_xlim(right=20.0)
         
         # Plot total value on left y-axis
         line1 = a.plot(l_budget_range, l_max_value, 'b-', label='Max value')
@@ -314,25 +320,39 @@ def update_axis(chart, p: Parameters, save_to_png=False, show_value_vs_budget=Fa
         
         # Create second y-axis for value per cost
         ax2 = a.twinx()
-        line2 = ax2.plot(l_budget_range, l_value_per_cost, 'r-', label='Value per cost')
-        ax2.set_ylabel('Value per cost', color='r')
+        line2 = ax2.plot(l_budget_range, l_value_per_cost, 'r-', label='Value / cost')
+        ax2.set_ylabel('Value / budget', color='r')
         ax2.tick_params(axis='y', labelcolor='r')
         
-        # Mark current budget point on both curves
+        # Create third y-axis for marginal utility
+        # Offset the third y-axis to the right
+        #ax2.spines['right'].set_position(('outward', 60))
+        line3 = ax2.plot(l_budget_range, l_marginal_utility_A_budget, 'g-', label='Marginal Utility A')
+        line4 = ax2.plot(l_budget_range, l_marginal_utility_B_budget, 'orange', linestyle='-', label='Marginal Utility B')
+        #ax2.set_ylabel('Marginal Utility', color='g')
+        #ax2.tick_params(axis='y', labelcolor='g')
+        
+        # Mark current budget point on all curves
         current_value = max_value if max_value is not None else 0
         current_efficiency = current_value/p.total_budget if p.total_budget > 0 else 0
         a.plot(p.total_budget, current_value, 'bo', label='Current value')
         ax2.plot(p.total_budget, current_efficiency, 'ro', label='Current efficiency')
         
+        # Mark current marginal utility points
+        current_mu_A = marginal_utility_of_spend_A if marginal_utility_of_spend_A is not None else 0
+        current_mu_B = marginal_utility_of_spend_B if marginal_utility_of_spend_B is not None else 0
+        ax2.plot(p.total_budget, current_mu_A, 'go', label='Current MU A')
+        ax2.plot(p.total_budget, current_mu_B, 'o', color='orange', label='Current MU B')
+        
         # Add combined legend
-        lines = line1 + line2
+        lines = line1 + line2 + line3 + line4
         labels = [l.get_label() for l in lines]
         a.legend(lines, labels, loc='upper right')
     else:
         # Clear the bottom-right pane when toggle is disabled
         a = chart.axis4
         a.clear()
-        # Remove any existing second y-axis
+        # Remove any existing second and third y-axes
         for ax in a.figure.axes:
             if ax != a and ax.bbox.bounds == a.bbox.bounds:
                 a.figure.delaxes(ax)
@@ -344,6 +364,7 @@ def update_axis(chart, p: Parameters, save_to_png=False, show_value_vs_budget=Fa
         fig2 = chart.axis2.figure
         fig3 = chart.axis3.figure
         fig4 = chart.axis4.figure
+        fig5 = chart.axis5.figure
         
         # Create parameter string for filename
         param_str = f"tb{p.total_budget}_tv{p.total_volume}_pa{p.percent_A}_sav{p.sigmoid_A_value}_sas{p.sigmoid_A_scale}_sao{p.sigmoid_A_offset}_sbv{p.sigmoid_B_value}_sbs{p.sigmoid_B_scale}_sbo{p.sigmoid_B_offset}"
@@ -353,23 +374,26 @@ def update_axis(chart, p: Parameters, save_to_png=False, show_value_vs_budget=Fa
         fig2.savefig(f'plot2_total_value_{param_str}.png', dpi=300, bbox_inches='tight')
         fig3.savefig(f'plot3_total_cost_{param_str}.png', dpi=300, bbox_inches='tight')
         fig4.savefig(f'plot4_min_price_{param_str}.png', dpi=300, bbox_inches='tight')
+        fig5.savefig(f'plot5_marginal_utility_{param_str}.png', dpi=300, bbox_inches='tight')
         
         print("Plots saved as PNG files")
     
 
 class Chart(FigureCanvas):
     def __init__(self):
-        # Create four separate figures instead of one with subplots
+        # Create five separate figures instead of one with subplots
         self.fig1 = Figure(figsize=(6, 4), dpi=100)
         self.fig2 = Figure(figsize=(6, 4), dpi=100)
         self.fig3 = Figure(figsize=(6, 4), dpi=100)
         self.fig4 = Figure(figsize=(6, 4), dpi=100)
+        self.fig5 = Figure(figsize=(12, 2), dpi=100)  # Horizontal figure for text
         
         # Create individual axes for each chart
         self.axis1 = self.fig1.add_subplot(111)
         self.axis2 = self.fig2.add_subplot(111)
         self.axis3 = self.fig3.add_subplot(111)
         self.axis4 = self.fig4.add_subplot(111)
+        self.axis5 = self.fig5.add_subplot(111)
         
 
         
@@ -388,6 +412,7 @@ class Chart(FigureCanvas):
         self.axis2.clear()
         self.axis3.clear()
         self.axis4.clear()
+        self.axis5.clear()
         update_axis(self, self.p, save_to_png, show_value_vs_budget=self.show_value_vs_budget)
 
         # Redraw all figures
@@ -395,6 +420,7 @@ class Chart(FigureCanvas):
         self.fig2.canvas.draw()
         self.fig3.canvas.draw()
         self.fig4.canvas.draw()
+        self.fig5.canvas.draw()
         
         # Redraw the main canvas
         self.draw()
@@ -468,6 +494,7 @@ class MainWindow(Gtk.ApplicationWindow):
         self.canvas2 = FigureCanvas(self.chart.fig2)
         self.canvas3 = FigureCanvas(self.chart.fig3)
         self.canvas4 = FigureCanvas(self.chart.fig4)
+        self.canvas5 = FigureCanvas(self.chart.fig5)
         
         # Set size for each canvas
         '''self.canvas1.set_size_request(600, 400)
@@ -480,6 +507,7 @@ class MainWindow(Gtk.ApplicationWindow):
         self.charts_grid.attach(self.canvas2, 1, 0, 1, 1)
         self.charts_grid.attach(self.canvas3, 0, 1, 1, 1)
         self.charts_grid.attach(self.canvas4, 1, 1, 1, 1)
+        self.charts_grid.attach(self.canvas5, 0, 2, 2, 1)  # Horizontal figure spanning both columns
         
         self.box3.append(self.charts_grid)
         self.check = Gtk.Label(label="Parameters")
