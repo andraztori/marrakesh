@@ -233,7 +233,9 @@ def update_axis(axis, p: Parameters, save_to_png=False, show_value_vs_budget=Fal
     a.set_xlim(right = MAX_CPM)
     a.plot(l1, l_total_value, label='Total cost')
     a.plot(l1, l_cpm_B, label='Cpm B')
-    a.vlines(min_cost_cpm_A, 0, MAX_CPM, colors='C0')
+    # Change solid vertical line to dotted and add point (like top left chart)
+    a.vlines(min_cost_cpm_A, 0, max_value, 'C0', linestyles='--', alpha=0.5)
+    a.plot(min_cost_cpm_A, max_value, 'C0o', label='Optimal point')
     a.hlines(max_value, 0, MAX_CPM, colors='C0')
     a.legend(loc='upper right')
 
@@ -241,7 +243,9 @@ def update_axis(axis, p: Parameters, save_to_png=False, show_value_vs_budget=Fal
     
     a.set_xlim(right = MAX_CPM)
     a.plot(l1, l_total_value, label='Value vs. CPM A')
-    a.hlines(max_value, 0, MAX_CPM, colors='C1')
+    # Add vertical dotted line and point at optimal CPM A position (like top left chart)
+    a.vlines(min_cost_cpm_A, 0, max_value, 'C0', linestyles='--', alpha=0.5)
+    a.plot(min_cost_cpm_A, max_value, 'C0o', label='Optimal value')
     a.legend()
    
     '''
