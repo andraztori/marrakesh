@@ -73,7 +73,7 @@ class Sigmoid:
 class Parameters:
     def __init__(self):
         self.total_budget = 2
-        self.total_volume = 2
+        self.total_volume = 1
         self.sigmoid_A_value = 1.0
         self.sigmoid_A_scale = 0.4
         self.sigmoid_A_offset = 8.0
@@ -485,10 +485,12 @@ class MainWindow(Gtk.ApplicationWindow):
         self.check = Gtk.Label(label="Parameters")
         self.box2.append(self.check)
         
-        # Store references to sliders for updating later
+        # Store references to sliders and numeric entries for updating later
         self.sliders = {}
-        self.box2.append(self.slider_box("Percent of A", 0.0, 1.0, 'percent_A'))
-        self.box2.append(self.slider_box("Total budget", 0.0, 10.0, 'total_budget'))
+        self.numeric_entries = {}
+        self.box2.append(self.numeric_entry_box("Auction volume", 1, 20, 'total_volume'))
+        self.box2.append(self.slider_box("Percent of auction A", 0.0, 1.0, 'percent_A'))
+        self.box2.append(self.slider_box("Total budget", 0.0, 20.0, 'total_budget'))
         self.box2.append(self.slider_box("Sigma A value", 0.001, 5.0, 'sigmoid_A_value'))
         self.box2.append(self.slider_box("Sigma A scale", 0.001, 2.0, 'sigmoid_A_scale'))
         self.box2.append(self.slider_box("Sigma A offset", 0.0, 20.0, 'sigmoid_A_offset'))
@@ -537,6 +539,40 @@ class MainWindow(Gtk.ApplicationWindow):
         
         return b
 
+    def numeric_entry_box(self, label, min_value, max_value, parameter_name):
+        assert parameter_name in self.chart.p.__dict__.keys()
+        start_value = self.chart.p.__dict__[parameter_name]
+        
+        # Create a SpinButton for numeric input
+        spin_button = Gtk.SpinButton()
+        spin_button.set_range(min_value, max_value)
+        
+        # Set integer-only for auction volume, decimals for others
+        if parameter_name == 'total_volume':
+            spin_button.set_increments(1.0, 1.0)  # step, page increment
+            spin_button.set_digits(0)  # no decimal places
+        else:
+            spin_button.set_increments(0.1, 1.0)  # step, page increment
+            spin_button.set_digits(2)  # 2 decimal places
+            
+        spin_button.set_value(start_value)
+        
+        def change_function(self):
+            self.chart.p.__dict__[parameter_name] = float(spin_button.get_value())
+            self.chart.update()
+        
+        spin_button.chart = self.chart    
+        signal_id = spin_button.connect('value-changed', change_function)
+        
+        b = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        b.append(Gtk.Label(label=label))
+        b.append(spin_button)
+        
+        # Store reference to numeric entry and signal ID for updating later
+        self.numeric_entries[parameter_name] = {'entry': spin_button, 'signal_id': signal_id}
+        
+        return b
+
     def save_plots(self, button):
         """Save all four plots as PNG files"""
         self.chart.update(save_to_png=True)
@@ -554,6 +590,16 @@ class MainWindow(Gtk.ApplicationWindow):
                 slider.handler_block(signal_id)
                 slider.set_value(self.chart.p.__dict__[parameter_name])
                 slider.handler_unblock(signal_id)
+        
+        # Update all numeric entries to reflect the new parameter values
+        for parameter_name, entry_info in self.numeric_entries.items():
+            if parameter_name in self.chart.p.__dict__:
+                entry = entry_info['entry']
+                signal_id = entry_info['signal_id']
+                # Temporarily block the signal to avoid triggering updates
+                entry.handler_block(signal_id)
+                entry.set_value(self.chart.p.__dict__[parameter_name])
+                entry.handler_unblock(signal_id)
         
         self.chart.update()
 
