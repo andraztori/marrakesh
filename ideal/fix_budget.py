@@ -102,7 +102,7 @@ class Parameters:
         
 
 
-def update_axis(axis, p: Parameters, save_to_png=False, show_value_vs_budget=False):
+def update_axis(chart, p: Parameters, save_to_png=False, show_value_vs_budget=False):
     s_A = Sigmoid(p.sigmoid_A_scale, p.sigmoid_A_offset, p.sigmoid_A_value)
     s_B = Sigmoid(p.sigmoid_B_scale, p.sigmoid_B_offset, p.sigmoid_B_value) 
 
@@ -181,17 +181,10 @@ def update_axis(axis, p: Parameters, save_to_png=False, show_value_vs_budget=Fal
             continue
         imp_bought_B = s_B.get_probability(cpm_B) * p.total_volume_B()
         imp_value_B = imp_bought_B * s_B.value
-#        imp_spend_B2 = imp_bought_B * cpm_B
-#        print("imp spend B1: %f, B2: %f" % (imp_spend_B, imp_spend_B2))
-        #print("A: bought: %f, value: %f, spend: %f" % (imp_bought_A, imp_value_A, imp_spend_A))
-        #print("B: bought: %f, value: %f, spend: %f" % (imp_bought_B, imp_value_B, imp_spend_B))
         
         total_spend = imp_spend_A + imp_spend_B
       
-        #print("total_spend: %f, total budget: %f" % (total_spend, p.total_budget))
         if math.fabs(total_spend - p.total_budget) > EPSILON:	# make sure we've bought enough impressions
-            # it was impossible to buy, just fill in with empty values
-        #    print("A")
             continue
         
  
@@ -203,43 +196,46 @@ def update_axis(axis, p: Parameters, save_to_png=False, show_value_vs_budget=Fal
         l1.append(cpm_A) 
         l_total_value.append(total_value)
         l_cpm_B.append(cpm_B)
-        l_imp_bought_A.append(imp_bought_A)
+        l_imp_bought_A.append(imp_bought_A) 
         l_imp_bought_B.append(imp_bought_B)
     
         
-    invariant_A = s_A.numeric_derivative(min_cost_cpm_A) / s_A.numeric_derivative_mul_x(min_cost_cpm_A) * s_A.value
-    invariant_B = s_B.numeric_derivative(min_cost_cpm_B) / s_B.numeric_derivative_mul_x(min_cost_cpm_B) * s_B.value
+    marginal_utility_of_spend_A = s_A.value * s_A.numeric_derivative(min_cost_cpm_A) / s_A.numeric_derivative_mul_x(min_cost_cpm_A)
+    marginal_utility_of_spend_B = s_B.value * s_B.numeric_derivative(min_cost_cpm_B) / s_B.numeric_derivative_mul_x(min_cost_cpm_B)
 
 
-    print ("I1: %f, I2: %f" % (invariant_A, invariant_B))
+    print ("I1: %f, I2: %f" % (marginal_utility_of_spend_A, marginal_utility_of_spend_B))
     #print ("D1: %f, D2: %f" % (num_der_A, num_der_B))
     #print ("C1: %f, C2: %f" % (min_cost_cpm_A, min_cost_cpm_B))
 
-    a = axis[0][0]
+    a = chart.axis1
     a.set_xlim(right = MAX_CPM)
     line1 = a.plot(l_prob_range, l_prob_A, 'C0-', label='Win probability A')
     line2 = a.plot(l_prob_range, l_prob_B, 'C1-', label='Win probability B')
     # Add both vertical lines and points using same colors
     a.vlines(min_cost_cpm_A, 0, s_A.get_probability(min_cost_cpm_A), 'C0', linestyles='--', alpha=0.5)
     a.vlines(min_cost_cpm_B, 0, s_B.get_probability(min_cost_cpm_B), 'C1', linestyles='--', alpha=0.5)
-    a.plot(min_cost_cpm_A, s_A.get_probability(min_cost_cpm_A), 'C0o', label='Optimal Bid A')
-    a.plot(min_cost_cpm_B, s_B.get_probability(min_cost_cpm_B), 'C1o', label='Optimal Bid B')
+    a.plot(min_cost_cpm_A, s_A.get_probability(min_cost_cpm_A), 'C0o', label='Optimal bid A')
+    a.plot(min_cost_cpm_B, s_B.get_probability(min_cost_cpm_B), 'C1o', label='Optimal bid B')
     
     a.legend(loc='lower right') 
 
-    a = axis[0][1]
+    a = chart.axis3
     
     a.set_ylim(top = max(l_cpm_B))
     a.set_xlim(right = MAX_CPM)
-    a.plot(l1, l_total_value, label='Total cost')
+    a.plot(l1, l_total_value, label='Total value')
     a.plot(l1, l_cpm_B, label='Cpm B')
     # Change solid vertical line to dotted and add point (like top left chart)
     a.vlines(min_cost_cpm_A, 0, max_value, 'C0', linestyles='--', alpha=0.5)
-    a.plot(min_cost_cpm_A, max_value, 'C0o', label='Optimal point')
-    a.hlines(max_value, 0, MAX_CPM, colors='C0')
+    a.plot(min_cost_cpm_A, max_value, 'C0o', label='Optimal bid A')
+#    a.hlines(max_value, 0, MAX_CPM, colors='C0')
+    # Add horizontal orange line where vertical intersects orange curve, with dot
+    a.hlines(min_cost_cpm_B, 0, min_cost_cpm_A, 'C1', linestyles='--', alpha=0.5)
+    a.plot(min_cost_cpm_A, min_cost_cpm_B, 'C1o', label='Optimal bid B')
     a.legend(loc='upper right')
 
-    a = axis[1][0]
+    a = chart.axis2
     
     a.set_xlim(right = MAX_CPM)
     a.plot(l1, l_total_value, label='Value vs. CPM A')
@@ -249,14 +245,14 @@ def update_axis(axis, p: Parameters, save_to_png=False, show_value_vs_budget=Fal
     a.legend()
    
     '''
-    a = axis[0][1]
+    a = chart.axis3
     a.set_xlim(right = MAX_CPM)
     a.plot(l1, l_imp_bought_A, label='Imp A bought')
     a.plot(l1, l_imp_bought_B, label='Imp B bought')
     a.vlines(min_cost_cpm_A, 0, p.percent_to_buy, colors='C0')
     a.legend()
     '''
-    a = axis[1][1]
+    a = chart.axis4
     a.set_xlim(right = 1.0)
     a.plot(l2, l22, label='Value for budget')
 #    a.vlines(min_cost_cpm_A, 0, p.percent_to_buy, colors='C0')
@@ -301,7 +297,7 @@ def update_axis(axis, p: Parameters, save_to_png=False, show_value_vs_budget=Fal
                 l_value_per_cost.append(0)
         
         # Plot value vs budget curve in bottom right with two y-axes
-        a = axis[1][1]
+        a = chart.axis4
         a.clear()
         # Remove any existing second y-axis before creating a new one
         for ax in a.figure.axes:
@@ -334,7 +330,7 @@ def update_axis(axis, p: Parameters, save_to_png=False, show_value_vs_budget=Fal
         a.legend(lines, labels, loc='upper right')
     else:
         # Clear the bottom-right pane when toggle is disabled
-        a = axis[1][1]
+        a = chart.axis4
         a.clear()
         # Remove any existing second y-axis
         for ax in a.figure.axes:
@@ -344,10 +340,10 @@ def update_axis(axis, p: Parameters, save_to_png=False, show_value_vs_budget=Fal
     # Save plots to PNG if requested
     if save_to_png:
         # Get the figures from the axes
-        fig1 = axis[0][0].figure
-        fig2 = axis[1][0].figure
-        fig3 = axis[0][1].figure
-        fig4 = axis[1][1].figure
+        fig1 = chart.axis1.figure
+        fig2 = chart.axis2.figure
+        fig3 = chart.axis3.figure
+        fig4 = chart.axis4.figure
         
         # Create parameter string for filename
         param_str = f"tb{p.total_budget}_tv{p.total_volume}_pa{p.percent_A}_sav{p.sigmoid_A_value}_sas{p.sigmoid_A_scale}_sao{p.sigmoid_A_offset}_sbv{p.sigmoid_B_value}_sbs{p.sigmoid_B_scale}_sbo{p.sigmoid_B_offset}"
@@ -375,12 +371,11 @@ class Chart(FigureCanvas):
         self.axis3 = self.fig3.add_subplot(111)
         self.axis4 = self.fig4.add_subplot(111)
         
-        # Store axes in a 2x2 array for compatibility with existing update_axis function
-        self.axis = [[self.axis1, self.axis3], [self.axis2, self.axis4]]
+
         
         self.p = Parameters()
         self.show_value_vs_budget = False  # Default to off
-        update_axis(self.axis, self.p, show_value_vs_budget=self.show_value_vs_budget)
+        update_axis(self, self.p, show_value_vs_budget=self.show_value_vs_budget)
         
         # Use the first figure as the main canvas
         super().__init__(self.fig1)
@@ -389,10 +384,11 @@ class Chart(FigureCanvas):
 
     def update(self, save_to_png=False):
         # Clear all axes
-        for i in range(0, 2):
-            for j in range(0, 2):
-                self.axis[i][j].clear()
-        update_axis(self.axis, self.p, save_to_png, show_value_vs_budget=self.show_value_vs_budget)
+        self.axis1.clear()
+        self.axis2.clear()
+        self.axis3.clear()
+        self.axis4.clear()
+        update_axis(self, self.p, save_to_png, show_value_vs_budget=self.show_value_vs_budget)
 
         # Redraw all figures
         self.fig1.canvas.draw()
