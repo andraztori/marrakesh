@@ -373,34 +373,31 @@ def update_axis(chart, p: Parameters, save_to_png=False, show_value_vs_budget=Fa
             budget_used_values.append(0)
     
     # Plot budget used curve on left y-axis
-    line_budget = a.plot(marginal_utility_range, budget_used_values, 'g-', label='Budget Used', linewidth=2)
-    a.set_ylabel('Budget Used', color='g')
+    line_budget = a.plot(marginal_utility_range, budget_used_values, 'g-', label='Budget', linewidth=2)
+    a.set_ylabel('Budget', color='g')
     a.tick_params(axis='y', labelcolor='g')
     
     # Plot inverse functions on right y-axis
-    line1 = ax2_right.plot(marginal_utility_range, inverse_values_A, 'C0-', label='bid A', linewidth=2)
-    line2 = ax2_right.plot(marginal_utility_range, inverse_values_B, 'C1-', label='bid B', linewidth=2)
+    line1 = ax2_right.plot(marginal_utility_range, inverse_values_A, 'C0-', label='Bid A', linewidth=2)
+    line2 = ax2_right.plot(marginal_utility_range, inverse_values_B, 'C1-', label='Bid B', linewidth=2)
     
     # Add vertical line at marginal_utility_of_spend_A
     a.axvline(x=marginal_utility_of_spend_A, color='g', alpha=0.7, label='Optimal Marginal utility of spend')
 
     # Find intersection point for budget used curve
     # Find the closest point in marginal_utility_range to marginal_utility_of_spend_A
-    closest_index = 0
-    min_diff = abs(marginal_utility_range[0] - marginal_utility_of_spend_A)
-    for i, mu_val in enumerate(marginal_utility_range):
-        diff = abs(mu_val - marginal_utility_of_spend_A)
-        if diff < min_diff:
-            min_diff = diff
-            closest_index = i
-    
-    budget_intersection = budget_used_values[closest_index]
-    
+    # Budget = volume * probability * CPM
+    budget_A = p.total_volume_A() * s_A.get_probability(min_cost_cpm_A) * min_cost_cpm_A
+    budget_B = p.total_volume_B() * s_B.get_probability(min_cost_cpm_B) * min_cost_cpm_B
+    total_budget = budget_A + budget_B
+    print("total_budget: ", total_budget)
+
+
     # Add horizontal line to the left for budget used curve
-    a.hlines(budget_intersection, marginal_utility_start, marginal_utility_of_spend_A, 'g', linestyles='--', alpha=0.5)
+    a.hlines(total_budget, marginal_utility_start, marginal_utility_of_spend_A, 'g', linestyles='--', alpha=0.5)
     
     # Add intersection dot for budget used curve
-    a.plot(marginal_utility_of_spend_A, budget_intersection, 'go', markersize=8, label='Budget intersection')
+    a.plot(marginal_utility_of_spend_A, total_budget, 'go', markersize=8, label='')
 
     ax2_right.hlines(min_cost_cpm_B, 0, marginal_utility_of_spend_A, 'C1', linestyles='--', alpha=0.5)
     ax2_right.hlines(min_cost_cpm_A, 0, marginal_utility_of_spend_A, 'C0', linestyles='--', alpha=0.5)
@@ -499,7 +496,7 @@ def update_axis(chart, p: Parameters, save_to_png=False, show_value_vs_budget=Fa
         
         # Create second y-axis for value per cost
         ax2 = a.twinx()
-        line2 = ax2.plot(l_budget_range, l_value_per_cost, 'r-', label='Value / cost')
+        line2 = ax2.plot(l_budget_range, l_value_per_cost, 'r-', label='Value / budget')
         ax2.set_ylabel('Value / budget', color='r')
         ax2.tick_params(axis='y', labelcolor='r')
         
