@@ -176,10 +176,6 @@ def update_axis(chart, p: Parameters, save_to_png=False, show_value_vs_budget=Fa
     marginal_utility_of_spend_B = s_B.value * s_B.numeric_derivative(min_cost_cpm_B) / s_B.numeric_derivative_mul_x(min_cost_cpm_B)
 
 
-#    print ("I1: %f, I2: %f" % (marginal_utility_of_spend_A, marginal_utility_of_spend_B))
-    #print ("D1: %f, D2: %f" % (num_der_A, num_der_B))
-    #print ("C1: %f, C2: %f" % (min_cost_cpm_A, min_cost_cpm_B))
-    
     # Display marginal utility values as text on axis5
     a = chart.axis5
     a.axis('off')  # Hide axes for text display
@@ -209,16 +205,39 @@ def update_axis(chart, p: Parameters, save_to_png=False, show_value_vs_budget=Fa
     
     a.set_ylim(top = max(l_cpm_B))
     a.set_xlim(right = MAX_CPM)
-    a.plot(l1, l_total_value, label='Total value')
-    a.plot(l1, l_cpm_B, label='Cpm B')
-    # Change solid vertical line to dotted and add point (like top left chart)
-    a.vlines(min_cost_cpm_A, 0, max_value, 'C0', linestyles='--', alpha=0.5)
-    a.plot(min_cost_cpm_A, max_value, 'C0o', label='Optimal bid A')
+    a.set_xlabel('Cpm A', color='C0')
+    a.tick_params(axis='x', labelcolor='C0')
+    
+    # Plot Cpm B on left y-axis
+    a.set_ylabel('Cpm B', color='orange')
+    a.tick_params(axis='y', labelcolor='orange')
+    line1 = a.plot(l1, l_cpm_B, label='Cpm B', color='C1')
+    
+    # Create right y-axis for Total value
+    ax3_right = a.twinx()
+    ax3_right.set_ylim(bottom = 0.0)
+    ax3_right.set_ylim(top = max_value)
+    line2 = ax3_right.plot(l1, l_total_value, 'g-', label='Total value')
+    ax3_right.set_ylabel('Total value', color='g')
+    ax3_right.tick_params(axis='y', labelcolor='g')
+    
+    # Add green dot at intersection of green curve with vertical line
+    line5 = ax3_right.plot(min_cost_cpm_A, max_value, 'go', label='Maximum value')
+    
+    a.vlines(min_cost_cpm_A, 0, min_cost_cpm_B, 'C0', linestyles='--', alpha=0.5)
+    line3 = a.plot(min_cost_cpm_A, 0, 'C0o', label='Optimal bid A')
 #    a.hlines(max_value, 0, MAX_CPM, colors='C0')
     # Add horizontal orange line where vertical intersects orange curve, with dot
     a.hlines(min_cost_cpm_B, 0, min_cost_cpm_A, 'C1', linestyles='--', alpha=0.5)
-    a.plot(min_cost_cpm_A, min_cost_cpm_B, 'C1o', label='Optimal bid B')
-    a.legend(loc='upper right')
+    line4 = a.plot(0, min_cost_cpm_B, 'C1o', label='Optimal bid B')
+    
+    # Combine legends from all plot elements
+    lines = line1 + line2 + line3 + line4 + line5
+    labels = [l.get_label() for l in lines]
+    a.legend(lines, labels, loc='upper right')
+    
+    # Adjust layout for axis3 to ensure x-axis label is visible
+    chart.axis3.figure.subplots_adjust(bottom=0.15)
 
     a = chart.axis2
     
@@ -229,14 +248,7 @@ def update_axis(chart, p: Parameters, save_to_png=False, show_value_vs_budget=Fa
     a.plot(min_cost_cpm_A, max_value, 'C0o', label='Optimal value')
     a.legend()
    
-    '''
-    a = chart.axis3
-    a.set_xlim(right = MAX_CPM)
-    a.plot(l1, l_imp_bought_A, label='Imp A bought')
-    a.plot(l1, l_imp_bought_B, label='Imp B bought')
-    a.vlines(min_cost_cpm_A, 0, p.percent_to_buy, colors='C0')
-    a.legend()
-    '''
+   
     a = chart.axis4
     a.set_xlim(right = 1.0)
     a.plot(l2, l22, label='Value for budget')
@@ -382,10 +394,10 @@ def update_axis(chart, p: Parameters, save_to_png=False, show_value_vs_budget=Fa
 class Chart(FigureCanvas):
     def __init__(self):
         # Create five separate figures instead of one with subplots
-        self.fig1 = Figure(figsize=(6, 4), dpi=100)
-        self.fig2 = Figure(figsize=(6, 4), dpi=100)
-        self.fig3 = Figure(figsize=(6, 4), dpi=100)
-        self.fig4 = Figure(figsize=(6, 4), dpi=100)
+        self.fig1 = Figure(figsize=(6, 4.2), dpi=100)
+        self.fig2 = Figure(figsize=(6, 4.2), dpi=100)
+        self.fig3 = Figure(figsize=(6, 4.2), dpi=100)
+        self.fig4 = Figure(figsize=(6, 4.2), dpi=100)
         self.fig5 = Figure(figsize=(12, 2), dpi=100)  # Horizontal figure for text
         
         # Create individual axes for each chart
@@ -394,6 +406,14 @@ class Chart(FigureCanvas):
         self.axis3 = self.fig3.add_subplot(111)
         self.axis4 = self.fig4.add_subplot(111)
         self.axis5 = self.fig5.add_subplot(111)
+        
+        # Adjust layout to ensure labels are visible
+        self.fig1.tight_layout()
+        self.fig2.tight_layout()
+        # Set specific bottom margin for fig3 to show x-axis label
+        self.fig3.subplots_adjust(bottom=0.15)
+        self.fig4.tight_layout()
+        self.fig5.tight_layout()
         
 
         
@@ -411,9 +431,20 @@ class Chart(FigureCanvas):
         self.axis1.clear()
         self.axis2.clear()
         self.axis3.clear()
+        # Remove any existing twin axes for axis3
+        for ax in self.axis3.figure.axes:
+            if ax != self.axis3 and ax.bbox.bounds == self.axis3.bbox.bounds:
+                self.axis3.figure.delaxes(ax)
         self.axis4.clear()
         self.axis5.clear()
         update_axis(self, self.p, save_to_png, show_value_vs_budget=self.show_value_vs_budget)
+
+        # Adjust layout to ensure labels are visible
+        self.fig1.tight_layout()
+        self.fig2.tight_layout()
+        # Don't use tight_layout for fig3 as we use subplots_adjust instead
+        self.fig4.tight_layout()
+        self.fig5.tight_layout()
 
         # Redraw all figures
         self.fig1.canvas.draw()
