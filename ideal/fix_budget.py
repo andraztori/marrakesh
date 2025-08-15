@@ -65,9 +65,99 @@ class Sigmoid:
         E = 0.00001
         x1 = x-E
         x2 = x+E
-        a1 = self.get_probability(x1)*x1*.5
-        a2 = self.get_probability(x2)*x2*.5
+        a1 = self.get_probability(x1)*x1
+        a2 = self.get_probability(x2)*x2
         return (a2-a1) / (2 * E)
+    
+    def marginal_utility_of_spend_numeric(self, x):
+        if x > 0.0001:
+            # numeric formula
+            #return self.value * self.numeric_derivative(x) / self.numeric_derivative_mul_x(x)
+            # formula from the article
+            Wx = self.get_probability(x)
+            Wdx = self.numeric_derivative(x)
+            return self.value * Wdx / (Wdx * x + Wx)
+        else:
+            return 0.0
+
+    # M() as per gemini, analytical formula...
+    def M(self, x):
+        s_val = self.get_probability(x) 
+        if abs(1.0 - s_val) < 1e-15:
+            return 0.0
+        
+        numerator = self.value * self.scale * (1.0 - s_val)
+        denominator = self.scale * x * (1.0 - s_val) + 1.0
+        
+        if abs(denominator) < 1e-15:
+            # This case is unlikely under normal parameters but is good practice
+            return float('inf') if numerator > 0 else float('-inf')
+            
+        return numerator / denominator
+
+    def marginal_utility_of_spend(self, x):
+        return self.M(x)
+
+    def M_prime(self, x):
+        """The derivative of M(x)."""
+        s_val = self.get_probability(x) 
+        if abs(1.0 - s_val) < 1e-15:
+            return 0.0
+
+        numerator = -self.value * (self.scale**2) * (1.0 - s_val)
+        denominator = (self.scale * x * (1.0 - s_val) + 1.0)**2
+        
+        if abs(denominator) < 1e-15:
+             return float('-inf') # Derivative approaches -inf
+             
+        return numerator / denominator
+
+    def marginal_utility_of_spend_inverse(self, y_target):
+        # --- Newton-Raphson Iteration ---
+        max_iterations = 100
+        tolerance = 1e-6
+        initial_guess = 10
+        x = float(initial_guess)
+
+        for i in range(max_iterations):
+            # Calculate the value of M(x) and its derivative at the current x
+            m_val = self.M(x)
+            m_prime_val = self.M_prime(x)
+
+            # The function whose root we are finding is f(x) = M(x) - y_target
+            f_x = m_val - y_target
+
+            # Avoid division by zero if the derivative is flat
+            if abs(m_prime_val) < 1e-15:
+                print(f"Warning: Derivative is close to zero at x={x}. Method cannot proceed.")
+                return None
+
+            # Newton-Raphson update step
+            x_new = x - f_x / m_prime_val
+            
+            # Ensure x remains positive as per the problem constraint
+            if x_new <= 0:
+                # If we get a non-positive x, we can try halving the step
+                # This is a simple modification to improve robustness
+                x_new = x / 2.0
+
+            # Check for convergence
+            if abs(x_new - x) < tolerance:
+                # print(f"Converged in {i+1} iterations.")
+                return x_new
+
+            x = x_new
+
+#        print(f"Warning: Failed to converge within {max_iterations} iterations.")
+        return x
+
+
+
+
+
+
+
+
 
 
 class Parameters:
@@ -113,11 +203,7 @@ def update_axis(chart, p: Parameters, save_to_png=False, show_value_vs_budget=Fa
     l_total_value = []
     l_prob_A = []
     l_prob_B = []
-    l_prob_Binv = []
     l_prob_range = []
-    l_inv_1 = []
-    l_inv_2 = []
-    l_inv_3 = []
     l_budget_range = []  # For x-axis of value vs budget curve
     l_max_value = []     # For y-axis of value vs budget curve
     l_value_per_cost = [] # For efficiency curve
@@ -172,8 +258,8 @@ def update_axis(chart, p: Parameters, save_to_png=False, show_value_vs_budget=Fa
         l_imp_bought_B.append(imp_bought_B)
     
         
-    marginal_utility_of_spend_A = s_A.value * s_A.numeric_derivative(min_cost_cpm_A) / s_A.numeric_derivative_mul_x(min_cost_cpm_A)
-    marginal_utility_of_spend_B = s_B.value * s_B.numeric_derivative(min_cost_cpm_B) / s_B.numeric_derivative_mul_x(min_cost_cpm_B)
+    marginal_utility_of_spend_A = s_A.marginal_utility_of_spend(min_cost_cpm_A)
+    marginal_utility_of_spend_B = s_B.marginal_utility_of_spend(min_cost_cpm_B)
 
 
     # Display marginal utility values as text on axis5
@@ -241,12 +327,104 @@ def update_axis(chart, p: Parameters, save_to_png=False, show_value_vs_budget=Fa
 
     a = chart.axis2
     
-    a.set_xlim(right = MAX_CPM)
-    a.plot(l1, l_total_value, label='Value vs. CPM A')
-    # Add vertical dotted line and point at optimal CPM A position (like top left chart)
-    a.vlines(min_cost_cpm_A, 0, max_value, 'C0', linestyles='--', alpha=0.5)
-    a.plot(min_cost_cpm_A, max_value, 'C0o', label='Optimal value')
-    a.legend()
+    # Set up axes for marginal utility of spend vs budget
+    marginal_utility_start = s_A.marginal_utility_of_spend(0.01)
+    marginal_utility_end = s_A.marginal_utility_of_spend(20)
+    a.set_xlim(left=marginal_utility_start, right=marginal_utility_end)  # Decreasing toward the right (20 to 0.01)
+    a.set_xlabel('Marginal Utility of Spend')
+    a.grid(True, alpha=0.3)  # Add grid for better readability
+    
+    # Create right y-axis for the inverse functions
+    ax2_right = a.twinx()
+    
+    # Generate marginal utility values for x-axis
+    marginal_utility_range = []
+    inverse_values_A = []
+    inverse_values_B = []
+    budget_used_values = []
+    
+    # Create range from marginal_utility_end to marginal_utility_start (decreasing)
+    num_points = 50
+    for i in range(num_points):
+        # Linear interpolation from end to start
+        mu_value = marginal_utility_end + (marginal_utility_start - marginal_utility_end) * i / (num_points - 1)
+        marginal_utility_range.append(mu_value)
+        
+        # Call inverse functions for both s_A and s_B
+        try:
+            inverse_A = s_A.marginal_utility_of_spend_inverse(mu_value)
+            inverse_B = s_B.marginal_utility_of_spend_inverse(mu_value)
+            inverse_values_A.append(inverse_A if inverse_A is not None else 0)
+            inverse_values_B.append(inverse_B if inverse_B is not None else 0)
+            
+            # Calculate budget used for both curves
+            cpm_A = inverse_A if inverse_A is not None else 0
+            cpm_B = inverse_B if inverse_B is not None else 0
+            
+            # Budget = volume * probability * CPM
+            budget_A = p.total_volume_A() * s_A.get_probability(cpm_A) * cpm_A
+            budget_B = p.total_volume_B() * s_B.get_probability(cpm_B) * cpm_B
+            total_budget = budget_A + budget_B
+            
+            budget_used_values.append(total_budget)
+        except:
+            inverse_values_A.append(0)
+            inverse_values_B.append(0)
+            budget_used_values.append(0)
+    
+    # Plot budget used curve on left y-axis
+    line_budget = a.plot(marginal_utility_range, budget_used_values, 'g-', label='Budget Used', linewidth=2)
+    a.set_ylabel('Budget Used', color='g')
+    a.tick_params(axis='y', labelcolor='g')
+    
+    # Plot inverse functions on right y-axis
+    line1 = ax2_right.plot(marginal_utility_range, inverse_values_A, 'C0-', label='bid A', linewidth=2)
+    line2 = ax2_right.plot(marginal_utility_range, inverse_values_B, 'C1-', label='bid B', linewidth=2)
+    
+    # Add vertical line at marginal_utility_of_spend_A
+    a.axvline(x=marginal_utility_of_spend_A, color='g', alpha=0.7, label='Optimal Marginal utility of spend')
+
+    # Find intersection point for budget used curve
+    # Find the closest point in marginal_utility_range to marginal_utility_of_spend_A
+    closest_index = 0
+    min_diff = abs(marginal_utility_range[0] - marginal_utility_of_spend_A)
+    for i, mu_val in enumerate(marginal_utility_range):
+        diff = abs(mu_val - marginal_utility_of_spend_A)
+        if diff < min_diff:
+            min_diff = diff
+            closest_index = i
+    
+    budget_intersection = budget_used_values[closest_index]
+    
+    # Add horizontal line to the left for budget used curve
+    a.hlines(budget_intersection, marginal_utility_start, marginal_utility_of_spend_A, 'g', linestyles='--', alpha=0.5)
+    
+    # Add intersection dot for budget used curve
+    a.plot(marginal_utility_of_spend_A, budget_intersection, 'go', markersize=8, label='Budget intersection')
+
+    ax2_right.hlines(min_cost_cpm_B, 0, marginal_utility_of_spend_A, 'C1', linestyles='--', alpha=0.5)
+    ax2_right.hlines(min_cost_cpm_A, 0, marginal_utility_of_spend_A, 'C0', linestyles='--', alpha=0.5)
+
+
+    # Mark intersection points with dots
+    ax2_right.plot(marginal_utility_of_spend_A, min_cost_cpm_A, 'C0o', markersize=8, label='Intersection A dot')
+    ax2_right.plot(marginal_utility_of_spend_A, min_cost_cpm_B, 'C1o', markersize=8, label='Intersection B dot')
+    
+    # Set right y-axis properties
+    ax2_right.set_ylabel('CPM', color='purple')
+    ax2_right.tick_params(axis='y', labelcolor='purple')
+    
+    # Combine legends from both axes
+    lines = line_budget + line1 + line2  # Include budget curve from left axis
+    labels = [l.get_label() for l in lines]
+    
+    # Add the vertical line to the legend
+    lines_main = a.get_lines()  # Get lines from main axis
+    if len(lines_main) > 1:  # Check if we have more than just the budget line
+        lines.extend(lines_main[-1:])  # Add the last line (vertical line)
+        labels.extend([lines_main[-1].get_label()])
+    
+    ax2_right.legend(lines, labels, loc='upper right')
    
    
     a = chart.axis4
@@ -292,21 +470,10 @@ def update_axis(chart, p: Parameters, save_to_png=False, show_value_vs_budget=Fa
                     optimal_cpm_A_for_budget = cpm_A
                     optimal_cpm_B_for_budget = cpm_B
             
-            l_max_value.append(max_value_for_budget)
-            
-            # Calculate marginal utility at optimal points for this budget
-            if optimal_cpm_A_for_budget > 0.001:
-                marginal_utility_A_budget = s_A.value * s_A.numeric_derivative(optimal_cpm_A_for_budget) / s_A.numeric_derivative_mul_x(optimal_cpm_A_for_budget)
-            else:
-                marginal_utility_A_budget = 0
+            l_max_value.append(max_value_for_budget)            
                 
-            if optimal_cpm_B_for_budget > 0.001:
-                marginal_utility_B_budget = s_B.value * s_B.numeric_derivative(optimal_cpm_B_for_budget) / s_B.numeric_derivative_mul_x(optimal_cpm_B_for_budget)
-            else:
-                marginal_utility_B_budget = 0
-                
-            l_marginal_utility_A_budget.append(marginal_utility_A_budget)
-            l_marginal_utility_B_budget.append(marginal_utility_B_budget)
+            l_marginal_utility_A_budget.append(s_A.marginal_utility_of_spend(optimal_cpm_A_for_budget))
+            l_marginal_utility_B_budget.append(s_B.marginal_utility_of_spend(optimal_cpm_B_for_budget))
             
             # Calculate value per cost (efficiency), avoiding division by zero
             if budget > 0:
@@ -430,6 +597,10 @@ class Chart(FigureCanvas):
         # Clear all axes
         self.axis1.clear()
         self.axis2.clear()
+        # Remove any existing twin axes for axis2
+        for ax in self.axis2.figure.axes:
+            if ax != self.axis2 and ax.bbox.bounds == self.axis2.bbox.bounds:
+                self.axis2.figure.delaxes(ax)
         self.axis3.clear()
         # Remove any existing twin axes for axis3
         for ax in self.axis3.figure.axes:
