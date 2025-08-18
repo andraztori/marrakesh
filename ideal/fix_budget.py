@@ -193,11 +193,13 @@ class Parameters:
         
 
 
-def update_axis(chart, p: Parameters, save_to_png=False, show_value_vs_budget=False, show_marginal_utility_heatmap=False):
+def setup_optimization_data(p: Parameters):
+    """Setup sigmoid objects and compute optimization data."""
     s_A = Sigmoid(p.sigmoid_A_scale, p.sigmoid_A_offset, p.sigmoid_A_value)
     s_B = Sigmoid(p.sigmoid_B_scale, p.sigmoid_B_offset, p.sigmoid_B_value) 
 
-    l1 = []
+    # Initialize data lists
+    l_cpm_A = []
     l_cpm_B = []
     l_imp_bought_A = []
     l_imp_bought_B = []
@@ -211,6 +213,7 @@ def update_axis(chart, p: Parameters, save_to_png=False, show_value_vs_budget=Fa
     l_marginal_utility_A_budget = []  # Marginal utility A for each budget
     l_marginal_utility_B_budget = []  # Marginal utility B for each budget
 
+    # Generate probability data for the range
     for cpm_input in range(0, int(MAX_CPM / STEP)):
         cpm = 1.0 * cpm_input * STEP
         l_prob_range.append(cpm)
@@ -220,6 +223,7 @@ def update_axis(chart, p: Parameters, save_to_png=False, show_value_vs_budget=Fa
     l2 = []
     l22 = []
 
+    # Main optimization loop - find optimal CPM values
     max_value = 0.0
     min_cost_cpm_A = 0
     min_cost_cpm_B = 0
@@ -245,52 +249,85 @@ def update_axis(chart, p: Parameters, save_to_png=False, show_value_vs_budget=Fa
       
         if math.fabs(total_spend - p.total_budget) > EPSILON:	# make sure we've bought enough impressions
             continue
-        
- 
+       
         total_value = imp_value_A + imp_value_B
         if total_value > max_value:
             max_value = total_value
             min_cost_cpm_A = cpm_A
             min_cost_cpm_B = cpm_B
-        l1.append(cpm_A) 
+        l_cpm_A.append(cpm_A) 
         l_total_value.append(total_value)
         l_cpm_B.append(cpm_B)
         l_imp_bought_A.append(imp_bought_A) 
         l_imp_bought_B.append(imp_bought_B)
     
-        
+    # Calculate marginal utility values at optimal points
     marginal_utility_of_spend_A = s_A.marginal_utility_of_spend(min_cost_cpm_A)
     marginal_utility_of_spend_B = s_B.marginal_utility_of_spend(min_cost_cpm_B)
+    
+    # Return all computed data as a dictionary
+    return {
+        's_A': s_A,
+        's_B': s_B,
+        'l_cpm_A': l_cpm_A,
+        'l_cpm_B': l_cpm_B,
+        'l_imp_bought_A': l_imp_bought_A,
+        'l_imp_bought_B': l_imp_bought_B,
+        'l_total_value': l_total_value,
+        'l_prob_A': l_prob_A,
+        'l_prob_B': l_prob_B,
+        'l_prob_range': l_prob_range,
+        'l_budget_range': l_budget_range,
+        'l_max_value': l_max_value,
+        'l_value_per_cost': l_value_per_cost,
+        'l_marginal_utility_A_budget': l_marginal_utility_A_budget,
+        'l_marginal_utility_B_budget': l_marginal_utility_B_budget,
+        'l2': l2,
+        'l22': l22,
+        'max_value': max_value,
+        'min_cost_cpm_A': min_cost_cpm_A,
+        'min_cost_cpm_B': min_cost_cpm_B,
+        'marginal_utility_of_spend_A': marginal_utility_of_spend_A,
+        'marginal_utility_of_spend_B': marginal_utility_of_spend_B
+    }
 
 
-    # Display marginal utility values as text on axis5
+def update_axis5_text_display(chart, data):
+    """Update axis 5 with text display of marginal utility values."""
     a = chart.axis5
     a.axis('off')  # Hide axes for text display
-    a.text(0.5, 0.8, f'Marginal Utility of Spend A: {marginal_utility_of_spend_A:.3f}', 
+    a.text(0.5, 0.8, f'Marginal Utility of Spend A: {data["marginal_utility_of_spend_A"]:.3f}', 
            transform=a.transAxes, fontsize=14, ha='center', va='center',
            bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.8))
-    a.text(0.5, 0.6, f'Marginal Utility of Spend B: {marginal_utility_of_spend_B:.3f}', 
+    a.text(0.5, 0.6, f'Marginal Utility of Spend B: {data["marginal_utility_of_spend_B"]:.3f}', 
            transform=a.transAxes, fontsize=14, ha='center', va='center',
            bbox=dict(boxstyle='round', facecolor='lightgreen', alpha=0.8))
-    a.text(0.5, 0.3, f'Optimal CPM A: {min_cost_cpm_A:.2f}  |  Optimal CPM B: {min_cost_cpm_B:.2f}', 
+    a.text(0.5, 0.3, f'Optimal CPM A: {data["min_cost_cpm_A"]:.2f}  |  Optimal CPM B: {data["min_cost_cpm_B"]:.2f}', 
            transform=a.transAxes, fontsize=12, ha='center', va='center',
            bbox=dict(boxstyle='round', facecolor='lightyellow', alpha=0.8))
 
+
+def update_axis1_win_probability(chart, data):
+    """Update axis 1 with win probability curves."""
     a = chart.axis1
     a.set_xlim(right = MAX_CPM)
-    line1 = a.plot(l_prob_range, l_prob_A, 'C0-', label='Win probability A')
-    line2 = a.plot(l_prob_range, l_prob_B, 'C1-', label='Win probability B')
-    # Add both vertical lines and points using same colors
-    a.vlines(min_cost_cpm_A, 0, s_A.get_probability(min_cost_cpm_A), 'C0', linestyles='--', alpha=0.5)
-    a.vlines(min_cost_cpm_B, 0, s_B.get_probability(min_cost_cpm_B), 'C1', linestyles='--', alpha=0.5)
-    a.plot(min_cost_cpm_A, s_A.get_probability(min_cost_cpm_A), 'C0o', label='Optimal bid A')
-    a.plot(min_cost_cpm_B, s_B.get_probability(min_cost_cpm_B), 'C1o', label='Optimal bid B')
+    line1 = a.plot(data['l_prob_range'], data['l_prob_A'], 'C0-', label='Win probability A')
+    line2 = a.plot(data['l_prob_range'], data['l_prob_B'], 'C1-', label='Win probability B')
     
-    a.legend(loc='lower right') 
+    # Add both vertical lines and points using same colors
+    a.vlines(data['min_cost_cpm_A'], 0, data['s_A'].get_probability(data['min_cost_cpm_A']), 'C0', linestyles='--', alpha=0.5)
+    a.vlines(data['min_cost_cpm_B'], 0, data['s_B'].get_probability(data['min_cost_cpm_B']), 'C1', linestyles='--', alpha=0.5)
+    a.plot(data['min_cost_cpm_A'], data['s_A'].get_probability(data['min_cost_cpm_A']), 'C0o', label='Optimal bid A')
+    a.plot(data['min_cost_cpm_B'], data['s_B'].get_probability(data['min_cost_cpm_B']), 'C1o', label='Optimal bid B')
+    
+    a.legend(loc='lower right')
 
+
+def update_axis3_cpm_and_value(chart, data):
+    """Update axis 3 with CPM B vs CPM A and total value."""
     a = chart.axis3
     
-    a.set_ylim(top = max(l_cpm_B))
+    a.set_ylim(top = max(data['l_cpm_B']))
     a.set_xlim(right = MAX_CPM)
     a.set_xlabel('Cpm A', color='C0')
     a.tick_params(axis='x', labelcolor='C0')
@@ -298,25 +335,25 @@ def update_axis(chart, p: Parameters, save_to_png=False, show_value_vs_budget=Fa
     # Plot Cpm B on left y-axis
     a.set_ylabel('Cpm B', color='orange')
     a.tick_params(axis='y', labelcolor='orange')
-    line1 = a.plot(l1, l_cpm_B, label='Cpm B', color='C1')
+    line1 = a.plot(data['l_cpm_A'], data['l_cpm_B'], label='Cpm B', color='C1')
     
     # Create right y-axis for Total value
     ax3_right = a.twinx()
     ax3_right.set_ylim(bottom = 0.0)
-    ax3_right.set_ylim(top = max_value)
-    line2 = ax3_right.plot(l1, l_total_value, 'g-', label='Total value')
+    ax3_right.set_ylim(top = data['max_value'])
+    line2 = ax3_right.plot(data['l_cpm_A'], data['l_total_value'], 'g-', label='Total value')
     ax3_right.set_ylabel('Total value', color='g')
     ax3_right.tick_params(axis='y', labelcolor='g')
     
     # Add green dot at intersection of green curve with vertical line
-    line5 = ax3_right.plot(min_cost_cpm_A, max_value, 'go', label='Maximum value')
+    line5 = ax3_right.plot(data['min_cost_cpm_A'], data['max_value'], 'go', label='Maximum value')
     
-    a.vlines(min_cost_cpm_A, 0, min_cost_cpm_B, 'C0', linestyles='--', alpha=0.5)
-    line3 = a.plot(min_cost_cpm_A, 0, 'C0o', label='Optimal bid A')
-#    a.hlines(max_value, 0, MAX_CPM, colors='C0')
+    a.vlines(data['min_cost_cpm_A'], 0, data['min_cost_cpm_B'], 'C0', linestyles='--', alpha=0.5)
+    line3 = a.plot(data['min_cost_cpm_A'], 0, 'C0o', label='Optimal bid A')
+    
     # Add horizontal orange line where vertical intersects orange curve, with dot
-    a.hlines(min_cost_cpm_B, 0, min_cost_cpm_A, 'C1', linestyles='--', alpha=0.5)
-    line4 = a.plot(0, min_cost_cpm_B, 'C1o', label='Optimal bid B')
+    a.hlines(data['min_cost_cpm_B'], 0, data['min_cost_cpm_A'], 'C1', linestyles='--', alpha=0.5)
+    line4 = a.plot(0, data['min_cost_cpm_B'], 'C1o', label='Optimal bid B')
     
     # Combine legends from all plot elements
     lines = line1 + line2 + line3 + line4 + line5
@@ -326,7 +363,12 @@ def update_axis(chart, p: Parameters, save_to_png=False, show_value_vs_budget=Fa
     # Adjust layout for axis3 to ensure x-axis label is visible
     chart.axis3.figure.subplots_adjust(bottom=0.15)
 
+
+def update_axis2_marginal_utility(chart, p: Parameters, data):
+    """Update axis 2 with marginal utility plots."""
     a = chart.axis2
+    s_A = data['s_A']
+    s_B = data['s_B']
     
     # Set up axes for marginal utility of spend vs budget
     marginal_utility_start = s_A.marginal_utility_of_spend(0.01)
@@ -383,30 +425,26 @@ def update_axis(chart, p: Parameters, save_to_png=False, show_value_vs_budget=Fa
     line2 = ax2_right.plot(marginal_utility_range, inverse_values_B, 'C1-', label='Bid B', linewidth=2)
     
     # Add vertical line at marginal_utility_of_spend_A
-    a.axvline(x=marginal_utility_of_spend_A, color='g', alpha=0.7, label='Optimal Marginal utility of spend')
+    a.axvline(x=data['marginal_utility_of_spend_A'], color='g', alpha=0.7, label='Optimal Marginal utility of spend')
 
     # Find intersection point for budget used curve
-    # Find the closest point in marginal_utility_range to marginal_utility_of_spend_A
     # Budget = volume * probability * CPM
-    budget_A = p.total_volume_A() * s_A.get_probability(min_cost_cpm_A) * min_cost_cpm_A
-    budget_B = p.total_volume_B() * s_B.get_probability(min_cost_cpm_B) * min_cost_cpm_B
+    budget_A = p.total_volume_A() * s_A.get_probability(data['min_cost_cpm_A']) * data['min_cost_cpm_A']
+    budget_B = p.total_volume_B() * s_B.get_probability(data['min_cost_cpm_B']) * data['min_cost_cpm_B']
     total_budget = budget_A + budget_B
-#    print("total_budget: ", total_budget)
-
 
     # Add horizontal line to the left for budget used curve
-    a.hlines(total_budget, marginal_utility_start, marginal_utility_of_spend_A, 'g', linestyles='--', alpha=0.5)
+    a.hlines(total_budget, marginal_utility_start, data['marginal_utility_of_spend_A'], 'g', linestyles='--', alpha=0.5)
     
     # Add intersection dot for budget used curve
-    a.plot(marginal_utility_of_spend_A, total_budget, 'go', markersize=8, label='')
+    a.plot(data['marginal_utility_of_spend_A'], total_budget, 'go', markersize=8, label='')
 
-    ax2_right.hlines(min_cost_cpm_B, 0, marginal_utility_of_spend_A, 'C1', linestyles='--', alpha=0.5)
-    ax2_right.hlines(min_cost_cpm_A, 0, marginal_utility_of_spend_A, 'C0', linestyles='--', alpha=0.5)
-
+    ax2_right.hlines(data['min_cost_cpm_B'], 0, data['marginal_utility_of_spend_A'], 'C1', linestyles='--', alpha=0.5)
+    ax2_right.hlines(data['min_cost_cpm_A'], 0, data['marginal_utility_of_spend_A'], 'C0', linestyles='--', alpha=0.5)
 
     # Mark intersection points with dots
-    ax2_right.plot(marginal_utility_of_spend_A, min_cost_cpm_A, 'C0o', markersize=8, label='Intersection A dot')
-    ax2_right.plot(marginal_utility_of_spend_A, min_cost_cpm_B, 'C1o', markersize=8, label='Intersection B dot')
+    ax2_right.plot(data['marginal_utility_of_spend_A'], data['min_cost_cpm_A'], 'C0o', markersize=8, label='Intersection A dot')
+    ax2_right.plot(data['marginal_utility_of_spend_A'], data['min_cost_cpm_B'], 'C1o', markersize=8, label='Intersection B dot')
     
     # Set right y-axis properties
     ax2_right.set_ylabel('CPM', color='purple')
@@ -423,9 +461,13 @@ def update_axis(chart, p: Parameters, save_to_png=False, show_value_vs_budget=Fa
         labels.extend([lines_main[-1].get_label()])
     
     ax2_right.legend(lines, labels, loc='upper right')
-   
-   
+
+
+def update_axis4_bottom_right_chart(chart, p: Parameters, data, show_value_vs_budget, show_marginal_utility_heatmap):
+    """Update axis 4 with bottom-right chart (heatmap, value vs budget, or default)."""
     a = chart.axis4
+    s_A = data['s_A']
+    s_B = data['s_B']
     
     # Handle the bottom-right chart based on toggle states
     if show_marginal_utility_heatmap:
@@ -468,12 +510,18 @@ def update_axis(chart, p: Parameters, save_to_png=False, show_value_vs_budget=Fa
         a.set_title('Heatmap: y=M^-1(x, v, W)')
         
         # Add current parameter point
-        a.plot(p.sigmoid_A_value, marginal_utility_of_spend_A, 'ro', markersize=8, 
-               label=f'Current (value={p.sigmoid_A_value:.2f}, MU={marginal_utility_of_spend_A:.3f})')
+        a.plot(p.sigmoid_A_value, data['marginal_utility_of_spend_A'], 'ro', markersize=8, 
+               label=f'Current (value={p.sigmoid_A_value:.2f}, MU={data["marginal_utility_of_spend_A"]:.3f})')
         a.legend()
         
     elif show_value_vs_budget: 
         # Calculate value vs budget curve
+        l_budget_range = data['l_budget_range']
+        l_max_value = data['l_max_value']
+        l_value_per_cost = data['l_value_per_cost']
+        l_marginal_utility_A_budget = data['l_marginal_utility_A_budget']
+        l_marginal_utility_B_budget = data['l_marginal_utility_B_budget']
+        
         for budget_x in range(0, int(20.0/BUDGET_STEP)):
             budget = budget_x * BUDGET_STEP
             l_budget_range.append(budget)
@@ -484,10 +532,10 @@ def update_axis(chart, p: Parameters, save_to_png=False, show_value_vs_budget=Fa
             optimal_cpm_B_for_budget = 0.0
             
             for cpm_input in range(0, int(MAX_CPM / STEP)):
-                cpm_A = 1.0 * cpm_input * STEP
-                imp_bought_A = s_A.get_probability(cpm_A) * p.total_volume_A() 
+                cmp_A = 1.0 * cpm_input * STEP
+                imp_bought_A = s_A.get_probability(cmp_A) * p.total_volume_A() 
                 imp_value_A = imp_bought_A * s_A.value
-                imp_spend_A = imp_bought_A * cpm_A
+                imp_spend_A = imp_bought_A * cmp_A
                 
                 if budget - imp_spend_A < 0.0:  # Over budget
                     continue
@@ -506,7 +554,7 @@ def update_axis(chart, p: Parameters, save_to_png=False, show_value_vs_budget=Fa
                 total_value = imp_value_A + imp_value_B
                 if total_value > max_value_for_budget:
                     max_value_for_budget = total_value
-                    optimal_cpm_A_for_budget = cpm_A
+                    optimal_cpm_A_for_budget = cmp_A
                     optimal_cpm_B_for_budget = cpm_B
             
             l_max_value.append(max_value_for_budget)            
@@ -521,7 +569,6 @@ def update_axis(chart, p: Parameters, save_to_png=False, show_value_vs_budget=Fa
                 l_value_per_cost.append(0)
         
         # Plot value vs budget curve in bottom right with two y-axes
-        a = chart.axis4
         a.clear()
         # Remove any existing second y-axis before creating a new one
         for ax in a.figure.axes:
@@ -543,22 +590,18 @@ def update_axis(chart, p: Parameters, save_to_png=False, show_value_vs_budget=Fa
         ax2.tick_params(axis='y', labelcolor='r')
         
         # Create third y-axis for marginal utility
-        # Offset the third y-axis to the right
-        #ax2.spines['right'].set_position(('outward', 60))
         line3 = ax2.plot(l_budget_range, l_marginal_utility_A_budget, 'g-', label='Marginal Utility A')
         line4 = ax2.plot(l_budget_range, l_marginal_utility_B_budget, 'orange', linestyle='-', label='Marginal Utility B')
-        #ax2.set_ylabel('Marginal Utility', color='g')
-        #ax2.tick_params(axis='y', labelcolor='g')
         
         # Mark current budget point on all curves
-        current_value = max_value if max_value is not None else 0
+        current_value = data['max_value'] if data['max_value'] is not None else 0
         current_efficiency = current_value/p.total_budget if p.total_budget > 0 else 0
         a.plot(p.total_budget, current_value, 'bo', label='Current value')
         ax2.plot(p.total_budget, current_efficiency, 'ro', label='Current efficiency')
         
         # Mark current marginal utility points
-        current_mu_A = marginal_utility_of_spend_A if marginal_utility_of_spend_A is not None else 0
-        current_mu_B = marginal_utility_of_spend_B if marginal_utility_of_spend_B is not None else 0
+        current_mu_A = data['marginal_utility_of_spend_A'] if data['marginal_utility_of_spend_A'] is not None else 0
+        current_mu_B = data['marginal_utility_of_spend_B'] if data['marginal_utility_of_spend_B'] is not None else 0
         ax2.plot(p.total_budget, current_mu_A, 'go', label='Current MU A')
         ax2.plot(p.total_budget, current_mu_B, 'o', color='orange', label='Current MU B')
         
@@ -569,9 +612,28 @@ def update_axis(chart, p: Parameters, save_to_png=False, show_value_vs_budget=Fa
     else:
         # Clear the bottom-right pane when both toggles are disabled
         a.set_xlim(right = 1.0)
-        a.plot(l2, l22, label='Value for budget')
-    #    a.vlines(min_cost_cpm_A, 0, p.percent_to_buy, colors='C0')
+        a.plot(data['l2'], data['l22'], label='Value for budget')
         a.legend()
+
+
+def update_axis(chart, p: Parameters, save_to_png=False, show_value_vs_budget=False, show_marginal_utility_heatmap=False):
+    # Setup optimization data
+    data = setup_optimization_data(p)
+    
+    # Update axis 5 (text display)
+    update_axis5_text_display(chart, data)
+    
+    # Update axis 1 (win probability curves)
+    update_axis1_win_probability(chart, data)
+    
+    # Update axis 3 (CPM B vs CPM A with total value)
+    update_axis3_cpm_and_value(chart, data)
+    
+    # Update axis 2 (marginal utility plots)
+    update_axis2_marginal_utility(chart, p, data)
+    
+    # Update axis 4 (bottom-right chart)
+    update_axis4_bottom_right_chart(chart, p, data, show_value_vs_budget, show_marginal_utility_heatmap)
 
     # Save plots to PNG if requested
     if save_to_png:
