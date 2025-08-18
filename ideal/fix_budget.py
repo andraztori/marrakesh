@@ -5,6 +5,7 @@ from gi.repository import Gtk, Adw, GLib
 
 import math
 import signal
+import numpy as np
 from matplotlib.backends.backend_gtk4agg import \
     FigureCanvasGTK4Agg as FigureCanvas
 from matplotlib.figure import Figure
@@ -192,7 +193,7 @@ class Parameters:
         
 
 
-def update_axis(chart, p: Parameters, save_to_png=False, show_value_vs_budget=False):
+def update_axis(chart, p: Parameters, save_to_png=False, show_value_vs_budget=False, show_marginal_utility_heatmap=False):
     s_A = Sigmoid(p.sigmoid_A_scale, p.sigmoid_A_offset, p.sigmoid_A_value)
     s_B = Sigmoid(p.sigmoid_B_scale, p.sigmoid_B_offset, p.sigmoid_B_value) 
 
@@ -390,7 +391,7 @@ def update_axis(chart, p: Parameters, save_to_png=False, show_value_vs_budget=Fa
     budget_A = p.total_volume_A() * s_A.get_probability(min_cost_cpm_A) * min_cost_cpm_A
     budget_B = p.total_volume_B() * s_B.get_probability(min_cost_cpm_B) * min_cost_cpm_B
     total_budget = budget_A + budget_B
-    print("total_budget: ", total_budget)
+#    print("total_budget: ", total_budget)
 
 
     # Add horizontal line to the left for budget used curve
@@ -425,13 +426,54 @@ def update_axis(chart, p: Parameters, save_to_png=False, show_value_vs_budget=Fa
    
    
     a = chart.axis4
-    a.set_xlim(right = 1.0)
-    a.plot(l2, l22, label='Value for budget')
-#    a.vlines(min_cost_cpm_A, 0, p.percent_to_buy, colors='C0')
-    a.legend()
-
-    # Calculate value vs budget curve
-    if show_value_vs_budget: 
+    
+    # Handle the bottom-right chart based on toggle states
+    if show_marginal_utility_heatmap:
+        # Create heatmap of y=marginal_utility_of_spend_inverse()
+        a.clear()
+        
+        # Define ranges for the heatmap
+        value_range = np.linspace(0.5, 5.0, 50)  # s_A.value from 0.5 to 5
+        y_target_range = np.linspace(0.02, 0.6, 50)  # y_target from 0.02 to 0.6 (reversed for display)
+        
+        # Create meshgrid
+        Value, Y_target = np.meshgrid(value_range, y_target_range)
+        
+        # Initialize result matrix
+        Z = np.zeros_like(Value)
+        
+        # Calculate marginal_utility_of_spend_inverse for each combination
+        for i in range(len(value_range)):
+            for j in range(len(y_target_range)):
+                # Create temporary sigmoid with varied value
+                temp_sigmoid = Sigmoid(p.sigmoid_A_scale, p.sigmoid_A_offset, value_range[i])
+                try:
+                    result = temp_sigmoid.marginal_utility_of_spend_inverse(y_target_range[j])
+                    Z[j, i] = result if result is not None else 0
+                except:
+                    Z[j, i] = 0
+        
+        # Create heatmap
+        im = a.imshow(Z, cmap='viridis', aspect='auto', 
+                     extent=[value_range[0], value_range[-1], y_target_range[0], y_target_range[-1]],
+                     origin='lower')
+        
+        # Add colorbar and store reference
+        chart.axis4_colorbar = a.figure.colorbar(im, ax=a)
+        chart.axis4_colorbar.set_label('y=M^-1(x, v, W)')
+        
+        # Set labels and title
+        a.set_xlabel('s_A.value')
+        a.set_ylabel('y_target')
+        a.set_title('Heatmap: y=M^-1(x, v, W)')
+        
+        # Add current parameter point
+        a.plot(p.sigmoid_A_value, marginal_utility_of_spend_A, 'ro', markersize=8, 
+               label=f'Current (value={p.sigmoid_A_value:.2f}, MU={marginal_utility_of_spend_A:.3f})')
+        a.legend()
+        
+    elif show_value_vs_budget: 
+        # Calculate value vs budget curve
         for budget_x in range(0, int(20.0/BUDGET_STEP)):
             budget = budget_x * BUDGET_STEP
             l_budget_range.append(budget)
@@ -525,14 +567,12 @@ def update_axis(chart, p: Parameters, save_to_png=False, show_value_vs_budget=Fa
         labels = [l.get_label() for l in lines]
         a.legend(lines, labels, loc='upper right')
     else:
-        # Clear the bottom-right pane when toggle is disabled
-        a = chart.axis4
-        a.clear()
-        # Remove any existing second and third y-axes
-        for ax in a.figure.axes:
-            if ax != a and ax.bbox.bounds == a.bbox.bounds:
-                a.figure.delaxes(ax)
-        
+        # Clear the bottom-right pane when both toggles are disabled
+        a.set_xlim(right = 1.0)
+        a.plot(l2, l22, label='Value for budget')
+    #    a.vlines(min_cost_cpm_A, 0, p.percent_to_buy, colors='C0')
+        a.legend()
+
     # Save plots to PNG if requested
     if save_to_png:
         # Get the figures from the axes
@@ -583,7 +623,9 @@ class Chart(FigureCanvas):
         
         self.p = Parameters()
         self.show_value_vs_budget = False  # Default to off
-        update_axis(self, self.p, show_value_vs_budget=self.show_value_vs_budget)
+        self.show_marginal_utility_heatmap = False  # New flag for heatmap
+        self.axis4_colorbar = None  # Store colorbar reference for proper removal
+        update_axis(self, self.p, show_value_vs_budget=self.show_value_vs_budget, show_marginal_utility_heatmap=self.show_marginal_utility_heatmap)
         
         # Use the first figure as the main canvas
         super().__init__(self.fig1)
@@ -603,9 +645,29 @@ class Chart(FigureCanvas):
         for ax in self.axis3.figure.axes:
             if ax != self.axis3 and ax.bbox.bounds == self.axis3.bbox.bounds:
                 self.axis3.figure.delaxes(ax)
+        
+        # Enhanced clearing for axis4 to handle heatmap colorbars properly
+        # Remove existing colorbar first
+        if self.axis4_colorbar is not None:
+            self.axis4_colorbar.remove()
+            self.axis4_colorbar = None
+            
+        # Clear the axis
         self.axis4.clear()
+        
+        # Remove any remaining twin axes for axis4
+        axes_to_remove = []
+        for ax in self.axis4.figure.axes:
+            if ax != self.axis4:
+                axes_to_remove.append(ax)
+        for ax in axes_to_remove:
+            self.axis4.figure.delaxes(ax)
+        
+        # Reset the axis position to ensure proper layout
+        self.axis4.set_position(self.axis4.get_position())
+            
         self.axis5.clear()
-        update_axis(self, self.p, save_to_png, show_value_vs_budget=self.show_value_vs_budget)
+        update_axis(self, self.p, save_to_png, show_value_vs_budget=self.show_value_vs_budget, show_marginal_utility_heatmap=self.show_marginal_utility_heatmap)
 
         # Adjust layout to ensure labels are visible
         self.fig1.tight_layout()
@@ -712,9 +774,8 @@ class MainWindow(Gtk.ApplicationWindow):
         self.check = Gtk.Label(label="Parameters")
         self.box2.append(self.check)
         
-        # Store references to sliders and numeric entries for updating later
-        self.sliders = {}
-        self.numeric_entries = {}
+        # Store references to controls for updating later
+        self.controls = {}
         self.box2.append(self.numeric_entry_box("Auction volume", 1, 20, 'total_volume'))
         self.box2.append(self.slider_box("Percent of auction A", 0.0, 1.0, 'percent_A'))
         self.box2.append(self.slider_box("Total budget", 0.0, 20.0, 'total_budget'))
@@ -730,6 +791,12 @@ class MainWindow(Gtk.ApplicationWindow):
         self.value_budget_toggle.set_active(False)  # Default to off
         self.value_budget_toggle.connect('toggled', self.on_value_budget_toggle)
         self.box2.append(self.value_budget_toggle)
+        
+        # Add Marginal Utility Heatmap toggle
+        self.marginal_utility_heatmap_toggle = Gtk.CheckButton(label="y=M^-1(x, v, W)")
+        self.marginal_utility_heatmap_toggle.set_active(False)  # Default to off
+        self.marginal_utility_heatmap_toggle.connect('toggled', self.on_marginal_utility_heatmap_toggle)
+        self.box2.append(self.marginal_utility_heatmap_toggle)
         
         # Add Save Plots button
         self.save_button = Gtk.Button(label="Save Plots to PNG")
@@ -761,8 +828,8 @@ class MainWindow(Gtk.ApplicationWindow):
         b.append(Gtk.Label(label=label))
         b.append(slider)
         
-        # Store reference to slider and signal ID for updating later
-        self.sliders[parameter_name] = {'slider': slider, 'signal_id': signal_id}
+        # Store reference to control and signal ID for updating later
+        self.controls[parameter_name] = {'widget': slider, 'signal_id': signal_id}
         
         return b
 
@@ -795,8 +862,8 @@ class MainWindow(Gtk.ApplicationWindow):
         b.append(Gtk.Label(label=label))
         b.append(spin_button)
         
-        # Store reference to numeric entry and signal ID for updating later
-        self.numeric_entries[parameter_name] = {'entry': spin_button, 'signal_id': signal_id}
+        # Store reference to control and signal ID for updating later
+        self.controls[parameter_name] = {'widget': spin_button, 'signal_id': signal_id}
         
         return b
 
@@ -808,31 +875,26 @@ class MainWindow(Gtk.ApplicationWindow):
         """Load interesting curves and update charts"""
         self.chart.p.interesting_curves()
         
-        # Update all sliders to reflect the new parameter values
-        for parameter_name, slider_info in self.sliders.items():
+        # Update all controls to reflect the new parameter values
+        for parameter_name, control_info in self.controls.items():
             if parameter_name in self.chart.p.__dict__:
-                slider = slider_info['slider']
-                signal_id = slider_info['signal_id']
+                widget = control_info['widget']
+                signal_id = control_info['signal_id']
                 # Temporarily block the signal to avoid triggering updates
-                slider.handler_block(signal_id)
-                slider.set_value(self.chart.p.__dict__[parameter_name])
-                slider.handler_unblock(signal_id)
-        
-        # Update all numeric entries to reflect the new parameter values
-        for parameter_name, entry_info in self.numeric_entries.items():
-            if parameter_name in self.chart.p.__dict__:
-                entry = entry_info['entry']
-                signal_id = entry_info['signal_id']
-                # Temporarily block the signal to avoid triggering updates
-                entry.handler_block(signal_id)
-                entry.set_value(self.chart.p.__dict__[parameter_name])
-                entry.handler_unblock(signal_id)
+                widget.handler_block(signal_id)
+                widget.set_value(self.chart.p.__dict__[parameter_name])
+                widget.handler_unblock(signal_id)
         
         self.chart.update()
 
     def on_value_budget_toggle(self, toggle_button):
         """Handle toggle for Value vs. budget curve"""
         self.chart.show_value_vs_budget = toggle_button.get_active()
+        self.chart.update()
+
+    def on_marginal_utility_heatmap_toggle(self, toggle_button):
+        """Handle toggle for Marginal Utility Heatmap"""
+        self.chart.show_marginal_utility_heatmap = toggle_button.get_active()
         self.chart.update()
 
 
