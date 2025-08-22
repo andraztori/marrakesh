@@ -10,6 +10,7 @@ from matplotlib.backends.backend_gtk4agg import \
     FigureCanvasGTK4Agg as FigureCanvas
 from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 
 
 EPSILON = 0.0001
@@ -296,10 +297,10 @@ def update_axis5_text_display(chart, data):
     """Update axis 5 with text display of marginal utility values."""
     a = chart.axis5
     a.axis('off')  # Hide axes for text display
-    a.text(0.5, 0.8, f'Marginal Utility of Spend A: {data["marginal_utility_of_spend_A"]:.3f}', 
+    a.text(0.5, 0.8, f'Marginal Effectiveness of Spend A: {data["marginal_utility_of_spend_A"]:.3f}', 
            transform=a.transAxes, fontsize=14, ha='center', va='center',
            bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.8))
-    a.text(0.5, 0.6, f'Marginal Utility of Spend B: {data["marginal_utility_of_spend_B"]:.3f}', 
+    a.text(0.5, 0.6, f'Marginal Effectiveness of Spend B: {data["marginal_utility_of_spend_B"]:.3f}', 
            transform=a.transAxes, fontsize=14, ha='center', va='center',
            bbox=dict(boxstyle='round', facecolor='lightgreen', alpha=0.8))
     a.text(0.5, 0.3, f'Optimal CPM A: {data["min_cost_cpm_A"]:.2f}  |  Optimal CPM B: {data["min_cost_cpm_B"]:.2f}', 
@@ -370,11 +371,11 @@ def update_axis2_marginal_utility(chart, p: Parameters, data):
     s_A = data['s_A']
     s_B = data['s_B']
     
-    # Set up axes for marginal utility of spend vs budget
-    marginal_utility_start = s_A.marginal_utility_of_spend(0.01)
+    # Set up axes for marginal effectiveness of spend vs budget
+    marginal_utility_start = s_A.marginal_utility_of_spend(4)
     marginal_utility_end = s_A.marginal_utility_of_spend(20)
     a.set_xlim(left=marginal_utility_start, right=marginal_utility_end)  # Decreasing toward the right (20 to 0.01)
-    a.set_xlabel('Marginal Utility of Spend')
+    a.set_xlabel('Marginal Effectivness of Spend')
     a.grid(True, alpha=0.3)  # Add grid for better readability
     
     # Create right y-axis for the inverse functions
@@ -395,14 +396,14 @@ def update_axis2_marginal_utility(chart, p: Parameters, data):
         
         # Call inverse functions for both s_A and s_B
         try:
-            inverse_A = s_A.marginal_utility_of_spend_inverse(mu_value)
-            inverse_B = s_B.marginal_utility_of_spend_inverse(mu_value)
-            inverse_values_A.append(inverse_A if inverse_A is not None else 0)
-            inverse_values_B.append(inverse_B if inverse_B is not None else 0)
-            
+            cpm_A = s_A.marginal_utility_of_spend_inverse(mu_value)
+            cpm_B = s_B.marginal_utility_of_spend_inverse(mu_value)
             # Calculate budget used for both curves
-            cpm_A = inverse_A if inverse_A is not None else 0
-            cpm_B = inverse_B if inverse_B is not None else 0
+            cpm_A = cpm_A if cpm_A is not None else 0
+            cpm_B = cpm_B if cpm_B is not None else 0
+            inverse_values_A.append(cpm_A)
+            inverse_values_B.append(cpm_B)
+            
             
             # Budget = volume * probability * CPM
             budget_A = p.total_volume_A() * s_A.get_probability(cpm_A) * cpm_A
@@ -425,7 +426,7 @@ def update_axis2_marginal_utility(chart, p: Parameters, data):
     line2 = ax2_right.plot(marginal_utility_range, inverse_values_B, 'C1-', label='Bid B', linewidth=2)
     
     # Add vertical line at marginal_utility_of_spend_A
-    a.axvline(x=data['marginal_utility_of_spend_A'], color='g', alpha=0.7, label='Optimal Marginal utility of spend')
+    a.axvline(x=data['marginal_utility_of_spend_A'], color='g', alpha=0.7, label='Optimal Marginal effectiveness of spend')
 
     # Find intersection point for budget used curve
     # Budget = volume * probability * CPM
@@ -475,7 +476,7 @@ def update_axis4_bottom_right_chart(chart, p: Parameters, data, show_value_vs_bu
         a.clear()
         
         # Define ranges for the heatmap
-        value_range = np.linspace(0.5, 5.0, 50)  # s_A.value from 0.5 to 5
+        value_range = np.linspace(0.4, 5.0, 50)  # s_A.value from 0.5 to 5
         y_target_range = np.linspace(0.02, 0.6, 50)  # y_target from 0.02 to 0.6 (reversed for display)
         
         # Create meshgrid
@@ -495,24 +496,27 @@ def update_axis4_bottom_right_chart(chart, p: Parameters, data, show_value_vs_bu
                 except:
                     Z[j, i] = 0
         
-        # Create heatmap
-        im = a.imshow(Z, cmap='viridis', aspect='auto', 
-                     extent=[value_range[0], value_range[-1], y_target_range[0], y_target_range[-1]],
-                     origin='lower')
+        # Create 3D contour lines along z-axis
+        contour_lines = a.contour(Value, Y_target, Z, levels=15, cmap='viridis', alpha=0.8)
         
-        # Add colorbar and store reference
-        chart.axis4_colorbar = a.figure.colorbar(im, ax=a)
-        chart.axis4_colorbar.set_label('y=M^-1(x, v, W)')
+        # Set 3D viewing angle for better visualization
+        a.view_init(elev=30, azim=45)
         
         # Set labels and title
-        a.set_xlabel('s_A.value')
-        a.set_ylabel('y_target')
-        a.set_title('Heatmap: y=M^-1(x, v, W)')
+        a.set_xlabel('v')
+        a.set_ylabel('u')
+        a.set_zlabel('x = M^-1(u, W, v)')
+        #a.set_xlabel('s_A Value')
+        #a.set_ylabel('Marginal Effectiveness of Spend')
+        #a.set_zlabel('Bid A = M^-1(x, v, W)')
+        a.set_title('3D Wireframe: y=M^-1(x, v, W)')
         
-        # Add current parameter point
-        a.plot(p.sigmoid_A_value, data['marginal_utility_of_spend_A'], 'ro', markersize=8, 
-               label=f'Current (value={p.sigmoid_A_value:.2f}, MU={data["marginal_utility_of_spend_A"]:.3f})')
-        a.legend()
+        # Add current parameter point in 3D
+#        current_z = data['s_A'].marginal_utility_of_spend_inverse(data['marginal_utility_of_spend_A'])
+#        if current_z is not None:
+#            a.scatter([p.sigmoid_A_value], [data['marginal_utility_of_spend_A']], [current_z], 
+#                     c='red', s=100, label=f'Current (value={p.sigmoid_A_value:.2f}, MU={data["marginal_utility_of_spend_A"]:.3f})')
+#            a.legend()
         
     elif show_value_vs_budget: 
         # Calculate value vs budget curve
@@ -594,10 +598,10 @@ def update_axis4_bottom_right_chart(chart, p: Parameters, data, show_value_vs_bu
         line4 = ax2.plot(l_budget_range, l_marginal_utility_B_budget, 'orange', linestyle='-', label='Marginal Utility B')
         
         # Mark current budget point on all curves
-        current_value = data['max_value'] if data['max_value'] is not None else 0
-        current_efficiency = current_value/p.total_budget if p.total_budget > 0 else 0
-        a.plot(p.total_budget, current_value, 'bo', label='Current value')
-        ax2.plot(p.total_budget, current_efficiency, 'ro', label='Current efficiency')
+        #current_value =l data['max_value'] if data['max_value'] is not None else 0
+        #current_efficiency = current_value/p.total_budget if p.total_budget > 0 else 0
+        #a.plot(p.total_budget, current_value, 'bo', label='Current value')
+        #ax2.plot(p.total_budget, current_efficiency, 'ro', label='Current efficiency')
         
         # Mark current marginal utility points
         current_mu_A = data['marginal_utility_of_spend_A'] if data['marginal_utility_of_spend_A'] is not None else 0
@@ -724,6 +728,16 @@ class Chart(FigureCanvas):
                 axes_to_remove.append(ax)
         for ax in axes_to_remove:
             self.axis4.figure.delaxes(ax)
+        
+        # Recreate axis4 as 3D if showing marginal utility heatmap, otherwise 2D
+        if self.show_marginal_utility_heatmap:
+            self.fig4.clear()
+            self.axis4 = self.fig4.add_subplot(111, projection='3d')
+        else:
+            # Ensure it's 2D for other modes
+            if hasattr(self.axis4, 'zaxis'):  # Check if it's currently 3D
+                self.fig4.clear()
+                self.axis4 = self.fig4.add_subplot(111)
         
         # Reset the axis position to ensure proper layout
         self.axis4.set_position(self.axis4.get_position())
