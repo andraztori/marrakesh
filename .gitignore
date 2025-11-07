@@ -1,0 +1,9 @@
+*~
+path
+backup
+__pycache__
+.gitignore
+# Rust build artifacts
+**/target/
+**/*.rs.bk
+*.pdb
