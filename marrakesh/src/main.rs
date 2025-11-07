@@ -1,5 +1,7 @@
 mod types;
 
+use rand::{rngs::StdRng, SeedableRng};
+use rand_distr::{Distribution, Normal};
 use types::{AddCampaignParams, AddSellerParams, CampaignType, ChargeType, Impression, Campaigns, Sellers};
 
 /// Container for impressions with methods to create impressions
@@ -15,13 +17,28 @@ impl Impressions {
     }
 
     pub fn create_from_sellers(&mut self, sellers: &Sellers) {
+        // Use deterministic seed for reproducible results
+        let mut rng = StdRng::seed_from_u64(999);
+        let best_other_bid_dist = Normal::new(10.0, 1.0).unwrap();
+        let floor_cpm_dist = Normal::new(5.0, 1.0).unwrap();
+
         for seller in &sellers.sellers {
             for _ in 0..seller.num_impressions {
+                let (best_other_bid_cpm, floor_cpm) = match seller.charge_type {
+                    ChargeType::FIRST_PRICE => {
+                        (
+                            best_other_bid_dist.sample(&mut rng),
+                            floor_cpm_dist.sample(&mut rng),
+                        )
+                    }
+                    ChargeType::FIXED_COST { .. } => (0.0, 0.0),
+                };
+
                 self.impressions.push(Impression {
                     seller_id: seller.seller_id,
                     charge_type: seller.charge_type.clone(),
-                    best_other_bid_cpm: 0.0,
-                    floor_cpm: 0.0,
+                    best_other_bid_cpm,
+                    floor_cpm,
                     win_bid_cpm: 0.0,
                     win_campaign_id: 0,
                     value_to_campaign_id: [0.0; 10],
@@ -43,7 +60,7 @@ fn main() {
         total_cost: 0.0,
         pacing: 1.0,
         campaign_type: CampaignType::FIXED_IMPRESSIONS {
-            total_impressions_target: 1000,
+            total_impressions_target: 10000,
         },
     });
 
@@ -52,7 +69,7 @@ fn main() {
         total_cost: 0.0,
         pacing: 1.0,
         campaign_type: CampaignType::FIXED_BUDGET {
-            total_budget_target: 5000.0,
+            total_budget_target: 200.0,
         },
     });
 
