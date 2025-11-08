@@ -1,5 +1,49 @@
-use crate::types::{Campaigns, ChargeType, Sellers, Winner};
+use crate::types::{Campaigns, ChargeType, Sellers, Winner, MAX_CAMPAIGNS};
 use crate::Impressions;
+
+/// Represents campaign parameters (pacing, etc.)
+/// Note: CampaignParam is matched to Campaign by index in the vectors
+#[derive(Debug, Clone)]
+pub struct CampaignParam {
+    pub pacing: f64,
+}
+
+/// Parameters for adding campaign parameters
+pub struct AddCampaignParamParams {
+    pub pacing: f64,
+}
+
+/// Container for campaign parameters with methods to add parameters
+pub struct CampaignParams {
+    pub params: Vec<CampaignParam>,
+}
+
+impl CampaignParams {
+    /// Create campaign parameters from campaigns, defaulting all pacings to 1.0
+    pub fn new(campaigns: &Campaigns) -> Self {
+        let mut params = Vec::new();
+        for _campaign in &campaigns.campaigns {
+            params.push(CampaignParam {
+                pacing: 1.0,
+            });
+        }
+        Self { params }
+    }
+
+    pub fn add(&mut self, params: AddCampaignParamParams) -> Result<(), String> {
+        if self.params.len() >= MAX_CAMPAIGNS {
+            return Err(format!(
+                "Cannot add campaign parameter: maximum number of campaigns ({}) exceeded. Current count: {}",
+                MAX_CAMPAIGNS,
+                self.params.len()
+            ));
+        }
+        self.params.push(CampaignParam {
+            pacing: params.pacing,
+        });
+        Ok(())
+    }
+}
 
 /// Statistics for a single campaign
 pub struct CampaignStat {

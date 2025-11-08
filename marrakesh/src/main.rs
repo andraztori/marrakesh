@@ -4,7 +4,7 @@ mod simulationrun;
 use rand::{rngs::StdRng, SeedableRng};
 use rand_distr::{Distribution, Normal};
 use types::{AddCampaignParams, AddSellerParams, AuctionResult, CampaignType, ChargeType, Impression, Campaigns, Sellers, Winner, MAX_CAMPAIGNS};
-use simulationrun::{generate_statistics, output_statistics};
+use simulationrun::{generate_statistics, output_statistics, CampaignParams};
 
 /// Container for impressions with methods to create impressions
 pub struct Impressions {
@@ -69,7 +69,6 @@ fn main() {
     campaigns.add(AddCampaignParams {
         campaign_name: "Campaign 0".to_string(),
         campaign_rnd: 12345,
-        pacing: 1.0,
         campaign_type: CampaignType::FIXED_IMPRESSIONS {
             total_impressions_target: 10000,
         },
@@ -78,11 +77,13 @@ fn main() {
     campaigns.add(AddCampaignParams {
         campaign_name: "Campaign 1".to_string(),
         campaign_rnd: 67890,
-        pacing: 1.0,
         campaign_type: CampaignType::FIXED_BUDGET {
             total_budget_target: 200.0,
         },
     }).expect("Failed to add campaign");
+
+    // Create campaign parameters from campaigns (default pacing = 1.0)
+    let campaign_params = CampaignParams::new(&campaigns);
 
     // Add two sellers (IDs are automatically set to match Vec index)
     sellers.add(AddSellerParams {
@@ -108,7 +109,7 @@ fn main() {
 
     // Run auctions for all impressions
     for impression in &mut impressions.impressions {
-        impression.run_auction(&campaigns);
+        impression.run_auction(&campaigns, &campaign_params);
     }
 
     // Generate statistics

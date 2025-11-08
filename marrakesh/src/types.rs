@@ -7,8 +7,8 @@ pub const MAX_CAMPAIGNS: usize = 10;
 pub enum Winner {
     Campaign { 
         campaign_id: usize, 
-        virtual_cost_cpm: f64,
-        buyer_charge_cpm: f64,
+        virtual_cost: f64,
+        buyer_charge: f64,
     },
     OTHER_DEMAND,
     BELOW_FLOOR,
@@ -19,7 +19,7 @@ pub enum Winner {
 #[derive(Debug, Clone, PartialEq)]
 pub struct AuctionResult {
     pub winner: Winner,
-    pub true_cost_cpm: f64,
+    pub supply_cost: f64,
 }
 
 /// Charge type for impressions and sellers
@@ -50,24 +50,26 @@ pub struct Impression {
 }
 
 impl Impression {
-    /// Run an auction for this impression with the given campaigns
+    /// Run an auction for this impression with the given campaigns and campaign parameters
     /// Determines the winning campaign based on bids
-    pub fn run_auction(&mut self, campaigns: &Campaigns) {
+    pub fn run_auction(&mut self, campaigns: &Campaigns, campaign_params: &crate::simulationrun::CampaignParams) {
         // Get bids from all campaigns
-        let mut winning_bid = 0.0;
+        let mut winning_bid_cpm = 0.0;
         let mut winning_campaign_id: Option<usize> = None;
 
         for campaign in &campaigns.campaigns {
-            let bid = campaign.get_bid(self);
-            if bid > winning_bid {
-                winning_bid = bid;
-                winning_campaign_id = Some(campaign.campaign_id);
+            if let Some(campaign_param) = campaign_params.params.get(campaign.campaign_id) {
+                let bid = campaign.get_bid(self, campaign_param);
+                if bid > winning_bid_cpm {
+                    winning_bid_cpm = bid;
+                    winning_campaign_id = Some(campaign.campaign_id);
+                }
             }
         }
 
-        // Helper function to get true_cost_cpm based on charge type
+        // Helper function to get supply_cost based on charge type (in CPM)
         // For fixed cost, always use fixed_cost_cpm; for first price, use provided value (or 0.0 if no winner)
-        let get_true_cost = |value: f64| -> f64 {
+        let get_supply_cost_cpm = |value: f64| -> f64 {
             match self.charge_type {
                 ChargeType::FIXED_COST { fixed_cost_cpm } => fixed_cost_cpm,
                 ChargeType::FIRST_PRICE => value,
@@ -75,34 +77,35 @@ impl Impression {
         };
 
         // Determine the result based on winning bid
-        let (winner, true_cost_cpm) = if let Some(campaign_id) = winning_campaign_id {
-            if winning_bid < self.best_other_bid_cpm {
+        let (winner, supply_cost) = if let Some(campaign_id) = winning_campaign_id {
+            if winning_bid_cpm < self.best_other_bid_cpm {
                 // Winning bid is below best other bid - other demand wins
-                (Winner::OTHER_DEMAND, get_true_cost(0.0))
-            } else if winning_bid < self.floor_cpm {
+                (Winner::OTHER_DEMAND, get_supply_cost_cpm(0.0) / 1000.0)
+            } else if winning_bid_cpm < self.floor_cpm {
                 // Winning bid is below floor - no winner
-                (Winner::BELOW_FLOOR, get_true_cost(0.0))
+                (Winner::BELOW_FLOOR, get_supply_cost_cpm(0.0) / 1000.0)
             } else {
                 // Valid winner - set cost values
-                // virtual_cost_cpm and buyer_charge_cpm are always the winning bid
-                let true_cost = get_true_cost(winning_bid);
-                let virtual_cost = winning_bid;
-                let buyer_charge = winning_bid;
+                // virtual_cost and buyer_charge are always the winning bid
+                let supply_cost_cpm = get_supply_cost_cpm(winning_bid_cpm);
+                let virtual_cost_cpm = winning_bid_cpm;
+                let buyer_charge_cpm = winning_bid_cpm;
                 
+                // Convert from CPM to actual cost by dividing by 1000
                 (Winner::Campaign {
                     campaign_id,
-                    virtual_cost_cpm: virtual_cost,
-                    buyer_charge_cpm: buyer_charge,
-                }, true_cost)
+                    virtual_cost: virtual_cost_cpm / 1000.0,
+                    buyer_charge: buyer_charge_cpm / 1000.0,
+                }, supply_cost_cpm / 1000.0)
             }
         } else {
             // No campaigns participated
-            (Winner::NO_DEMAND, get_true_cost(0.0))
+            (Winner::NO_DEMAND, get_supply_cost_cpm(0.0) / 1000.0)
         };
 
         self.result = AuctionResult {
             winner,
-            true_cost_cpm,
+            supply_cost,
         };
     }
 }
@@ -113,16 +116,14 @@ pub struct Campaign {
     pub campaign_id: usize,
     pub campaign_name: String,
     pub campaign_rnd: u64,
-    pub total_cost: f64,
-    pub pacing: f64,
     pub campaign_type: CampaignType,
 }
 
 impl Campaign {
-    /// Calculate the bid for this campaign given an impression
-    /// Bid = campaign.pacing * impression.value_to_campaign_id[campaign.campaign_id]
-    pub fn get_bid(&self, impression: &Impression) -> f64 {
-        self.pacing * impression.value_to_campaign_id[self.campaign_id]
+    /// Calculate the bid for this campaign given an impression and campaign parameters
+    /// Bid = campaign_param.pacing * impression.value_to_campaign_id[campaign.campaign_id]
+    pub fn get_bid(&self, impression: &Impression, campaign_param: &crate::simulationrun::CampaignParam) -> f64 {
+        campaign_param.pacing * impression.value_to_campaign_id[self.campaign_id]
     }
 }
 
@@ -139,8 +140,6 @@ pub struct Seller {
 pub struct AddCampaignParams {
     pub campaign_name: String,
     pub campaign_rnd: u64,
-    pub total_cost: f64,
-    pub pacing: f64,
     pub campaign_type: CampaignType,
 }
 
@@ -169,8 +168,6 @@ impl Campaigns {
             campaign_id,
             campaign_name: params.campaign_name,
             campaign_rnd: params.campaign_rnd,
-            total_cost: params.total_cost,
-            pacing: params.pacing,
             campaign_type: params.campaign_type,
         });
         Ok(())
@@ -213,16 +210,19 @@ mod tests {
 
     #[test]
     fn test_get_bid() {
-        // Create a campaign with pacing = 0.5 and campaign_id = 2
+        // Create a campaign with campaign_id = 2
         let campaign = Campaign {
             campaign_id: 2,
             campaign_name: "Test Campaign".to_string(),
             campaign_rnd: 12345,
-            total_cost: 0.0,
-            pacing: 0.5,
             campaign_type: CampaignType::FIXED_IMPRESSIONS {
                 total_impressions_target: 1000,
             },
+        };
+
+        // Create a campaign parameter with pacing = 0.5
+        let campaign_param = crate::simulationrun::CampaignParam {
+            pacing: 0.5,
         };
 
         // Create an impression with value_to_campaign_id[2] = 20.0
@@ -236,86 +236,92 @@ mod tests {
             floor_cpm: 0.0,
             result: AuctionResult {
                 winner: Winner::BELOW_FLOOR,
-                true_cost_cpm: 0.0,
+                supply_cost: 0.0,
             },
             value_to_campaign_id,
         };
 
         // Expected bid = 0.5 * 20.0 = 10.0
-        let bid = campaign.get_bid(&impression);
+        let bid = campaign.get_bid(&impression, &campaign_param);
         assert_eq!(bid, 10.0);
     }
 
-    #[test]
-    fn test_get_bid_with_different_campaign_id() {
-        // Create a campaign with pacing = 1.0 and campaign_id = 0
-        let campaign = Campaign {
-            campaign_id: 0,
-            campaign_name: "Test Campaign".to_string(),
-            campaign_rnd: 67890,
-            total_cost: 0.0,
-            pacing: 1.0,
-            campaign_type: CampaignType::FIXED_BUDGET {
-                total_budget_target: 5000.0,
-            },
-        };
+            #[test]
+            fn test_get_bid_with_different_campaign_id() {
+                // Create a campaign with campaign_id = 0
+                let campaign = Campaign {
+                    campaign_id: 0,
+                    campaign_name: "Test Campaign".to_string(),
+                    campaign_rnd: 67890,
+                    campaign_type: CampaignType::FIXED_BUDGET {
+                        total_budget_target: 5000.0,
+                    },
+                };
 
-        // Create an impression with value_to_campaign_id[0] = 15.0
-        let mut value_to_campaign_id = [0.0; MAX_CAMPAIGNS];
-        value_to_campaign_id[0] = 15.0;
+                // Create a campaign parameter with pacing = 1.0
+                let campaign_param = crate::simulationrun::CampaignParam {
+                    pacing: 1.0,
+                };
 
-        let impression = Impression {
-            seller_id: 1,
-            charge_type: ChargeType::FIXED_COST {
-                fixed_cost_cpm: 10.0,
-            },
-            best_other_bid_cpm: 0.0,
-            floor_cpm: 0.0,
-            result: AuctionResult {
-                winner: Winner::BELOW_FLOOR,
-                true_cost_cpm: 0.0,
-            },
-            value_to_campaign_id,
-        };
+                // Create an impression with value_to_campaign_id[0] = 15.0
+                let mut value_to_campaign_id = [0.0; MAX_CAMPAIGNS];
+                value_to_campaign_id[0] = 15.0;
 
-        // Expected bid = 1.0 * 15.0 = 15.0
-        let bid = campaign.get_bid(&impression);
-        assert_eq!(bid, 15.0);
-    }
+                let impression = Impression {
+                    seller_id: 1,
+                    charge_type: ChargeType::FIXED_COST {
+                        fixed_cost_cpm: 10.0,
+                    },
+                    best_other_bid_cpm: 0.0,
+                    floor_cpm: 0.0,
+                    result: AuctionResult {
+                        winner: Winner::BELOW_FLOOR,
+                        supply_cost: 0.0,
+                    },
+                    value_to_campaign_id,
+                };
 
-    #[test]
-    fn test_get_bid_with_zero_pacing() {
-        // Create a campaign with pacing = 0.0
-        let campaign = Campaign {
-            campaign_id: 1,
-            campaign_name: "Test Campaign".to_string(),
-            campaign_rnd: 11111,
-            total_cost: 0.0,
-            pacing: 0.0,
-            campaign_type: CampaignType::FIXED_IMPRESSIONS {
-                total_impressions_target: 1000,
-            },
-        };
+                // Expected bid = 1.0 * 15.0 = 15.0
+                let bid = campaign.get_bid(&impression, &campaign_param);
+                assert_eq!(bid, 15.0);
+            }
 
-        // Create an impression with value_to_campaign_id[1] = 100.0
-        let mut value_to_campaign_id = [0.0; MAX_CAMPAIGNS];
-        value_to_campaign_id[1] = 100.0;
+            #[test]
+            fn test_get_bid_with_zero_pacing() {
+                // Create a campaign with campaign_id = 1
+                let campaign = Campaign {
+                    campaign_id: 1,
+                    campaign_name: "Test Campaign".to_string(),
+                    campaign_rnd: 11111,
+                    campaign_type: CampaignType::FIXED_IMPRESSIONS {
+                        total_impressions_target: 1000,
+                    },
+                };
 
-        let impression = Impression {
-            seller_id: 0,
-            charge_type: ChargeType::FIRST_PRICE,
-            best_other_bid_cpm: 0.0,
-            floor_cpm: 0.0,
-            result: AuctionResult {
-                winner: Winner::BELOW_FLOOR,
-                true_cost_cpm: 0.0,
-            },
-            value_to_campaign_id,
-        };
+                // Create a campaign parameter with pacing = 0.0
+                let campaign_param = crate::simulationrun::CampaignParam {
+                    pacing: 0.0,
+                };
 
-        // Expected bid = 0.0 * 100.0 = 0.0
-        let bid = campaign.get_bid(&impression);
-        assert_eq!(bid, 0.0);
-    }
+                // Create an impression with value_to_campaign_id[1] = 100.0
+                let mut value_to_campaign_id = [0.0; MAX_CAMPAIGNS];
+                value_to_campaign_id[1] = 100.0;
+
+                let impression = Impression {
+                    seller_id: 0,
+                    charge_type: ChargeType::FIRST_PRICE,
+                    best_other_bid_cpm: 0.0,
+                    floor_cpm: 0.0,
+                    result: AuctionResult {
+                        winner: Winner::BELOW_FLOOR,
+                        supply_cost: 0.0,
+                    },
+                    value_to_campaign_id,
+                };
+
+                // Expected bid = 0.0 * 100.0 = 0.0
+                let bid = campaign.get_bid(&impression, &campaign_param);
+                assert_eq!(bid, 0.0);
+            }
 }
 
