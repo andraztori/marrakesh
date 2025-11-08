@@ -13,6 +13,29 @@
 
 ---
 
+## Design Philosophy: Ideal Pacing Assumption
+
+**Important**: This simulation operates under the assumption of **ideal/optimal pacing**. The convergence loop exists to automatically find the optimal pacing factors that allow campaigns to exactly meet their targets (impressions or budget).
+
+### Why This Matters
+
+The goal of this simulation is **not** to experiment with different pacing strategies or algorithms. Instead, the purpose is to:
+
+1. **Observe bidding strategy behavior** - Study how different bidding approaches perform when pacing is already optimized
+2. **Test pricing strategies** - Experiment with different pricing models and charge types
+3. **Evaluate marketplace management** - Analyze how marketplace rules and mechanisms affect outcomes
+
+By converging to ideal pacing first, we eliminate pacing as a variable and can focus on observing the behavior of:
+- Different bidding strategies
+- Various charge types (FIXED_COST vs FIRST_PRICE)
+- Marketplace dynamics and efficiency
+- Supply and demand interactions
+- Value capture and distribution
+
+The convergence loop is essentially a **simulation setup mechanism** that ensures we're testing campaigns under optimal conditions, allowing us to isolate and study other marketplace dynamics without the confounding effects of sub-optimal pacing.
+
+---
+
 ## Project Structure
 
 ```
