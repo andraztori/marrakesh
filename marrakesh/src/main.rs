@@ -3,7 +3,7 @@ mod simulationrun;
 mod converge;
 
 use rand::{rngs::StdRng, SeedableRng};
-use rand_distr::{Distribution, Normal};
+use rand_distr::{Distribution, Normal, LogNormal};
 use types::{AddCampaignParams, AddSellerParams, CampaignType, ChargeType, Impression, Campaigns, Sellers, MAX_CAMPAIGNS};
 use simulationrun::{CampaignParams, SimulationRun, SimulationStat};
 use converge::SimulationConverge;
@@ -20,7 +20,10 @@ impl Impressions {
         let mut rng = StdRng::seed_from_u64(999);
         let best_other_bid_dist = Normal::new(10.0, 3.0).unwrap();
         let floor_cpm_dist = Normal::new(10.0, 3.0).unwrap();
-        let value_to_campaign_dist = Normal::new(5.0, 3.0).unwrap();
+        let base_impression_value_dist = Normal::new(5.0, 3.0).unwrap();
+        // Log-normal distribution with mean=1.0: if X ~ LogNormal(μ, σ), then E[X] = exp(μ + σ²/2)
+        // To have E[X] = 1, we need μ = -σ²/2. Using σ=0.2 gives μ = -0.02
+        let value_to_campaign_multiplier_dist = LogNormal::new(-0.02, 0.2).unwrap();
 
         let mut impressions = Vec::new();
 
@@ -36,10 +39,15 @@ impl Impressions {
                     ChargeType::FIXED_COST { .. } => (0.0, 0.0),
                 };
 
-                // Generate random values for value_to_campaign_id array
+                // First calculate base impression value
+                let base_impression_value = base_impression_value_dist.sample(&mut rng);
+                
+                // Then generate values for each campaign by multiplying base value with campaign-specific multiplier
                 let mut value_to_campaign_id = [0.0; MAX_CAMPAIGNS];
                 for i in 0..MAX_CAMPAIGNS {
-                    value_to_campaign_id[i] = value_to_campaign_dist.sample(&mut rng);
+                    let multiplier = value_to_campaign_multiplier_dist.sample(&mut rng);
+                //    println!("Campaign {} multiplier: {:.4}", i, multiplier);
+                    value_to_campaign_id[i] = base_impression_value * multiplier;
                 }
 
                 impressions.push(Impression {
@@ -105,7 +113,8 @@ fn main() {
     let mut campaign_params = CampaignParams::new(&campaigns);
     
     // Run simulation loop with pacing adjustments (maximum 100 iterations)
-    SimulationConverge::run(&impressions, &campaigns, &sellers, &mut campaign_params, 100);
+    // verbosity = false means only print convergence message and final solution
+    SimulationConverge::run(&impressions, &campaigns, &sellers, &mut campaign_params, 100, false);
     
     // Run final simulation and output complete statistics
     let final_simulation_run = SimulationRun::new(&impressions, &campaigns, &campaign_params);

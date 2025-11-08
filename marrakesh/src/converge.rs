@@ -8,15 +8,24 @@ pub struct SimulationConverge;
 
 impl SimulationConverge {
     /// Run simulation loop with pacing adjustments (maximum max_iterations iterations)
+    /// 
+    /// # Arguments
+    /// * `verbosity` - If true, prints detailed output for each iteration. If false (default), only prints convergence message and final solution.
     pub fn run(
         impressions: &Impressions,
         campaigns: &Campaigns,
         sellers: &Sellers,
         campaign_params: &mut CampaignParams,
         max_iterations: usize,
+        verbosity: bool,
     ) {
+        let mut final_stats = None;
+        let mut converged = false;
+        
         for iteration in 0..max_iterations {
-            println!("\n=== Iteration {} ===", iteration + 1);
+            if verbosity {
+                println!("\n=== Iteration {} ===", iteration + 1);
+            }
             
             // Run auctions for all impressions
             let simulation_run = SimulationRun::new(impressions, campaigns, campaign_params);
@@ -41,7 +50,7 @@ impl SimulationConverge {
                     }
                 };
                 
-                let tolerance = target * 0.01; // 1% tolerance
+                let tolerance = target * 0.005; // 0.5% tolerance
                 
                 if actual < target - tolerance {
                     // Below target - increase pacing
@@ -60,17 +69,41 @@ impl SimulationConverge {
                     *pacing *= 1.0 - adjustment_factor;
                     pacing_changed = true;
                 }
-                // If practically on goal (within 1%), keep constant
+                // If practically on goal (within 0.5%), keep constant
             }
             
-            // Output campaign statistics only during iterations
-            stats.printout_campaigns(campaigns, campaign_params);
+            // Output campaign statistics only during iterations if verbose
+            if verbosity {
+                stats.printout_campaigns(campaigns, campaign_params);
+            }
             
             // Break early if no pacing changes were made (converged)
             if !pacing_changed {
-                println!("\nConverged after {} iterations", iteration + 1);
+                final_stats = Some(stats);
+                converged = true;
+                if verbosity {
+                    println!("\nConverged after {} iterations", iteration + 1);
+                } else {
+                    println!("Converged after {} iterations", iteration + 1);
+                }
                 break;
             }
+            
+            // Keep track of final stats in case we reach max_iterations
+            final_stats = Some(stats);
+        }
+        
+        // Print final solution only if verbose
+        if verbosity {
+            if let Some(stats) = final_stats {
+                if !converged {
+                    println!("\nReached maximum iterations ({})", max_iterations);
+                }
+                stats.printout_campaigns(campaigns, campaign_params);
+            }
+        } else if !converged {
+            // Only print if we didn't converge (and verbosity is off)
+            println!("Reached maximum iterations ({})", max_iterations);
         }
     }
 }
