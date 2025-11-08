@@ -1,95 +1,73 @@
 mod types;
 mod simulationrun;
 mod converge;
+mod utils;
+mod impressions;
 
-use rand::{rngs::StdRng, SeedableRng};
-use rand_distr::{Distribution, LogNormal};
-use types::{AddCampaignParams, AddSellerParams, CampaignType, ChargeType, Impression, Campaigns, Sellers, MAX_CAMPAIGNS};
+use types::{AddCampaignParams, AddSellerParams, CampaignType, ChargeType, Campaigns, Sellers};
 use simulationrun::{CampaignParams, SimulationRun, SimulationStat};
 use converge::SimulationConverge;
+use impressions::{Impressions, ImpressionsParam};
 
-/// Container for impressions with methods to create impressions
-pub struct Impressions {
-    pub impressions: Vec<Impression>,
+/// Default implementation of ImpressionsParam with parametrizable distribution parameters
+pub struct ImpressionsDefault {
+    best_other_bid_mean: f64,
+    best_other_bid_stddev: f64,
+    floor_cpm_mean: f64,
+    floor_cpm_stddev: f64,
+    base_impression_value_mean: f64,
+    base_impression_value_stddev: f64,
+    value_to_campaign_multiplier_mean: f64,
+    value_to_campaign_multiplier_stddev: f64,
+    fixed_cost_floor_cpm: f64,
 }
 
-impl Impressions {
-    /// Convert mean and standard deviation to log-normal distribution parameters
-    /// Returns (μ, σ) for LogNormal(μ, σ) that approximates the given mean and stddev
-    /// 
-    /// For LogNormal(μ, σ):
-    /// - E[X] = exp(μ + σ²/2)
-    /// - Var[X] = (exp(σ²) - 1) * exp(2μ + σ²)
-    /// 
-    /// To convert from mean (m) and stddev (s):
-    /// - σ = sqrt(ln(1 + s²/m²))
-    /// - μ = ln(m) - σ²/2
-    fn lognormal_from_mean_stddev(mean: f64, stddev: f64) -> (f64, f64) {
-        let variance = stddev * stddev;
-        let sigma_squared = (1.0 + variance / (mean * mean)).ln();
-        let sigma = sigma_squared.sqrt();
-        let mu = mean.ln() - sigma_squared / 2.0;
-        (mu, sigma)
-    }
-
-    /// Create a log-normal distribution from mean and standard deviation
-    /// This is a convenience wrapper that converts mean/stddev to log-normal parameters
-    fn create_lognormal(mean: f64, stddev: f64) -> LogNormal<f64> {
-        let (mu, sigma) = Self::lognormal_from_mean_stddev(mean, stddev);
-        LogNormal::new(mu, sigma).unwrap()
-    }
-
-    /// Create a new Impressions container and populate it from sellers
-    pub fn new(sellers: &Sellers) -> Self {
-        // Use deterministic seed for reproducible results
-        let mut rng = StdRng::seed_from_u64(999);
-        
-        // Log-normal distributions for best_other_bid and floor_cpm (mean=10.0, stddev=3.0)
-        let best_other_bid_dist = Self::create_lognormal(10.0, 3.0);
-        let floor_cpm_dist = Self::create_lognormal(10.0, 3.0);
-        
-        // Log-normal distribution for base impression value (mean=5.0, stddev=3.0)
-        let base_impression_value_dist = Self::create_lognormal(5.0, 3.0);
-        
-        // Log-normal distribution for multiplier (mean=1.0, stddev=0.2)
-        let value_to_campaign_multiplier_dist = Self::create_lognormal(1.0, 0.2);
-
-        let mut impressions = Vec::new();
-
-        for seller in &sellers.sellers {
-            for _ in 0..seller.num_impressions {
-                let (best_other_bid_cpm, floor_cpm) = match seller.charge_type {
-                    ChargeType::FIRST_PRICE => {
-                        (
-                            best_other_bid_dist.sample(&mut rng),
-                            floor_cpm_dist.sample(&mut rng),
-                        )
-                    }
-                    ChargeType::FIXED_COST { .. } => (0.0, 0.0),
-                };
-
-                // First calculate base impression value
-                let base_impression_value = base_impression_value_dist.sample(&mut rng);
-                
-                // Then generate values for each campaign by multiplying base value with campaign-specific multiplier
-                let mut value_to_campaign_id = [0.0; MAX_CAMPAIGNS];
-                for i in 0..MAX_CAMPAIGNS {
-                    let multiplier = value_to_campaign_multiplier_dist.sample(&mut rng);
-                //    println!("Campaign {} multiplier: {:.4}", i, multiplier);
-                    value_to_campaign_id[i] = base_impression_value * multiplier;
-                }
-
-                impressions.push(Impression {
-                    seller_id: seller.seller_id,
-                    charge_type: seller.charge_type.clone(),
-                    best_other_bid_cpm,
-                    floor_cpm,
-                    value_to_campaign_id,
-                });
-            }
+impl ImpressionsDefault {
+    /// Create a new ImpressionsDefault with specified distribution parameters
+    pub fn new(
+        best_other_bid_mean: f64,
+        best_other_bid_stddev: f64,
+        floor_cpm_mean: f64,
+        floor_cpm_stddev: f64,
+        base_impression_value_mean: f64,
+        base_impression_value_stddev: f64,
+        value_to_campaign_multiplier_mean: f64,
+        value_to_campaign_multiplier_stddev: f64,
+        fixed_cost_floor_cpm: f64,
+    ) -> Self {
+        Self {
+            best_other_bid_mean,
+            best_other_bid_stddev,
+            floor_cpm_mean,
+            floor_cpm_stddev,
+            base_impression_value_mean,
+            base_impression_value_stddev,
+            value_to_campaign_multiplier_mean,
+            value_to_campaign_multiplier_stddev,
+            fixed_cost_floor_cpm,
         }
+    }
+}
 
-        Self { impressions }
+impl ImpressionsParam for ImpressionsDefault {
+    fn best_other_bid_dist(&self) -> Box<dyn impressions::DistributionF64> {
+        Box::new(utils::create_lognormal(self.best_other_bid_mean, self.best_other_bid_stddev))
+    }
+
+    fn floor_cpm_dist(&self) -> Box<dyn impressions::DistributionF64> {
+        Box::new(utils::create_lognormal(self.floor_cpm_mean, self.floor_cpm_stddev))
+    }
+
+    fn base_impression_value_dist(&self) -> Box<dyn impressions::DistributionF64> {
+        Box::new(utils::create_lognormal(self.base_impression_value_mean, self.base_impression_value_stddev))
+    }
+
+    fn value_to_campaign_multiplier_dist(&self) -> Box<dyn impressions::DistributionF64> {
+        Box::new(utils::create_lognormal(self.value_to_campaign_multiplier_mean, self.value_to_campaign_multiplier_stddev))
+    }
+
+    fn fixed_cost_floor_cpm(&self) -> f64 {
+        self.fixed_cost_floor_cpm
     }
 }
 
@@ -131,8 +109,19 @@ fn main() {
         num_impressions: 10000,
     });
 
-    // Create impressions for all sellers
-    let impressions = Impressions::new(&sellers);
+    // Create impressions for all sellers using default parameters
+    let impressions_params = ImpressionsDefault::new(
+        10.0,  // best_other_bid_mean
+        3.0,   // best_other_bid_stddev
+        10.0,  // floor_cpm_mean
+        3.0,   // floor_cpm_stddev
+        10.0,  // base_impression_value_mean
+        3.0,   // base_impression_value_stddev
+        1.0,   // value_to_campaign_multiplier_mean
+        0.2,   // value_to_campaign_multiplier_stddev
+        0.0,   // fixed_cost_floor_cpm
+    );
+    let impressions = Impressions::new(&sellers, &impressions_params);
 
     println!("Initialized {} sellers", sellers.sellers.len());
     println!("Initialized {} campaigns", campaigns.campaigns.len());

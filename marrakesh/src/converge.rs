@@ -1,7 +1,6 @@
-use crate::types::{CampaignType, Campaigns};
+use crate::types::{CampaignType, Campaigns, Sellers};
 use crate::simulationrun::{CampaignParams, SimulationRun, SimulationStat};
-use crate::Impressions;
-use crate::Sellers;
+use crate::impressions::Impressions;
 
 /// Object for running simulation convergence with pacing adjustments
 pub struct SimulationConverge;

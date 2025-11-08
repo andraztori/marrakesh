@@ -1,5 +1,5 @@
 use crate::types::{AuctionResult, Campaigns, ChargeType, Sellers, Winner};
-use crate::Impressions;
+use crate::impressions::Impressions;
 
 /// Container for auction results
 /// Note: SimulationRun results are matched to Impressions by index in the vectors
