@@ -3,7 +3,7 @@ mod simulationrun;
 mod converge;
 
 use rand::{rngs::StdRng, SeedableRng};
-use rand_distr::{Distribution, Normal, LogNormal};
+use rand_distr::{Distribution, LogNormal};
 use types::{AddCampaignParams, AddSellerParams, CampaignType, ChargeType, Impression, Campaigns, Sellers, MAX_CAMPAIGNS};
 use simulationrun::{CampaignParams, SimulationRun, SimulationStat};
 use converge::SimulationConverge;
@@ -14,16 +14,45 @@ pub struct Impressions {
 }
 
 impl Impressions {
+    /// Convert mean and standard deviation to log-normal distribution parameters
+    /// Returns (μ, σ) for LogNormal(μ, σ) that approximates the given mean and stddev
+    /// 
+    /// For LogNormal(μ, σ):
+    /// - E[X] = exp(μ + σ²/2)
+    /// - Var[X] = (exp(σ²) - 1) * exp(2μ + σ²)
+    /// 
+    /// To convert from mean (m) and stddev (s):
+    /// - σ = sqrt(ln(1 + s²/m²))
+    /// - μ = ln(m) - σ²/2
+    fn lognormal_from_mean_stddev(mean: f64, stddev: f64) -> (f64, f64) {
+        let variance = stddev * stddev;
+        let sigma_squared = (1.0 + variance / (mean * mean)).ln();
+        let sigma = sigma_squared.sqrt();
+        let mu = mean.ln() - sigma_squared / 2.0;
+        (mu, sigma)
+    }
+
+    /// Create a log-normal distribution from mean and standard deviation
+    /// This is a convenience wrapper that converts mean/stddev to log-normal parameters
+    fn create_lognormal(mean: f64, stddev: f64) -> LogNormal<f64> {
+        let (mu, sigma) = Self::lognormal_from_mean_stddev(mean, stddev);
+        LogNormal::new(mu, sigma).unwrap()
+    }
+
     /// Create a new Impressions container and populate it from sellers
     pub fn new(sellers: &Sellers) -> Self {
         // Use deterministic seed for reproducible results
         let mut rng = StdRng::seed_from_u64(999);
-        let best_other_bid_dist = Normal::new(10.0, 3.0).unwrap();
-        let floor_cpm_dist = Normal::new(10.0, 3.0).unwrap();
-        let base_impression_value_dist = Normal::new(5.0, 3.0).unwrap();
-        // Log-normal distribution with mean=1.0: if X ~ LogNormal(μ, σ), then E[X] = exp(μ + σ²/2)
-        // To have E[X] = 1, we need μ = -σ²/2. Using σ=0.2 gives μ = -0.02
-        let value_to_campaign_multiplier_dist = LogNormal::new(-0.02, 0.2).unwrap();
+        
+        // Log-normal distributions for best_other_bid and floor_cpm (mean=10.0, stddev=3.0)
+        let best_other_bid_dist = Self::create_lognormal(10.0, 3.0);
+        let floor_cpm_dist = Self::create_lognormal(10.0, 3.0);
+        
+        // Log-normal distribution for base impression value (mean=5.0, stddev=3.0)
+        let base_impression_value_dist = Self::create_lognormal(5.0, 3.0);
+        
+        // Log-normal distribution for multiplier (mean=1.0, stddev=0.2)
+        let value_to_campaign_multiplier_dist = Self::create_lognormal(1.0, 0.2);
 
         let mut impressions = Vec::new();
 
