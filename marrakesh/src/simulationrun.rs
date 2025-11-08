@@ -71,6 +71,7 @@ pub struct OverallStat {
     pub total_supply_cost: f64,
     pub total_virtual_cost: f64,
     pub total_buyer_charge: f64,
+    pub total_value: f64,
 }
 
 /// Complete simulation statistics
@@ -150,17 +151,21 @@ impl SimulationStat {
     let mut total_supply_cost_all = 0.0;
     let mut total_virtual_cost_all = 0.0;
     let mut total_buyer_charge_all = 0.0;
+    let mut total_value_all = 0.0;
 
-    for result in &simulation_run.results {
+    for (index, result) in simulation_run.results.iter().enumerate() {
         match result.winner {
             Winner::BELOW_FLOOR => below_floor_count += 1,
             Winner::OTHER_DEMAND => other_demand_count += 1,
             Winner::NO_DEMAND => no_bids_count += 1,
-            Winner::Campaign { virtual_cost, buyer_charge, .. } => {
+            Winner::Campaign { campaign_id, virtual_cost, buyer_charge, .. } => {
                 // All costs are already converted from CPM
                 total_supply_cost_all += result.supply_cost;
                 total_virtual_cost_all += virtual_cost;
                 total_buyer_charge_all += buyer_charge;
+                // Add value for the winning campaign
+                let impression = &impressions.impressions[index];
+                total_value_all += impression.value_to_campaign_id[campaign_id] / 1000.0;
             }
         }
     }
@@ -175,24 +180,44 @@ impl SimulationStat {
                 total_supply_cost: total_supply_cost_all,
                 total_virtual_cost: total_virtual_cost_all,
                 total_buyer_charge: total_buyer_charge_all,
+                total_value: total_value_all,
             },
         }
     }
 
-    /// Output statistics to terminal
-    pub fn printout(&self, campaigns: &Campaigns, sellers: &Sellers) {
-        // Output campaign statistics
-        println!("\n=== Campaign Statistics ===");
+    /// Output campaign statistics to terminal (without header, for compact iteration output)
+    pub fn printout_campaigns(&self, campaigns: &Campaigns, campaign_params: &CampaignParams) {
+        use crate::types::CampaignType;
+        
         for (index, campaign_stat) in self.campaign_stats.iter().enumerate() {
             let campaign = &campaigns.campaigns[index];
-            println!("\nCampaign {} ({})", campaign.campaign_id, campaign.campaign_name);
+            let pacing = campaign_params.params[index].pacing;
+            
+            let type_and_target = match &campaign.campaign_type {
+                CampaignType::FIXED_IMPRESSIONS { total_impressions_target } => {
+                    format!("FIXED_IMPRESSIONS (target: {})", total_impressions_target)
+                }
+                CampaignType::FIXED_BUDGET { total_budget_target } => {
+                    format!("FIXED_BUDGET (target: {:.2})", total_budget_target)
+                }
+            };
+            
+            println!("\nCampaign {} ({}) - {} - Pacing: {:.4}", 
+                     campaign.campaign_id, campaign.campaign_name, type_and_target, pacing);
             println!("  Impressions Obtained: {}", campaign_stat.impressions_obtained);
-            println!("  Total Costs (supply/virtual/buyer): {:.2} / {:.2} / {:.2}", 
+            println!("  Costs (supply/virtual/buyer): {:.2} / {:.2} / {:.2}", 
                      campaign_stat.total_supply_cost, 
                      campaign_stat.total_virtual_cost, 
                      campaign_stat.total_buyer_charge);
-            println!("  Total Value: {:.2}", campaign_stat.total_value);
+            println!("  Obtained Value: {:.2}", campaign_stat.total_value);
         }
+    }
+
+    /// Output complete statistics to terminal
+    pub fn printout(&self, campaigns: &Campaigns, sellers: &Sellers, campaign_params: &CampaignParams) {
+        // Output campaign statistics
+        println!("\n=== Campaign Statistics ===");
+        self.printout_campaigns(campaigns, campaign_params);
 
         // Output seller statistics
         println!("\n=== Seller Statistics ===");
@@ -213,13 +238,15 @@ impl SimulationStat {
 
         // Output overall statistics
         println!("\n=== Overall Statistics ===");
-        println!("Below Floor: {}", self.overall_stat.below_floor_count);
-        println!("Sold to Other Demand: {}", self.overall_stat.other_demand_count);
-        println!("Without Any Bids: {}", self.overall_stat.no_bids_count);
+        println!("Impressions (below floor/other demand/no bids): {} / {} / {}", 
+                 self.overall_stat.below_floor_count,
+                 self.overall_stat.other_demand_count,
+                 self.overall_stat.no_bids_count);
         println!("Total Costs (supply/virtual/buyer): {:.2} / {:.2} / {:.2}", 
                  self.overall_stat.total_supply_cost, 
                  self.overall_stat.total_virtual_cost, 
                  self.overall_stat.total_buyer_charge);
+        println!("Total Obtained Value: {:.2}", self.overall_stat.total_value);
     }
 }
 

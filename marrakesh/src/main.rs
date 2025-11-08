@@ -16,8 +16,8 @@ impl Impressions {
     pub fn new(sellers: &Sellers) -> Self {
         // Use deterministic seed for reproducible results
         let mut rng = StdRng::seed_from_u64(999);
-        let best_other_bid_dist = Normal::new(10.0, 1.0).unwrap();
-        let floor_cpm_dist = Normal::new(8.0, 3.0).unwrap();
+        let best_other_bid_dist = Normal::new(10.0, 3.0).unwrap();
+        let floor_cpm_dist = Normal::new(10.0, 3.0).unwrap();
         let value_to_campaign_dist = Normal::new(10.0, 3.0).unwrap();
 
         let mut impressions = Vec::new();
@@ -64,7 +64,7 @@ fn main() {
         campaign_name: "Campaign 0".to_string(),
         campaign_rnd: 12345,
         campaign_type: CampaignType::FIXED_IMPRESSIONS {
-            total_impressions_target: 10000,
+            total_impressions_target: 1000,
         },
     }).expect("Failed to add campaign");
 
@@ -72,7 +72,7 @@ fn main() {
         campaign_name: "Campaign 1".to_string(),
         campaign_rnd: 67890,
         campaign_type: CampaignType::FIXED_BUDGET {
-            total_budget_target: 200.0,
+            total_budget_target: 20.0,
         },
     }).expect("Failed to add campaign");
 
@@ -83,7 +83,7 @@ fn main() {
         charge_type: ChargeType::FIXED_COST {
             fixed_cost_cpm: 10.0,
         },
-        num_impressions: 10000,
+        num_impressions: 1000,
     });
 
     sellers.add(AddSellerParams {
@@ -100,11 +100,70 @@ fn main() {
     println!("Initialized {} impressions", impressions.impressions.len());
 
     // Create campaign parameters from campaigns (default pacing = 1.0)
-    let campaign_params = CampaignParams::new(&campaigns);
-    // Run auctions for all impressions
-    let simulation_run = SimulationRun::new(&impressions, &campaigns, &campaign_params);
+    let mut campaign_params = CampaignParams::new(&campaigns);
+    
+    // Run simulation loop with pacing adjustments (maximum 10 iterations)
+    for iteration in 0..100 {
+        println!("\n=== Iteration {} ===", iteration + 1);
+        
+        // Run auctions for all impressions
+        let simulation_run = SimulationRun::new(&impressions, &campaigns, &campaign_params);
 
-    // Generate and output statistics
-    let stats = SimulationStat::new(&campaigns, &sellers, &impressions, &simulation_run);
-    stats.printout(&campaigns, &sellers);
+        // Generate statistics
+        let stats = SimulationStat::new(&campaigns, &sellers, &impressions, &simulation_run);
+        
+        // Adjust pacing for each campaign based on targets
+        // Use adaptive adjustment that reduces as we get closer to target
+        let mut pacing_changed = false;
+        for (index, campaign) in campaigns.campaigns.iter().enumerate() {
+            let campaign_stat = &stats.campaign_stats[index];
+            let pacing = &mut campaign_params.params[index].pacing;
+            
+            // Get target and actual values based on campaign type
+            let (target, actual) = match &campaign.campaign_type {
+                CampaignType::FIXED_IMPRESSIONS { total_impressions_target } => {
+                    (*total_impressions_target as f64, campaign_stat.impressions_obtained as f64)
+                }
+                CampaignType::FIXED_BUDGET { total_budget_target } => {
+                    (*total_budget_target, campaign_stat.total_buyer_charge)
+                }
+            };
+            
+            let tolerance = target * 0.01; // 1% tolerance
+            
+            if actual < target - tolerance {
+                // Below target - increase pacing
+                // Calculate error percentage and use proportional adjustment
+                let error_ratio = (target - actual) / target;
+                // Use smaller adjustment when closer to target (max 10%)
+                let adjustment_factor = (error_ratio * 0.1).min(0.1);
+                *pacing *= 1.0 + adjustment_factor;
+                pacing_changed = true;
+            } else if actual > target + tolerance {
+                // Above target - decrease pacing
+                // Calculate error percentage and use proportional adjustment
+                let error_ratio = (actual - target) / target;
+                // Use smaller adjustment when closer to target (max 10%)
+                let adjustment_factor = (error_ratio * 0.1).min(0.1);
+                *pacing *= 1.0 - adjustment_factor;
+                pacing_changed = true;
+            }
+            // If practically on goal (within 1%), keep constant
+        }
+        
+        // Output campaign statistics only during iterations
+        stats.printout_campaigns(&campaigns, &campaign_params);
+        
+        // Break early if no pacing changes were made (converged)
+        if !pacing_changed {
+            println!("\nConverged after {} iterations", iteration + 1);
+            break;
+        }
+    }
+    
+    // Run final simulation and output complete statistics
+    let final_simulation_run = SimulationRun::new(&impressions, &campaigns, &campaign_params);
+    let final_stats = SimulationStat::new(&campaigns, &sellers, &impressions, &final_simulation_run);
+    println!("\n=== Final Results ===");
+    final_stats.printout(&campaigns, &sellers, &campaign_params);
 }
