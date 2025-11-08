@@ -45,14 +45,13 @@ pub struct Impression {
     pub charge_type: ChargeType,
     pub best_other_bid_cpm: f64,
     pub floor_cpm: f64,
-    pub result: AuctionResult,
     pub value_to_campaign_id: [f64; MAX_CAMPAIGNS],
 }
 
 impl Impression {
     /// Run an auction for this impression with the given campaigns and campaign parameters
-    /// Determines the winning campaign based on bids
-    pub fn run_auction(&mut self, campaigns: &Campaigns, campaign_params: &crate::simulationrun::CampaignParams) {
+    /// Returns the auction result
+    pub fn run_auction(&self, campaigns: &Campaigns, campaign_params: &crate::simulationrun::CampaignParams) -> AuctionResult {
         // Get bids from all campaigns
         let mut winning_bid_cpm = 0.0;
         let mut winning_campaign_id: Option<usize> = None;
@@ -103,10 +102,10 @@ impl Impression {
             (Winner::NO_DEMAND, get_supply_cost_cpm(0.0) / 1000.0)
         };
 
-        self.result = AuctionResult {
+        AuctionResult {
             winner,
             supply_cost,
-        };
+        }
     }
 }
 
@@ -234,10 +233,6 @@ mod tests {
             charge_type: ChargeType::FIRST_PRICE,
             best_other_bid_cpm: 0.0,
             floor_cpm: 0.0,
-            result: AuctionResult {
-                winner: Winner::BELOW_FLOOR,
-                supply_cost: 0.0,
-            },
             value_to_campaign_id,
         };
 
@@ -274,10 +269,6 @@ mod tests {
                     },
                     best_other_bid_cpm: 0.0,
                     floor_cpm: 0.0,
-                    result: AuctionResult {
-                        winner: Winner::BELOW_FLOOR,
-                        supply_cost: 0.0,
-                    },
                     value_to_campaign_id,
                 };
 
@@ -312,10 +303,6 @@ mod tests {
                     charge_type: ChargeType::FIRST_PRICE,
                     best_other_bid_cpm: 0.0,
                     floor_cpm: 0.0,
-                    result: AuctionResult {
-                        winner: Winner::BELOW_FLOOR,
-                        supply_cost: 0.0,
-                    },
                     value_to_campaign_id,
                 };
 

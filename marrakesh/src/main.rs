@@ -3,8 +3,8 @@ mod simulationrun;
 
 use rand::{rngs::StdRng, SeedableRng};
 use rand_distr::{Distribution, Normal};
-use types::{AddCampaignParams, AddSellerParams, AuctionResult, CampaignType, ChargeType, Impression, Campaigns, Sellers, Winner, MAX_CAMPAIGNS};
-use simulationrun::{generate_statistics, output_statistics, CampaignParams};
+use types::{AddCampaignParams, AddSellerParams, CampaignType, ChargeType, Impression, Campaigns, Sellers, MAX_CAMPAIGNS};
+use simulationrun::{CampaignParams, SimulationRun, SimulationStat};
 
 /// Container for impressions with methods to create impressions
 pub struct Impressions {
@@ -12,18 +12,15 @@ pub struct Impressions {
 }
 
 impl Impressions {
-    pub fn new() -> Self {
-        Self {
-            impressions: Vec::new(),
-        }
-    }
-
-    pub fn create_from_sellers(&mut self, sellers: &Sellers) {
+    /// Create a new Impressions container and populate it from sellers
+    pub fn new(sellers: &Sellers) -> Self {
         // Use deterministic seed for reproducible results
         let mut rng = StdRng::seed_from_u64(999);
         let best_other_bid_dist = Normal::new(10.0, 1.0).unwrap();
         let floor_cpm_dist = Normal::new(8.0, 3.0).unwrap();
         let value_to_campaign_dist = Normal::new(10.0, 3.0).unwrap();
+
+        let mut impressions = Vec::new();
 
         for seller in &sellers.sellers {
             for _ in 0..seller.num_impressions {
@@ -43,25 +40,22 @@ impl Impressions {
                     value_to_campaign_id[i] = value_to_campaign_dist.sample(&mut rng);
                 }
 
-                self.impressions.push(Impression {
+                impressions.push(Impression {
                     seller_id: seller.seller_id,
                     charge_type: seller.charge_type.clone(),
                     best_other_bid_cpm,
                     floor_cpm,
-                    result: AuctionResult {
-                        winner: Winner::BELOW_FLOOR,
-                        supply_cost: 0.0,
-                    },
                     value_to_campaign_id,
                 });
             }
         }
+
+        Self { impressions }
     }
 }
 
 fn main() {
-    // Initialize containers for impressions, campaigns, and sellers
-    let mut impressions = Impressions::new();
+    // Initialize containers for campaigns and sellers
     let mut campaigns = Campaigns::new();
     let mut sellers = Sellers::new();
 
@@ -82,8 +76,6 @@ fn main() {
         },
     }).expect("Failed to add campaign");
 
-    // Create campaign parameters from campaigns (default pacing = 1.0)
-    let campaign_params = CampaignParams::new(&campaigns);
 
     // Add two sellers (IDs are automatically set to match Vec index)
     sellers.add(AddSellerParams {
@@ -101,20 +93,18 @@ fn main() {
     });
 
     // Create impressions for all sellers
-    impressions.create_from_sellers(&sellers);
+    let impressions = Impressions::new(&sellers);
 
+    println!("Initialized {} sellers", sellers.sellers.len());
     println!("Initialized {} campaigns", campaigns.campaigns.len());
     println!("Initialized {} impressions", impressions.impressions.len());
-    println!("Initialized {} sellers", sellers.sellers.len());
 
+    // Create campaign parameters from campaigns (default pacing = 1.0)
+    let campaign_params = CampaignParams::new(&campaigns);
     // Run auctions for all impressions
-    for impression in &mut impressions.impressions {
-        impression.run_auction(&campaigns, &campaign_params);
-    }
+    let simulation_run = SimulationRun::new(&impressions, &campaigns, &campaign_params);
 
-    // Generate statistics
-    let stats = generate_statistics(&campaigns, &sellers, &impressions);
-
-    // Output statistics
-    output_statistics(&stats, &campaigns, &sellers);
+    // Generate and output statistics
+    let stats = SimulationStat::new(&campaigns, &sellers, &impressions, &simulation_run);
+    stats.printout(&campaigns, &sellers);
 }
