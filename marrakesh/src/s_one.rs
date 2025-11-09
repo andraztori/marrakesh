@@ -118,6 +118,10 @@ pub fn run(verbosity: Verbosity) -> Result<(), Box<dyn std::error::Error>> {
     // - Higher total value obtained (more impressions available)
     // - Supply cost > buyer charge (marketplace becomes unprofitable)
     
+    if verbosity >= Verbosity::Summary {
+        println!();
+    }
+    
     let mut errors = Vec::new();
     
     // Check: Variant A has higher total cost charged to buyers

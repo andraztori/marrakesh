@@ -242,7 +242,7 @@ impl SimulationStat {
 
     /// Output only overall statistics (no per-campaign or per-seller breakdown)
     pub fn printout_overall(&self) {
-        println!("\n=== Overall Statistics ===");
+        println!("=== Overall Statistics ===");
         println!("Impressions (below floor/other demand/no bids): {} / {} / {}", 
                  self.overall_stat.below_floor_count,
                  self.overall_stat.other_demand_count,
