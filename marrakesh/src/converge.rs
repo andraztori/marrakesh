@@ -1,6 +1,7 @@
 use crate::types::{CampaignType, Campaigns, Sellers};
 use crate::simulationrun::{CampaignParams, SimulationRun, SimulationStat};
 use crate::impressions::Impressions;
+use crate::scenarios::Verbosity;
 
 /// Object for running simulation convergence with pacing adjustments
 pub struct SimulationConverge;
@@ -9,20 +10,20 @@ impl SimulationConverge {
     /// Run simulation loop with pacing adjustments (maximum max_iterations iterations)
     /// 
     /// # Arguments
-    /// * `verbosity` - If true, prints detailed output for each iteration. If false (default), only prints convergence message and final solution.
+    /// * `verbosity` - Controls output level: None (no output), Summary (final stats only), Full (all iterations)
     pub fn run(
         impressions: &Impressions,
         campaigns: &Campaigns,
         sellers: &Sellers,
         campaign_params: &mut CampaignParams,
         max_iterations: usize,
-        verbosity: bool,
+        verbosity: Verbosity,
     ) {
         let mut final_stats = None;
         let mut converged = false;
         
         for iteration in 0..max_iterations {
-            if verbosity {
+            if verbosity == Verbosity::Full {
                 println!("\n=== Iteration {} ===", iteration + 1);
             }
             
@@ -71,8 +72,8 @@ impl SimulationConverge {
                 // If practically on goal (within 0.5%), keep constant
             }
             
-            // Output campaign statistics only during iterations if verbose
-            if verbosity {
+            // Output campaign statistics only during iterations if full verbosity
+            if verbosity == Verbosity::Full {
                 stats.printout_campaigns(campaigns, campaign_params);
             }
             
@@ -80,9 +81,7 @@ impl SimulationConverge {
             if !pacing_changed {
                 final_stats = Some(stats);
                 converged = true;
-                if verbosity {
-                    println!("\nConverged after {} iterations", iteration + 1);
-                } else {
+                if verbosity == Verbosity::Full {
                     println!("Converged after {} iterations", iteration + 1);
                 }
                 break;
@@ -92,16 +91,17 @@ impl SimulationConverge {
             final_stats = Some(stats);
         }
         
-        // Print final solution only if verbose
-        if verbosity {
+        // Print final solution only for Full verbosity
+        // Summary verbosity will be handled by the caller (e.g., run_variant)
+        if verbosity == Verbosity::Full {
             if let Some(stats) = final_stats {
                 if !converged {
-                    println!("\nReached maximum iterations ({})", max_iterations);
+                    println!("Reached maximum iterations ({})", max_iterations);
                 }
                 stats.printout_campaigns(campaigns, campaign_params);
             }
-        } else if !converged {
-            // Only print if we didn't converge (and verbosity is off)
+        } else if !converged && verbosity == Verbosity::None {
+            // Only print if we didn't converge (and verbosity is None)
             println!("Reached maximum iterations ({})", max_iterations);
         }
     }

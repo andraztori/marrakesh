@@ -20,7 +20,7 @@ fn lognormal_from_mean_stddev(mean: f64, stddev: f64) -> (f64, f64) {
 
 /// Create a log-normal distribution from mean and standard deviation
 /// This is a convenience wrapper that converts mean/stddev to log-normal parameters
-pub fn create_lognormal(mean: f64, stddev: f64) -> LogNormal<f64> {
+pub fn lognormal_dist(mean: f64, stddev: f64) -> LogNormal<f64> {
     let (mu, sigma) = lognormal_from_mean_stddev(mean, stddev);
     LogNormal::new(mu, sigma).unwrap()
 }
