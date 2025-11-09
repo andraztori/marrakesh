@@ -1,5 +1,5 @@
 use crate::types::{AddCampaignParams, AddSellerParams, CampaignType, ChargeType, Campaigns, Sellers};
-use crate::simulationrun::{CampaignParams, SimulationRun, SimulationStat};
+use crate::simulationrun::{CampaignParams, SellerParams, SimulationRun, SimulationStat};
 use crate::converge::SimulationConverge;
 use crate::impressions::{Impressions, ImpressionsParam};
 use crate::scenarios::Verbosity;
@@ -60,13 +60,15 @@ fn run_variant(verbosity: Verbosity, hb_impressions: usize) -> SimulationStat {
 
     // Create campaign parameters from campaigns (default pacing = 1.0)
     let mut campaign_params = CampaignParams::new(&campaigns);
+    // Create seller parameters from sellers (default boost_factor = 1.0)
+    let seller_params = SellerParams::new(&sellers);
     
     // Run simulation loop with pacing adjustments (maximum 100 iterations)
     // Pass verbosity parameter through
-    SimulationConverge::run(&impressions, &campaigns, &sellers, &mut campaign_params, 100, verbosity);
+    SimulationConverge::run(&impressions, &campaigns, &sellers, &mut campaign_params, &seller_params, 100, verbosity);
     
     // Run final simulation and return statistics
-    let final_simulation_run = SimulationRun::new(&impressions, &campaigns, &campaign_params);
+    let final_simulation_run = SimulationRun::new(&impressions, &campaigns, &campaign_params, &sellers, &seller_params);
     let stats = SimulationStat::new(&campaigns, &sellers, &impressions, &final_simulation_run);
     
     // Print final stats if Summary or Full verbosity

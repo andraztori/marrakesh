@@ -9,11 +9,14 @@ pub struct SimulationRun {
 
 impl SimulationRun {
     /// Create a new SimulationRun container and run auctions for all impressions
-    pub fn new(impressions: &Impressions, campaigns: &Campaigns, campaign_params: &CampaignParams) -> Self {
+    pub fn new(impressions: &Impressions, campaigns: &Campaigns, campaign_params: &CampaignParams, sellers: &Sellers, seller_params: &SellerParams) -> Self {
         let mut results = Vec::with_capacity(impressions.impressions.len());
         
         for impression in &impressions.impressions {
-            let result = impression.run_auction(campaigns, campaign_params);
+            // Get the seller and seller_param for this impression
+            let seller = &sellers.sellers[impression.seller_id];
+            let seller_param = &seller_params.params[impression.seller_id];
+            let result = impression.run_auction(campaigns, campaign_params, seller, seller_param);
             results.push(result);
         }
         
@@ -40,6 +43,31 @@ impl CampaignParams {
         for _campaign in &campaigns.campaigns {
             params.push(CampaignParam {
                 pacing: 1.0,
+            });
+        }
+        Self { params }
+    }
+}
+
+/// Represents seller parameters (boost_factor, etc.)
+/// Note: SellerParam is matched to Seller by index in the vectors
+#[derive(Debug, Clone)]
+pub struct SellerParam {
+    pub boost_factor: f64,
+}
+
+/// Container for seller parameters
+pub struct SellerParams {
+    pub params: Vec<SellerParam>,
+}
+
+impl SellerParams {
+    /// Create seller parameters from sellers, defaulting all boost_factors to 1.0
+    pub fn new(sellers: &Sellers) -> Self {
+        let mut params = Vec::with_capacity(sellers.sellers.len());
+        for _seller in &sellers.sellers {
+            params.push(SellerParam {
+                boost_factor: 1.0,
             });
         }
         Self { params }

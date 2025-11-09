@@ -7,17 +7,18 @@ mod scenarios;
 
 // Include scenario files so their constructors run
 mod s_one;
+mod s_mrg_boost;
 
 use types::{AddCampaignParams, AddSellerParams, CampaignType, ChargeType, Campaigns, Sellers};
-use simulationrun::{CampaignParams, SimulationRun, SimulationStat};
+use simulationrun::{CampaignParams, SellerParams, SimulationRun, SimulationStat};
 use converge::SimulationConverge;
 use impressions::Impressions;
 
 use scenarios::Verbosity;
 
 fn main() {
-    // Run the s_one scenario
-    if let Err(e) = s_one::run(Verbosity::Summary) {
+    // Run the s_mrg_boost scenario
+    if let Err(e) = s_mrg_boost::run(Verbosity::Summary) {
         eprintln!("Error running scenario: {}", e);
         std::process::exit(1);
     }
@@ -75,13 +76,15 @@ fn main() {
 
         // Create campaign parameters from campaigns (default pacing = 1.0)
         let mut campaign_params = CampaignParams::new(&campaigns);
+        // Create seller parameters from sellers (default boost_factor = 1.0)
+        let seller_params = SellerParams::new(&sellers);
         
         // Run simulation loop with pacing adjustments (maximum 100 iterations)
         // Verbosity::None means only print convergence message and final solution
-        SimulationConverge::run(&impressions, &campaigns, &sellers, &mut campaign_params, 100, Verbosity::None);
+        SimulationConverge::run(&impressions, &campaigns, &sellers, &mut campaign_params, &seller_params, 100, Verbosity::None);
         
         // Run final simulation and output complete statistics
-        let final_simulation_run = SimulationRun::new(&impressions, &campaigns, &campaign_params);
+        let final_simulation_run = SimulationRun::new(&impressions, &campaigns, &campaign_params, &sellers, &seller_params);
         let final_stats = SimulationStat::new(&campaigns, &sellers, &impressions, &final_simulation_run);
         println!("\n=== Final Results ===");
         final_stats.printout(&campaigns, &sellers, &campaign_params);

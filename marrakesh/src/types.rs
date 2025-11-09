@@ -49,9 +49,9 @@ pub struct Impression {
 }
 
 impl Impression {
-    /// Run an auction for this impression with the given campaigns and campaign parameters
+    /// Run an auction for this impression with the given campaigns, campaign parameters, seller, and seller parameters
     /// Returns the auction result
-    pub fn run_auction(&self, campaigns: &Campaigns, campaign_params: &crate::simulationrun::CampaignParams) -> AuctionResult {
+    pub fn run_auction(&self, campaigns: &Campaigns, campaign_params: &crate::simulationrun::CampaignParams, _seller: &Seller, seller_param: &crate::simulationrun::SellerParam) -> AuctionResult {
         // Get bids from all campaigns
         let mut winning_bid_cpm = 0.0;
         let mut winning_campaign_id: Option<usize> = None;
@@ -65,6 +65,9 @@ impl Impression {
                 }
             }
         }
+
+        // Apply boost_factor to winning_bid_cpm
+        winning_bid_cpm *= seller_param.boost_factor;
 
         // Helper function to get supply_cost based on charge type (in CPM)
         // For fixed cost, always use fixed_cost_cpm; for first price, use provided value (or 0.0 if no winner)

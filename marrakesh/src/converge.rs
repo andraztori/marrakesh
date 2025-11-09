@@ -1,5 +1,5 @@
 use crate::types::{CampaignType, Campaigns, Sellers};
-use crate::simulationrun::{CampaignParams, SimulationRun, SimulationStat};
+use crate::simulationrun::{CampaignParams, SellerParams, SimulationRun, SimulationStat};
 use crate::impressions::Impressions;
 use crate::scenarios::Verbosity;
 
@@ -16,6 +16,7 @@ impl SimulationConverge {
         campaigns: &Campaigns,
         sellers: &Sellers,
         campaign_params: &mut CampaignParams,
+        seller_params: &SellerParams,
         max_iterations: usize,
         verbosity: Verbosity,
     ) {
@@ -28,7 +29,7 @@ impl SimulationConverge {
             }
             
             // Run auctions for all impressions
-            let simulation_run = SimulationRun::new(impressions, campaigns, campaign_params);
+            let simulation_run = SimulationRun::new(impressions, campaigns, campaign_params, sellers, seller_params);
 
             // Generate statistics
             let stats = SimulationStat::new(campaigns, sellers, impressions, &simulation_run);
