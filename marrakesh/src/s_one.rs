@@ -1,8 +1,9 @@
 use crate::types::{AddCampaignParams, AddSellerParams, CampaignType, ChargeType, Campaigns, Sellers};
 use crate::simulationrun::{CampaignParams, SimulationRun, SimulationStat};
 use crate::converge::SimulationConverge;
-use crate::impressions::Impressions;
+use crate::impressions::{Impressions, ImpressionsParam};
 use crate::scenarios::Verbosity;
+use crate::utils;
 
 /// Run a variant of the simulation with a specific number of HB impressions
 fn run_variant(verbosity: Verbosity, hb_impressions: usize) -> SimulationStat {
@@ -13,19 +14,17 @@ fn run_variant(verbosity: Verbosity, hb_impressions: usize) -> SimulationStat {
     // Add two hardcoded campaigns (IDs are automatically set to match Vec index)
     campaigns.add(AddCampaignParams {
         campaign_name: "Campaign 0".to_string(),
-        campaign_rnd: 12345,
         campaign_type: CampaignType::FIXED_IMPRESSIONS {
             total_impressions_target: 100,
         },
-    }).expect("Failed to add campaign");
+    });
 
     campaigns.add(AddCampaignParams {
         campaign_name: "Campaign 1".to_string(),
-        campaign_rnd: 67890,
         campaign_type: CampaignType::FIXED_BUDGET {
             total_budget_target: 2.0,
         },
-    }).expect("Failed to add campaign");
+    });
 
 
     // Add two sellers (IDs are automatically set to match Vec index)
@@ -44,11 +43,11 @@ fn run_variant(verbosity: Verbosity, hb_impressions: usize) -> SimulationStat {
     });
 
     // Create impressions for all sellers using default parameters
-    let impressions_params = crate::impressions::ImpressionsParam::new(
-        crate::utils::lognormal_dist(10.0, 3.0),  // best_other_bid_dist
-        crate::utils::lognormal_dist(10.0, 3.0),  // floor_cpm_dist
-        crate::utils::lognormal_dist(10.0, 3.0),  // base_impression_value_dist
-        crate::utils::lognormal_dist(1.0, 0.2),   // value_to_campaign_multiplier_dist
+    let impressions_params = ImpressionsParam::new(
+        utils::lognormal_dist(10.0, 3.0),  // best_other_bid_dist
+        utils::lognormal_dist(10.0, 3.0),  // floor_cpm_dist
+        utils::lognormal_dist(10.0, 3.0),  // base_impression_value_dist
+        utils::lognormal_dist(1.0, 0.2),   // value_to_campaign_multiplier_dist
         0.0,   // fixed_cost_floor_cpm
     );
     let impressions = Impressions::new(&sellers, &impressions_params);

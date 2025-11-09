@@ -114,7 +114,6 @@ impl Impression {
 pub struct Campaign {
     pub campaign_id: usize,
     pub campaign_name: String,
-    pub campaign_rnd: u64,
     pub campaign_type: CampaignType,
 }
 
@@ -138,7 +137,6 @@ pub struct Seller {
 /// Parameters for adding a campaign
 pub struct AddCampaignParams {
     pub campaign_name: String,
-    pub campaign_rnd: u64,
     pub campaign_type: CampaignType,
 }
 
@@ -154,22 +152,20 @@ impl Campaigns {
         }
     }
 
-    pub fn add(&mut self, params: AddCampaignParams) -> Result<(), String> {
+    pub fn add(&mut self, params: AddCampaignParams) {
         if self.campaigns.len() >= MAX_CAMPAIGNS {
-            return Err(format!(
+            panic!(
                 "Cannot add campaign: maximum number of campaigns ({}) exceeded. Current count: {}",
                 MAX_CAMPAIGNS,
                 self.campaigns.len()
-            ));
+            );
         }
         let campaign_id = self.campaigns.len();
         self.campaigns.push(Campaign {
             campaign_id,
             campaign_name: params.campaign_name,
-            campaign_rnd: params.campaign_rnd,
             campaign_type: params.campaign_type,
         });
-        Ok(())
     }
 }
 
@@ -213,7 +209,6 @@ mod tests {
         let campaign = Campaign {
             campaign_id: 2,
             campaign_name: "Test Campaign".to_string(),
-            campaign_rnd: 12345,
             campaign_type: CampaignType::FIXED_IMPRESSIONS {
                 total_impressions_target: 1000,
             },
@@ -247,7 +242,6 @@ mod tests {
                 let campaign = Campaign {
                     campaign_id: 0,
                     campaign_name: "Test Campaign".to_string(),
-                    campaign_rnd: 67890,
                     campaign_type: CampaignType::FIXED_BUDGET {
                         total_budget_target: 5000.0,
                     },
@@ -283,7 +277,6 @@ mod tests {
                 let campaign = Campaign {
                     campaign_id: 1,
                     campaign_name: "Test Campaign".to_string(),
-                    campaign_rnd: 11111,
                     campaign_type: CampaignType::FIXED_IMPRESSIONS {
                         total_impressions_target: 1000,
                     },

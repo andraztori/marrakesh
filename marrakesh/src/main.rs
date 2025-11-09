@@ -31,19 +31,17 @@ fn main() {
         // Add two hardcoded campaigns (IDs are automatically set to match Vec index)
         campaigns.add(AddCampaignParams {
             campaign_name: "Campaign 0".to_string(),
-            campaign_rnd: 12345,
             campaign_type: CampaignType::FIXED_IMPRESSIONS {
                 total_impressions_target: 1000,
             },
-        }).expect("Failed to add campaign");
+        });
 
         campaigns.add(AddCampaignParams {
             campaign_name: "Campaign 1".to_string(),
-            campaign_rnd: 67890,
             campaign_type: CampaignType::FIXED_BUDGET {
                 total_budget_target: 20.0,
             },
-        }).expect("Failed to add campaign");
+        });
 
 
         // Add two sellers (IDs are automatically set to match Vec index)
