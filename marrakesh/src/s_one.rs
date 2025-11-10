@@ -135,11 +135,11 @@ pub fn run(_verbosity: Verbosity, logger: &mut Logger) -> Result<(), Box<dyn std
         stats_A.overall_stat.total_buyer_charge,
         stats_B.overall_stat.total_buyer_charge
     );
-    if stats_A.overall_stat.total_buyer_charge <= stats_B.overall_stat.total_buyer_charge {
+    if stats_A.overall_stat.total_buyer_charge > stats_B.overall_stat.total_buyer_charge {
+        logln!(logger, LogEvent::Scenario, "✓ {}", msg);
+    } else {
         errors.push(msg.clone());
         errln!(logger, LogEvent::Scenario, "{}", msg);
-    } else {
-        logln!(logger, LogEvent::Scenario, "✓ {}", msg);
     }
     
     // Check: Variant A has lower total value
@@ -148,12 +148,11 @@ pub fn run(_verbosity: Verbosity, logger: &mut Logger) -> Result<(), Box<dyn std
         stats_A.overall_stat.total_value,
         stats_B.overall_stat.total_value
     );
-    if stats_A.overall_stat.total_value >= stats_B.overall_stat.total_value {
+    if stats_A.overall_stat.total_value < stats_B.overall_stat.total_value {
+        logln!(logger, LogEvent::Scenario, "✓ {}", msg);
+    } else {
         errors.push(msg.clone());
         errln!(logger, LogEvent::Scenario, "{}", msg);
-    } else {
-
-        logln!(logger, LogEvent::Scenario, "✓ {}", msg);
     }
     
     // Check: In variant A, cost of inventory is lower than cost charged to buyers
@@ -162,11 +161,11 @@ pub fn run(_verbosity: Verbosity, logger: &mut Logger) -> Result<(), Box<dyn std
         stats_A.overall_stat.total_supply_cost,
         stats_A.overall_stat.total_buyer_charge
     );
-    if stats_A.overall_stat.total_supply_cost <= stats_A.overall_stat.total_buyer_charge {
+    if stats_A.overall_stat.total_supply_cost < stats_A.overall_stat.total_buyer_charge {
+        logln!(logger, LogEvent::Scenario, "✓ {}", msg);
+    } else {
         errors.push(msg.clone());
         errln!(logger, LogEvent::Scenario, "{}", msg);
-    } else {
-        logln!(logger, LogEvent::Scenario, "✓ {}", msg);
     }
     
     // Check: In variant B, cost of inventory is higher than cost charged to buyers
@@ -175,11 +174,11 @@ pub fn run(_verbosity: Verbosity, logger: &mut Logger) -> Result<(), Box<dyn std
         stats_B.overall_stat.total_supply_cost,
         stats_B.overall_stat.total_buyer_charge
     );
-    if stats_B.overall_stat.total_supply_cost <= stats_B.overall_stat.total_buyer_charge {
+    if stats_B.overall_stat.total_supply_cost > stats_B.overall_stat.total_buyer_charge {
+        logln!(logger, LogEvent::Scenario, "✓ {}", msg);
+    } else {
         errors.push(msg.clone());
         errln!(logger, LogEvent::Scenario, "{}", msg);
-    } else {
-        logln!(logger, LogEvent::Scenario, "✓ {}", msg);
     }
     
     // Remove scenario-level receiver

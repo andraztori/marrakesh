@@ -125,11 +125,11 @@ pub fn run(_verbosity: Verbosity, logger: &mut Logger) -> Result<(), Box<dyn std
         stats_A.overall_stat.total_supply_cost,
         stats_A.overall_stat.total_buyer_charge
     );
-    if stats_A.overall_stat.total_supply_cost <= stats_A.overall_stat.total_buyer_charge {
+    if stats_A.overall_stat.total_supply_cost > stats_A.overall_stat.total_buyer_charge {
+        logln!(logger, LogEvent::Scenario, "✓ {}", msg);
+    } else {
         errors.push(msg.clone());
         errln!(logger, LogEvent::Scenario, "{}", msg);
-    } else {
-        logln!(logger, LogEvent::Scenario, "✓ {}", msg);
     }
     
     // Check: Variant B is profitable (overall)
@@ -138,11 +138,11 @@ pub fn run(_verbosity: Verbosity, logger: &mut Logger) -> Result<(), Box<dyn std
         stats_B.overall_stat.total_supply_cost,
         stats_B.overall_stat.total_buyer_charge
     );
-    if stats_B.overall_stat.total_supply_cost >= stats_B.overall_stat.total_buyer_charge {
+    if stats_B.overall_stat.total_supply_cost < stats_B.overall_stat.total_buyer_charge {
+        logln!(logger, LogEvent::Scenario, "✓ {}", msg);
+    } else {
         errors.push(msg.clone());
         errln!(logger, LogEvent::Scenario, "{}", msg);
-    } else {
-        logln!(logger, LogEvent::Scenario, "✓ {}", msg);
     }
     
     // Check: Seller 0 (MRG) is unprofitable in variant A
@@ -151,11 +151,11 @@ pub fn run(_verbosity: Verbosity, logger: &mut Logger) -> Result<(), Box<dyn std
         stats_A.seller_stats[0].total_supply_cost,
         stats_A.seller_stats[0].total_buyer_charge
     );
-    if stats_A.seller_stats[0].total_supply_cost <= stats_A.seller_stats[0].total_buyer_charge {
+    if stats_A.seller_stats[0].total_supply_cost > stats_A.seller_stats[0].total_buyer_charge {
+        logln!(logger, LogEvent::Scenario, "✓ {}", msg);
+    } else {
         errors.push(msg.clone());
         errln!(logger, LogEvent::Scenario, "{}", msg);
-    } else {
-        logln!(logger, LogEvent::Scenario, "✓ {}", msg);
     }
     
     // Check: Seller 0 (MRG) is profitable in variant B
@@ -164,11 +164,11 @@ pub fn run(_verbosity: Verbosity, logger: &mut Logger) -> Result<(), Box<dyn std
         stats_B.seller_stats[0].total_supply_cost,
         stats_B.seller_stats[0].total_buyer_charge
     );
-    if stats_B.seller_stats[0].total_supply_cost >= stats_B.seller_stats[0].total_buyer_charge {
+    if stats_B.seller_stats[0].total_supply_cost < stats_B.seller_stats[0].total_buyer_charge {
+        logln!(logger, LogEvent::Scenario, "✓ {}", msg);
+    } else {
         errors.push(msg.clone());
         errln!(logger, LogEvent::Scenario, "{}", msg);
-    } else {
-        logln!(logger, LogEvent::Scenario, "✓ {}", msg);
     }
     
     // Check: Variant A has more total value than variant B
@@ -177,11 +177,11 @@ pub fn run(_verbosity: Verbosity, logger: &mut Logger) -> Result<(), Box<dyn std
         stats_A.overall_stat.total_value,
         stats_B.overall_stat.total_value
     );
-    if stats_A.overall_stat.total_value <= stats_B.overall_stat.total_value {
+    if stats_A.overall_stat.total_value > stats_B.overall_stat.total_value {
+        logln!(logger, LogEvent::Scenario, "✓ {}", msg);
+    } else {
         errors.push(msg.clone());
         errln!(logger, LogEvent::Scenario, "{}", msg);
-    } else {
-        logln!(logger, LogEvent::Scenario, "✓ {}", msg);
     }
     
     // Check: Variant A has lower total cost than variant B
@@ -190,11 +190,11 @@ pub fn run(_verbosity: Verbosity, logger: &mut Logger) -> Result<(), Box<dyn std
         stats_A.overall_stat.total_buyer_charge,
         stats_B.overall_stat.total_buyer_charge
     );
-    if stats_A.overall_stat.total_buyer_charge >= stats_B.overall_stat.total_buyer_charge {
+    if stats_A.overall_stat.total_buyer_charge < stats_B.overall_stat.total_buyer_charge {
+        logln!(logger, LogEvent::Scenario, "✓ {}", msg);
+    } else {
         errors.push(msg.clone());
         errln!(logger, LogEvent::Scenario, "{}", msg);
-    } else {
-        logln!(logger, LogEvent::Scenario, "✓ {}", msg);
     }
     
     // Remove scenario-level receiver
