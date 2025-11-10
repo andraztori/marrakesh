@@ -137,12 +137,6 @@ pub struct Seller {
     pub num_impressions: usize,
 }
 
-/// Parameters for adding a campaign
-pub struct AddCampaignParams {
-    pub campaign_name: String,
-    pub campaign_type: CampaignType,
-}
-
 /// Container for campaigns with methods to add campaigns
 pub struct Campaigns {
     pub campaigns: Vec<Campaign>,
@@ -155,7 +149,12 @@ impl Campaigns {
         }
     }
 
-    pub fn add(&mut self, params: AddCampaignParams) {
+    /// Add a campaign to the collection
+    /// 
+    /// # Arguments
+    /// * `campaign_name` - Name of the campaign
+    /// * `campaign_type` - Type of campaign (FIXED_IMPRESSIONS or FIXED_BUDGET)
+    pub fn add(&mut self, campaign_name: String, campaign_type: CampaignType) {
         if self.campaigns.len() >= MAX_CAMPAIGNS {
             panic!(
                 "Cannot add campaign: maximum number of campaigns ({}) exceeded. Current count: {}",
@@ -166,17 +165,10 @@ impl Campaigns {
         let campaign_id = self.campaigns.len();
         self.campaigns.push(Campaign {
             campaign_id,
-            campaign_name: params.campaign_name,
-            campaign_type: params.campaign_type,
+            campaign_name,
+            campaign_type,
         });
     }
-}
-
-/// Parameters for adding a seller
-pub struct AddSellerParams {
-    pub seller_name: String,
-    pub charge_type: ChargeType,
-    pub num_impressions: usize,
 }
 
 /// Container for sellers with methods to add sellers
@@ -191,13 +183,19 @@ impl Sellers {
         }
     }
 
-    pub fn add(&mut self, params: AddSellerParams) {
+    /// Add a seller to the collection
+    /// 
+    /// # Arguments
+    /// * `seller_name` - Name of the seller
+    /// * `charge_type` - Charge type (FIXED_COST with fixed_cost_cpm, or FIRST_PRICE)
+    /// * `num_impressions` - Number of impressions this seller will offer
+    pub fn add(&mut self, seller_name: String, charge_type: ChargeType, num_impressions: usize) {
         let seller_id = self.sellers.len();
         self.sellers.push(Seller {
             seller_id,
-            seller_name: params.seller_name,
-            charge_type: params.charge_type,
-            num_impressions: params.num_impressions,
+            seller_name,
+            charge_type,
+            num_impressions,
         });
     }
 }

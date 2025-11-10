@@ -58,7 +58,7 @@ impl SimulationConverge {
                     // Calculate error percentage and use proportional adjustment
                     let error_ratio = (target - actual) / target;
                     // Use smaller adjustment when closer to target (max 10%)
-                    let adjustment_factor = (error_ratio * 0.1).min(0.1);
+                    let adjustment_factor = (error_ratio * 0.2).min(0.2);
                     *pacing *= 1.0 + adjustment_factor;
                     pacing_changed = true;
                 } else if actual > target + tolerance {
@@ -66,7 +66,7 @@ impl SimulationConverge {
                     // Calculate error percentage and use proportional adjustment
                     let error_ratio = (actual - target) / target;
                     // Use smaller adjustment when closer to target (max 10%)
-                    let adjustment_factor = (error_ratio * 0.1).min(0.1);
+                    let adjustment_factor = (error_ratio * 0.2).min(0.2);
                     *pacing *= 1.0 - adjustment_factor;
                     pacing_changed = true;
                 }

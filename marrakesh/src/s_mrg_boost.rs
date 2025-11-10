@@ -1,4 +1,4 @@
-use crate::types::{AddCampaignParams, AddSellerParams, CampaignType, ChargeType, Campaigns, Sellers};
+use crate::types::{CampaignType, ChargeType, Campaigns, Sellers};
 use crate::simulationrun::{CampaignParams, SellerParams, SimulationRun, SimulationStat};
 use crate::converge::SimulationConverge;
 use crate::impressions::{Impressions, ImpressionsParam};
@@ -12,35 +12,34 @@ fn run_variant(verbosity: Verbosity, mrg_boost_factor: f64) -> SimulationStat {
     let mut sellers = Sellers::new();
 
     // Add two hardcoded campaigns (IDs are automatically set to match Vec index)
-    campaigns.add(AddCampaignParams {
-        campaign_name: "Campaign 0".to_string(),
-        campaign_type: CampaignType::FIXED_IMPRESSIONS {
+    campaigns.add(
+        "Campaign 0".to_string(),  // campaign_name
+        CampaignType::FIXED_IMPRESSIONS {
             total_impressions_target: 100,
-        },
-    });
+        },  // campaign_type
+    );
 
-    campaigns.add(AddCampaignParams {
-        campaign_name: "Campaign 1".to_string(),
-        campaign_type: CampaignType::FIXED_BUDGET {
+    campaigns.add(
+        "Campaign 1".to_string(),  // campaign_name
+        CampaignType::FIXED_BUDGET {
             total_budget_target: 2.0,
-        },
-    });
-
+        },  // campaign_type
+    );
 
     // Add two sellers (IDs are automatically set to match Vec index)
-    sellers.add(AddSellerParams {
-        seller_name: "MRG".to_string(),
-        charge_type: ChargeType::FIXED_COST {
+    sellers.add(
+        "MRG".to_string(),  // seller_name
+        ChargeType::FIXED_COST {
             fixed_cost_cpm: 10.0,
-        },
-        num_impressions: 100,
-    });
+        },  // charge_type
+        100,  // num_impressions
+    );
 
-    sellers.add(AddSellerParams {
-        seller_name: "HB".to_string(),
-        charge_type: ChargeType::FIRST_PRICE,
-        num_impressions: 1000,
-    });
+    sellers.add(
+        "HB".to_string(),  // seller_name
+        ChargeType::FIRST_PRICE,  // charge_type
+        1000,  // num_impressions
+    );
 
     // Create impressions for all sellers using default parameters
     let impressions_params = ImpressionsParam::new(

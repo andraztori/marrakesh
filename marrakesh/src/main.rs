@@ -9,18 +9,39 @@ mod scenarios;
 mod s_one;
 mod s_mrg_boost;
 
-use types::{AddCampaignParams, AddSellerParams, CampaignType, ChargeType, Campaigns, Sellers};
+use types::{CampaignType, ChargeType, Campaigns, Sellers};
 use simulationrun::{CampaignParams, SellerParams, SimulationRun, SimulationStat};
 use converge::SimulationConverge;
 use impressions::Impressions;
 
-use scenarios::Verbosity;
+use scenarios::{Verbosity, get_scenario_catalog};
 
 fn main() {
-    // Run the s_mrg_boost scenario
-    if let Err(e) = s_mrg_boost::run(Verbosity::Summary) {
-        eprintln!("Error running scenario: {}", e);
-        std::process::exit(1);
+    let args: Vec<String> = std::env::args().collect();
+    
+    // Check if "all" argument is provided
+    if args.len() > 1 && args[1] == "all" {
+        // Run all scenarios from the catalog in non-verbose mode
+        let scenarios = get_scenario_catalog();
+        println!("Running all scenarios...\n");
+        
+        for scenario in scenarios {
+            print!("{}: ", scenario.short_name);
+            match (scenario.run)(Verbosity::None) {
+                Ok(()) => println!("✓ PASSED"),
+                Err(e) => {
+                    println!("✗ FAILED");
+                    eprintln!("  Error: {}", e);
+                }
+            }
+        }
+    } else {
+        // Default behavior: Run the first scenario (or s_mrg_boost) with summary verbosity
+        // For now, default to s_mrg_boost, but could be made configurable
+        if let Err(e) = s_mrg_boost::run(Verbosity::Summary) {
+            eprintln!("Error running scenario: {}", e);
+            std::process::exit(1);
+        }
     }
     
     // Old main code (unreachable)
@@ -30,35 +51,34 @@ fn main() {
         let mut sellers = Sellers::new();
 
         // Add two hardcoded campaigns (IDs are automatically set to match Vec index)
-        campaigns.add(AddCampaignParams {
-            campaign_name: "Campaign 0".to_string(),
-            campaign_type: CampaignType::FIXED_IMPRESSIONS {
+        campaigns.add(
+            "Campaign 0".to_string(),  // campaign_name
+            CampaignType::FIXED_IMPRESSIONS {
                 total_impressions_target: 1000,
-            },
-        });
+            },  // campaign_type
+        );
 
-        campaigns.add(AddCampaignParams {
-            campaign_name: "Campaign 1".to_string(),
-            campaign_type: CampaignType::FIXED_BUDGET {
+        campaigns.add(
+            "Campaign 1".to_string(),  // campaign_name
+            CampaignType::FIXED_BUDGET {
                 total_budget_target: 20.0,
-            },
-        });
-
+            },  // campaign_type
+        );
 
         // Add two sellers (IDs are automatically set to match Vec index)
-        sellers.add(AddSellerParams {
-            seller_name: "MRG".to_string(),
-            charge_type: ChargeType::FIXED_COST {
+        sellers.add(
+            "MRG".to_string(),  // seller_name
+            ChargeType::FIXED_COST {
                 fixed_cost_cpm: 10.0,
-            },
-            num_impressions: 1000,
-        });
+            },  // charge_type
+            1000,  // num_impressions
+        );
 
-        sellers.add(AddSellerParams {
-            seller_name: "HB".to_string(),
-            charge_type: ChargeType::FIRST_PRICE,
-            num_impressions: 1000,
-        });
+        sellers.add(
+            "HB".to_string(),  // seller_name
+            ChargeType::FIRST_PRICE,  // charge_type
+            1000,  // num_impressions
+        );
 
         // Create impressions for all sellers using default parameters
         let impressions_params = impressions::ImpressionsParam::new(
