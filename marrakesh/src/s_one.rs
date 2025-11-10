@@ -130,7 +130,7 @@ pub fn run(logger: &mut Logger) -> Result<(), Box<dyn std::error::Error>> {
     
     // Check: Variant A has higher total cost charged to buyers
     let msg = format!(
-        "Variant A (Scarce HB) has higher total buyer charge than variant B (Abundant HB): {:.4} > {:.4}",
+        "Variant A (Scarce HB) has higher total buyer charge than variant B (Abundant HB): {:.2} > {:.2}",
         stats_a.overall_stat.total_buyer_charge,
         stats_b.overall_stat.total_buyer_charge
     );
@@ -143,7 +143,7 @@ pub fn run(logger: &mut Logger) -> Result<(), Box<dyn std::error::Error>> {
     
     // Check: Variant A has lower total value
     let msg = format!(
-        "Variant A (Scarce HB) has lower total value than variant B (Abundant HB): {:.4} < {:.4}",
+        "Variant A (Scarce HB) has lower total value than variant B (Abundant HB): {:.2} < {:.2}",
         stats_a.overall_stat.total_value,
         stats_b.overall_stat.total_value
     );
@@ -156,7 +156,7 @@ pub fn run(logger: &mut Logger) -> Result<(), Box<dyn std::error::Error>> {
     
     // Check: In variant A, cost of inventory is lower than cost charged to buyers
     let msg = format!(
-        "Variant A (Scarce HB) is profitable (supply_cost < buyer_charge): {:.4} < {:.4}",
+        "Variant A (Scarce HB) is profitable (supply_cost < buyer_charge): {:.2} < {:.2}",
         stats_a.overall_stat.total_supply_cost,
         stats_a.overall_stat.total_buyer_charge
     );
@@ -169,7 +169,7 @@ pub fn run(logger: &mut Logger) -> Result<(), Box<dyn std::error::Error>> {
     
     // Check: In variant B, cost of inventory is higher than cost charged to buyers
     let msg = format!(
-        "Variant B (Abundant HB) is unprofitable (supply_cost > buyer_charge): {:.4} > {:.4}",
+        "Variant B (Abundant HB) is unprofitable (supply_cost > buyer_charge): {:.2} > {:.2}",
         stats_b.overall_stat.total_supply_cost,
         stats_b.overall_stat.total_buyer_charge
     );
@@ -193,6 +193,5 @@ pub fn run(logger: &mut Logger) -> Result<(), Box<dyn std::error::Error>> {
 // Register this scenario in the catalog
 inventory::submit!(crate::scenarios::ScenarioEntry {
     short_name: "HBabundance",
-    description: "Example of how availability of a lot of HB impressions changes pricing to buyer (downwards) and increases bought value. But increasing HB impressions leads to price advertiser pays being less than what we need to pay to supply",
     run,
 });

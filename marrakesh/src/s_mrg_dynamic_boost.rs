@@ -121,7 +121,7 @@ pub fn run(logger: &mut Logger) -> Result<(), Box<dyn std::error::Error>> {
     
     // Check: Variant A is unprofitable (overall)
     let msg = format!(
-        "Variant A (MRG boost 1.0) is unprofitable (supply_cost > buyer_charge): {:.4} > {:.4}",
+        "Variant A (MRG boost 1.0) is unprofitable (supply_cost > buyer_charge): {:.2} > {:.2}",
         stats_a.overall_stat.total_supply_cost,
         stats_a.overall_stat.total_buyer_charge
     );
@@ -134,7 +134,7 @@ pub fn run(logger: &mut Logger) -> Result<(), Box<dyn std::error::Error>> {
     
     // Check: Variant B is profitable (overall)
     let msg = format!(
-        "Variant B (MRG boost 2.0) is profitable (supply_cost < buyer_charge): {:.4} < {:.4}",
+        "Variant B (MRG boost 2.0) is profitable (supply_cost < buyer_charge): {:.2} < {:.2}",
         stats_b.overall_stat.total_supply_cost,
         stats_b.overall_stat.total_buyer_charge
     );
@@ -147,7 +147,7 @@ pub fn run(logger: &mut Logger) -> Result<(), Box<dyn std::error::Error>> {
     
     // Check: Seller 0 (MRG) is unprofitable in variant A
     let msg = format!(
-        "Seller 0 (MRG) in variant A (MRG boost 1.0) is unprofitable (supply_cost > buyer_charge): {:.4} > {:.4}",
+        "Seller 0 (MRG) in variant A (MRG boost 1.0) is unprofitable (supply_cost > buyer_charge): {:.2} > {:.2}",
         stats_a.seller_stats[0].total_supply_cost,
         stats_a.seller_stats[0].total_buyer_charge
     );
@@ -160,7 +160,7 @@ pub fn run(logger: &mut Logger) -> Result<(), Box<dyn std::error::Error>> {
     
     // Check: Seller 0 (MRG) is profitable in variant B
     let msg = format!(
-        "Seller 0 (MRG) in variant B (MRG boost 2.0) is profitable (supply_cost < buyer_charge): {:.4} < {:.4}",
+        "Seller 0 (MRG) in variant B (MRG boost 2.0) is profitable (supply_cost < buyer_charge): {:.2} < {:.2}",
         stats_b.seller_stats[0].total_supply_cost,
         stats_b.seller_stats[0].total_buyer_charge
     );
@@ -173,7 +173,7 @@ pub fn run(logger: &mut Logger) -> Result<(), Box<dyn std::error::Error>> {
     
     // Check: Variant A has more total value than variant B
     let msg = format!(
-        "Variant A (MRG boost 1.0) has more total value than variant B (MRG boost 2.0): {:.4} > {:.4}",
+        "Variant A (MRG boost 1.0) has more total value than variant B (MRG boost 2.0): {:.2} > {:.2}",
         stats_a.overall_stat.total_value,
         stats_b.overall_stat.total_value
     );
@@ -186,7 +186,7 @@ pub fn run(logger: &mut Logger) -> Result<(), Box<dyn std::error::Error>> {
     
     // Check: Variant A has lower total cost than variant B
     let msg = format!(
-        "Variant A (MRG boost 1.0) has lower total cost than variant B (MRG boost 2.0): {:.4} < {:.4}",
+        "Variant A (MRG boost 1.0) has lower total cost than variant B (MRG boost 2.0): {:.2} < {:.2}",
         stats_a.overall_stat.total_buyer_charge,
         stats_b.overall_stat.total_buyer_charge
     );
@@ -210,6 +210,5 @@ pub fn run(logger: &mut Logger) -> Result<(), Box<dyn std::error::Error>> {
 // Register this scenario in the catalog
 inventory::submit!(crate::scenarios::ScenarioEntry {
     short_name: "MRGdynamicboost",
-    description: "Demonstrates the effect of MRG seller boost factor on marketplace dynamics (dynamic version)",
     run,
 });

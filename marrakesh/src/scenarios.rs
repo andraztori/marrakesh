@@ -8,7 +8,6 @@ pub type ScenarioFn = fn(logger: &mut Logger) -> Result<(), Box<dyn Error>>;
 #[derive(Clone)]
 pub struct ScenarioEntry {
     pub short_name: &'static str,
-    pub description: &'static str,
     pub run: ScenarioFn,
 }
 
@@ -27,7 +26,6 @@ pub fn get_scenario_catalog() -> Vec<ScenarioEntry> {
 // Example:
 // inventory::submit!(scenarios::ScenarioEntry {
 //     short_name: "name",
-//     description: "desc",
 //     run: function,
 // });
 
