@@ -4,7 +4,7 @@ use crate::converge::SimulationConverge;
 use crate::impressions::{Impressions, ImpressionsParam};
 use crate::scenarios::Verbosity;
 use crate::utils;
-use crate::logger::{Logger, LogEvent, ConsoleReceiver, FileReceiver, sanitize_filename};
+use crate::logger::{Logger, LogEvent, FileReceiver, sanitize_filename};
 use crate::logln;
 use std::path::PathBuf;
 
@@ -101,28 +101,17 @@ fn run_variant(hb_impressions: usize, variant_description: &str, scenario_name: 
 /// Expected behavior:
 /// - With 100 HB impressions: Higher buyer charges, lower total value, but supply_cost < buyer_charge (profitable)
 /// - With 1000 HB impressions: Lower buyer charges, higher total value, but supply_cost > buyer_charge (unprofitable)
-pub fn run(_verbosity: Verbosity) -> Result<(), Box<dyn std::error::Error>> {
+pub fn run(_verbosity: Verbosity, logger: &mut Logger) -> Result<(), Box<dyn std::error::Error>> {
     let scenario_name = "HBabundance";
-    
-    // Set up main logger with console receiver
-    let mut logger = Logger::new();
-    let console_receiver = ConsoleReceiver::new(vec![
-        LogEvent::Simulation,
-        LogEvent::Convergence,
-        LogEvent::Variant,
-        LogEvent::Scenario,
-        LogEvent::Validation,
-    ]);
-    logger.add_receiver(Box::new(console_receiver));
     
     // Add scenario-level receiver
     let scenario_receiver_id = logger.add_receiver(FileReceiver::new(&PathBuf::from(format!("log/{}/scenario.log", sanitize_filename(scenario_name))), vec![LogEvent::Scenario]));
     
     // Run variant with 100 HB impressions
-    let stats_A = run_variant(1000, "Running with Scarce HB impressions", scenario_name, "scarce", &mut logger);
+    let stats_A = run_variant(1000, "Running with Scarce HB impressions", scenario_name, "scarce", logger);
     
     // Run variant with 1000 HB impressions
-    let stats_B = run_variant(10000, "Running with Abundant HB impressions", scenario_name, "abundant", &mut logger);
+    let stats_B = run_variant(10000, "Running with Abundant HB impressions", scenario_name, "abundant", logger);
     
     // Compare the two variants to verify expected marketplace behavior
     // Variant A (100 HB) should have:
@@ -135,7 +124,7 @@ pub fn run(_verbosity: Verbosity) -> Result<(), Box<dyn std::error::Error>> {
     // - Higher total value obtained (more impressions available)
     // - Supply cost > buyer charge (marketplace becomes unprofitable)
     
-    logln!(&mut logger, LogEvent::Scenario, "");
+    logln!(logger, LogEvent::Scenario, "");
     
     let mut errors = Vec::new();
     
@@ -147,7 +136,7 @@ pub fn run(_verbosity: Verbosity) -> Result<(), Box<dyn std::error::Error>> {
             stats_B.overall_stat.total_buyer_charge
         ));
     } else {
-        logln!(&mut logger, LogEvent::Scenario, "✓ Variant A (Scarce HB) has higher total buyer charge: {:.4} > {:.4}",
+        logln!(logger, LogEvent::Scenario, "✓ Variant A (Scarce HB) has higher total buyer charge: {:.4} > {:.4}",
             stats_A.overall_stat.total_buyer_charge,
             stats_B.overall_stat.total_buyer_charge
         );
@@ -161,7 +150,7 @@ pub fn run(_verbosity: Verbosity) -> Result<(), Box<dyn std::error::Error>> {
             stats_B.overall_stat.total_value
         ));
     } else {
-        logln!(&mut logger, LogEvent::Scenario, "✓ Variant A (Scarce HB) has lower total value: {:.4} < {:.4}",
+        logln!(logger, LogEvent::Scenario, "✓ Variant A (Scarce HB) has lower total value: {:.4} < {:.4}",
             stats_A.overall_stat.total_value,
             stats_B.overall_stat.total_value
         );
@@ -175,7 +164,7 @@ pub fn run(_verbosity: Verbosity) -> Result<(), Box<dyn std::error::Error>> {
             stats_A.overall_stat.total_buyer_charge
         ));
     } else {
-        logln!(&mut logger, LogEvent::Scenario, "✓ Variant A (Scarce HB) is profitable (supply_cost < buyer_charge): {:.4} < {:.4}",
+        logln!(logger, LogEvent::Scenario, "✓ Variant A (Scarce HB) is profitable (supply_cost < buyer_charge): {:.4} < {:.4}",
             stats_A.overall_stat.total_supply_cost,
             stats_A.overall_stat.total_buyer_charge
         );
@@ -189,7 +178,7 @@ pub fn run(_verbosity: Verbosity) -> Result<(), Box<dyn std::error::Error>> {
             stats_B.overall_stat.total_buyer_charge
         ));
     } else {
-        logln!(&mut logger, LogEvent::Scenario, "✓ Variant B (Abundant HB) is unprofitable (supply_cost > buyer_charge): {:.4} > {:.4}",
+        logln!(logger, LogEvent::Scenario, "✓ Variant B (Abundant HB) is unprofitable (supply_cost > buyer_charge): {:.4} > {:.4}",
             stats_B.overall_stat.total_supply_cost,
             stats_B.overall_stat.total_buyer_charge
         );

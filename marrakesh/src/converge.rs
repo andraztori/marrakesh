@@ -136,6 +136,9 @@ impl SimulationConverge {
         // Log if we reached max iterations
         if !converged {
             logln!(logger, LogEvent::Convergence, "Reached maximum iterations ({})", max_iterations);
+            logln!(logger, LogEvent::Variant, "Reached maximum iterations ({})", max_iterations);
+            logln!(logger, LogEvent::Scenario, "Reached maximum iterations ({})", max_iterations);
+            logln!(logger, LogEvent::Validation, "Reached maximum iterations ({})", max_iterations);
         }
         
         // Return the final simulation run, stats, and campaign params

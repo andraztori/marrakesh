@@ -36,8 +36,10 @@ pub struct ConsoleReceiver {
 }
 
 impl ConsoleReceiver {
-    pub fn new(enabled_events: Vec<LogEvent>) -> Self {
-        Self { enabled_events }
+    /// Create a new console receiver
+    /// Returns a boxed receiver ready to be added to a logger
+    pub fn new(enabled_events: Vec<LogEvent>) -> Box<dyn LogReceiver> {
+        Box::new(Self { enabled_events })
     }
 }
 

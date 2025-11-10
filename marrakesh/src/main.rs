@@ -27,10 +27,7 @@ fn main() {
     if args.len() > 1 && args[1] == "all" {
         // Set up logger with console and validation file receivers
         let mut logger = Logger::new();
-        let console_receiver = ConsoleReceiver::new(vec![
-            LogEvent::Validation,
-        ]);
-        logger.add_receiver(Box::new(console_receiver));
+        logger.add_receiver(ConsoleReceiver::new(vec![LogEvent::Validation]));
         
         // Add validation receiver (for validation events)
         let summary_receiver_id = logger.add_receiver(FileReceiver::new(&PathBuf::from("log/summary.log"), vec![LogEvent::Validation]));
@@ -41,7 +38,7 @@ fn main() {
         
         for scenario in scenarios {
             log!(&mut logger, LogEvent::Validation, "{}: ", scenario.short_name);
-            match (scenario.run)(Verbosity::None) {
+            match (scenario.run)(Verbosity::None, &mut logger) {
                 Ok(()) => logln!(&mut logger, LogEvent::Validation, "✓ PASSED"),
                 Err(e) => {
                     logln!(&mut logger, LogEvent::Validation, "✗ FAILED");
@@ -57,7 +54,9 @@ fn main() {
     } else {
         // Default behavior: Run the first scenario (or s_mrg_boost) with summary verbosity
         // For now, default to s_mrg_boost, but could be made configurable
-        if let Err(e) = s_mrg_boost::run(Verbosity::Summary) {
+        let mut logger = Logger::new();
+        logger.add_receiver(ConsoleReceiver::new(vec![LogEvent::Simulation, LogEvent::Convergence, LogEvent::Variant]));
+        if let Err(e) = s_mrg_boost::run(Verbosity::Summary, &mut logger) {
             eprintln!("Error running scenario: {}", e);
             std::process::exit(1);
         }
@@ -117,12 +116,7 @@ fn main() {
         };
         
         let mut logger = Logger::new();
-        let console_receiver = ConsoleReceiver::new(vec![
-            LogEvent::Simulation,
-            LogEvent::Convergence,
-            LogEvent::Variant,
-        ]);
-        logger.add_receiver(Box::new(console_receiver));
+        logger.add_receiver(ConsoleReceiver::new(vec![LogEvent::Simulation, LogEvent::Convergence, LogEvent::Variant]));
         
         marketplace.printout(&mut logger);
 

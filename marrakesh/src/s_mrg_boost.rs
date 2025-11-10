@@ -4,7 +4,7 @@ use crate::converge::SimulationConverge;
 use crate::impressions::{Impressions, ImpressionsParam};
 use crate::scenarios::Verbosity;
 use crate::utils;
-use crate::logger::{Logger, LogEvent, ConsoleReceiver, FileReceiver, sanitize_filename};
+use crate::logger::{Logger, LogEvent, FileReceiver, sanitize_filename};
 use crate::logln;
 use std::path::PathBuf;
 
@@ -96,27 +96,16 @@ fn run_variant(mrg_boost_factor: f64, variant_description: &str, scenario_name: 
 /// This scenario compares the abundant HB variant (1000 HB impressions) with and without
 /// a boost factor of 2.0 applied to the MRG seller. The boost factor affects how MRG
 /// impressions are valued in the marketplace.
-pub fn run(_verbosity: Verbosity) -> Result<(), Box<dyn std::error::Error>> {
+pub fn run(_verbosity: Verbosity, logger: &mut Logger) -> Result<(), Box<dyn std::error::Error>> {
     let scenario_name = "MRGboost";
-    
-    // Set up main logger with console receiver
-    let mut logger = Logger::new();
-    let console_receiver = ConsoleReceiver::new(vec![
-        LogEvent::Simulation,
-        LogEvent::Convergence,
-        LogEvent::Variant,
-        LogEvent::Scenario,
-        LogEvent::Validation,
-    ]);
-    logger.add_receiver(Box::new(console_receiver));
     
     // Add scenario-level receiver
     let scenario_receiver_id = logger.add_receiver(FileReceiver::new(&PathBuf::from(format!("log/{}/scenario.log", sanitize_filename(scenario_name))), vec![LogEvent::Scenario]));
 
     // Run variant with boost_factor = 1.0 (default) for MRG seller
-    let stats_A = run_variant(1.0, "Running with Abundant HB impressions (MRG boost: 1.0)", scenario_name, "boost_1.0", &mut logger);    
+    let stats_A = run_variant(1.0, "Running with Abundant HB impressions (MRG boost: 1.0)", scenario_name, "boost_1.0", logger);
     // Run variant with boost_factor = 2.0 for MRG seller
-    let stats_B = run_variant(2.0, "Running with Abundant HB impressions (MRG boost: 2.0)", scenario_name, "boost_2.0", &mut logger);
+    let stats_B = run_variant(2.0, "Running with Abundant HB impressions (MRG boost: 2.0)", scenario_name, "boost_2.0", logger);
     
     // Compare the two variants to verify expected marketplace behavior
     // Variant A (boost 1.0) vs Variant B (boost 2.0):
@@ -125,7 +114,7 @@ pub fn run(_verbosity: Verbosity) -> Result<(), Box<dyn std::error::Error>> {
     // - Variant A should obtain more total value than variant B
     // - Variant A should have lower total cost than variant B
     
-    logln!(&mut logger, LogEvent::Scenario, "");
+    logln!(logger, LogEvent::Scenario, "");
     
     let mut errors: Vec<String> = Vec::new();
     
@@ -137,7 +126,7 @@ pub fn run(_verbosity: Verbosity) -> Result<(), Box<dyn std::error::Error>> {
             stats_A.overall_stat.total_buyer_charge
         ));
     } else {
-        logln!(&mut logger, LogEvent::Scenario, "✓ Variant A (MRG boost 1.0) is unprofitable (supply_cost > buyer_charge): {:.4} > {:.4}",
+        logln!(logger, LogEvent::Scenario, "✓ Variant A (MRG boost 1.0) is unprofitable (supply_cost > buyer_charge): {:.4} > {:.4}",
             stats_A.overall_stat.total_supply_cost,
             stats_A.overall_stat.total_buyer_charge
         );
@@ -151,7 +140,7 @@ pub fn run(_verbosity: Verbosity) -> Result<(), Box<dyn std::error::Error>> {
             stats_B.overall_stat.total_buyer_charge
         ));
     } else {
-        logln!(&mut logger, LogEvent::Scenario, "✓ Variant B (MRG boost 2.0) is profitable (supply_cost < buyer_charge): {:.4} < {:.4}",
+        logln!(logger, LogEvent::Scenario, "✓ Variant B (MRG boost 2.0) is profitable (supply_cost < buyer_charge): {:.4} < {:.4}",
             stats_B.overall_stat.total_supply_cost,
             stats_B.overall_stat.total_buyer_charge
         );
@@ -165,7 +154,7 @@ pub fn run(_verbosity: Verbosity) -> Result<(), Box<dyn std::error::Error>> {
             stats_A.seller_stats[0].total_buyer_charge
         ));
     } else {
-        logln!(&mut logger, LogEvent::Scenario, "✓ Seller 0 (MRG) in variant A (MRG boost 1.0) is unprofitable (supply_cost > buyer_charge): {:.4} > {:.4}",
+        logln!(logger, LogEvent::Scenario, "✓ Seller 0 (MRG) in variant A (MRG boost 1.0) is unprofitable (supply_cost > buyer_charge): {:.4} > {:.4}",
             stats_A.seller_stats[0].total_supply_cost,
             stats_A.seller_stats[0].total_buyer_charge
         );
@@ -179,7 +168,7 @@ pub fn run(_verbosity: Verbosity) -> Result<(), Box<dyn std::error::Error>> {
             stats_B.seller_stats[0].total_buyer_charge
         ));
     } else {
-        logln!(&mut logger, LogEvent::Scenario, "✓ Seller 0 (MRG) in variant B (MRG boost 2.0) is profitable (supply_cost < buyer_charge): {:.4} < {:.4}",
+        logln!(logger, LogEvent::Scenario, "✓ Seller 0 (MRG) in variant B (MRG boost 2.0) is profitable (supply_cost < buyer_charge): {:.4} < {:.4}",
             stats_B.seller_stats[0].total_supply_cost,
             stats_B.seller_stats[0].total_buyer_charge
         );
@@ -193,7 +182,7 @@ pub fn run(_verbosity: Verbosity) -> Result<(), Box<dyn std::error::Error>> {
             stats_B.overall_stat.total_value
         ));
     } else {
-        logln!(&mut logger, LogEvent::Scenario, "✓ Variant A (MRG boost 1.0) has more total value: {:.4} > {:.4}",
+        logln!(logger, LogEvent::Scenario, "✓ Variant A (MRG boost 1.0) has more total value: {:.4} > {:.4}",
             stats_A.overall_stat.total_value,
             stats_B.overall_stat.total_value
         );
@@ -207,7 +196,7 @@ pub fn run(_verbosity: Verbosity) -> Result<(), Box<dyn std::error::Error>> {
             stats_B.overall_stat.total_buyer_charge
         ));
     } else {
-        logln!(&mut logger, LogEvent::Scenario, "✓ Variant A (MRG boost 1.0) has lower total cost: {:.4} < {:.4}",
+        logln!(logger, LogEvent::Scenario, "✓ Variant A (MRG boost 1.0) has lower total cost: {:.4} < {:.4}",
             stats_A.overall_stat.total_buyer_charge,
             stats_B.overall_stat.total_buyer_charge
         );

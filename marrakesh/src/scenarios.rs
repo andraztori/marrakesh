@@ -1,4 +1,5 @@
 use std::error::Error;
+use crate::logger::Logger;
 
 /// Verbosity levels for scenario execution
 /// Ordering: None < Summary < Full
@@ -13,7 +14,7 @@ pub enum Verbosity {
 }
 
 /// Function type for scenario entry functions
-pub type ScenarioFn = fn(verbosity: Verbosity) -> Result<(), Box<dyn Error>>;
+pub type ScenarioFn = fn(verbosity: Verbosity, logger: &mut Logger) -> Result<(), Box<dyn Error>>;
 
 /// Entry in the scenario catalog
 #[derive(Clone)]
