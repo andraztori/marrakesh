@@ -26,14 +26,6 @@ impl SimulationRun {
     }
 }
 
-/// Represents campaign parameters (pacing, etc.)
-/// Note: This struct is kept for backward compatibility but is no longer used.
-/// Campaign convergence parameters now use the CampaignConverge trait.
-#[derive(Debug, Clone)]
-pub struct CampaignParam {
-    pub pacing: f64,
-}
-
 /// Container for campaign convergence parameters
 /// Uses dynamic dispatch to support different campaign types
 pub struct CampaignConvergeParams {
@@ -122,90 +114,71 @@ pub struct SimulationStat {
 impl SimulationStat {
     /// Generate statistics from marketplace and simulation run
     pub fn new(marketplace: &Marketplace, simulation_run: &SimulationRun) -> Self {
-        // Calculate campaign statistics
-        use crate::campaigns::CampaignTrait;
-        let mut campaign_stats = Vec::new();
-        for campaign in &marketplace.campaigns.campaigns {
-            let campaign_id = campaign.campaign_id();
-            let mut impressions_obtained = 0;
-            let mut total_supply_cost = 0.0;
-            let mut total_virtual_cost = 0.0;
-            let mut total_buyer_charge = 0.0;
-            let mut total_value = 0.0;
+        // Initialize campaign statistics
+        let num_campaigns = marketplace.campaigns.campaigns.len();
+        let mut campaign_stats: Vec<CampaignStat> = (0..num_campaigns)
+            .map(|_| CampaignStat {
+                impressions_obtained: 0,
+                total_supply_cost: 0.0,
+                total_virtual_cost: 0.0,
+                total_buyer_charge: 0.0,
+                total_value: 0.0,
+            })
+            .collect();
 
-            for (index, impression) in marketplace.impressions.impressions.iter().enumerate() {
-                if let Winner::Campaign { campaign_id: winner_campaign_id, virtual_cost, buyer_charge } = simulation_run.results[index].winner {
-                    if winner_campaign_id == campaign_id {
-                        impressions_obtained += 1;
-                        total_supply_cost += simulation_run.results[index].supply_cost;
-                        total_virtual_cost += virtual_cost;
-                        total_buyer_charge += buyer_charge;
-                        total_value += impression.value_to_campaign_id[campaign_id] / 1000.0;
-                    }
-                }
-            }
+        // Initialize seller statistics
+        let num_sellers = marketplace.sellers.sellers.len();
+        let mut seller_stats: Vec<SellerStat> = (0..num_sellers)
+            .map(|_| SellerStat {
+                impressions_sold: 0,
+                total_supply_cost: 0.0,
+                total_virtual_cost: 0.0,
+                total_buyer_charge: 0.0,
+            })
+            .collect();
 
-            campaign_stats.push(CampaignStat {
-                impressions_obtained,
-                total_supply_cost,
-                total_virtual_cost,
-                total_buyer_charge,
-                total_value,
-            });
-        }
+        // Initialize overall statistics
+        let mut overall_stat = OverallStat {
+            below_floor_count: 0,
+            other_demand_count: 0,
+            no_bids_count: 0,
+            total_supply_cost: 0.0,
+            total_virtual_cost: 0.0,
+            total_buyer_charge: 0.0,
+            total_value: 0.0,
+        };
 
-        // Calculate seller statistics
-        let mut seller_stats = Vec::new();
-        for seller in &marketplace.sellers.sellers {
-            let mut impressions_sold = 0;
-            let mut total_supply_cost = 0.0;
-            let mut total_virtual_cost = 0.0;
-            let mut total_buyer_charge = 0.0;
+        // Iterate through impressions once and accumulate all statistics
+        for (index, impression) in marketplace.impressions.impressions.iter().enumerate() {
+            let result = &simulation_run.results[index];
+            let seller_id = impression.seller_id;
 
-            for (index, impression) in marketplace.impressions.impressions.iter().enumerate() {
-                if impression.seller_id == seller.seller_id {
-                    match simulation_run.results[index].winner {
-                        Winner::Campaign { virtual_cost, buyer_charge, .. } => {
-                            impressions_sold += 1;
-                            total_supply_cost += simulation_run.results[index].supply_cost;
-                            total_virtual_cost += virtual_cost;
-                            total_buyer_charge += buyer_charge;
-                        }
-                        _ => {}
-                    }
-                }
-            }
-
-            seller_stats.push(SellerStat {
-                impressions_sold,
-                total_supply_cost,
-                total_virtual_cost,
-                total_buyer_charge,
-            });
-        }
-
-        // Calculate overall statistics
-        let mut below_floor_count = 0;
-        let mut other_demand_count = 0;
-        let mut no_bids_count = 0;
-        let mut total_supply_cost_all = 0.0;
-        let mut total_virtual_cost_all = 0.0;
-        let mut total_buyer_charge_all = 0.0;
-        let mut total_value_all = 0.0;
-
-        for (index, result) in simulation_run.results.iter().enumerate() {
+            // Update overall statistics based on winner
             match result.winner {
-                Winner::BELOW_FLOOR => below_floor_count += 1,
-                Winner::OTHER_DEMAND => other_demand_count += 1,
-                Winner::NO_DEMAND => no_bids_count += 1,
+                Winner::BELOW_FLOOR => overall_stat.below_floor_count += 1,
+                Winner::OTHER_DEMAND => overall_stat.other_demand_count += 1,
+                Winner::NO_DEMAND => overall_stat.no_bids_count += 1,
                 Winner::Campaign { campaign_id, virtual_cost, buyer_charge, .. } => {
-                    // All costs are already converted from CPM
-                    total_supply_cost_all += result.supply_cost;
-                    total_virtual_cost_all += virtual_cost;
-                    total_buyer_charge_all += buyer_charge;
-                    // Add value for the winning campaign
-                    let impression = &marketplace.impressions.impressions[index];
-                    total_value_all += impression.value_to_campaign_id[campaign_id] / 1000.0;
+                    // Update overall statistics
+                    overall_stat.total_supply_cost += result.supply_cost;
+                    overall_stat.total_virtual_cost += virtual_cost;
+                    overall_stat.total_buyer_charge += buyer_charge;
+                    overall_stat.total_value += impression.value_to_campaign_id[campaign_id] / 1000.0;
+
+                    // Update seller statistics
+                    let seller_stat = &mut seller_stats[seller_id];
+                    seller_stat.impressions_sold += 1;
+                    seller_stat.total_supply_cost += result.supply_cost;
+                    seller_stat.total_virtual_cost += virtual_cost;
+                    seller_stat.total_buyer_charge += buyer_charge;
+
+                    // Update campaign statistics
+                    let campaign_stat = &mut campaign_stats[campaign_id];
+                    campaign_stat.impressions_obtained += 1;
+                    campaign_stat.total_supply_cost += result.supply_cost;
+                    campaign_stat.total_virtual_cost += virtual_cost;
+                    campaign_stat.total_buyer_charge += buyer_charge;
+                    campaign_stat.total_value += impression.value_to_campaign_id[campaign_id] / 1000.0;
                 }
             }
         }
@@ -213,21 +186,12 @@ impl SimulationStat {
         Self {
             campaign_stats,
             seller_stats,
-            overall_stat: OverallStat {
-                below_floor_count,
-                other_demand_count,
-                no_bids_count,
-                total_supply_cost: total_supply_cost_all,
-                total_virtual_cost: total_virtual_cost_all,
-                total_buyer_charge: total_buyer_charge_all,
-                total_value: total_value_all,
-            },
+            overall_stat,
         }
     }
 
     /// Output campaign statistics (without header, for compact iteration output)
     pub fn printout_campaigns(&self, campaigns: &Campaigns, campaign_params: &CampaignConvergeParams, logger: &mut Logger, event: LogEvent) {
-        use crate::campaigns::CampaignTrait;
         
         for (index, campaign_stat) in self.campaign_stats.iter().enumerate() {
             let campaign = &campaigns.campaigns[index];
