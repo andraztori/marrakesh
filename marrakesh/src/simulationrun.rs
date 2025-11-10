@@ -1,5 +1,4 @@
-use crate::types::{AuctionResult, Campaigns, ChargeType, Sellers, Winner};
-use crate::impressions::Impressions;
+use crate::types::{AuctionResult, Campaigns, ChargeType, Marketplace, Sellers, Winner};
 
 /// Container for auction results
 /// Note: SimulationRun results are matched to Impressions by index in the vectors
@@ -9,14 +8,14 @@ pub struct SimulationRun {
 
 impl SimulationRun {
     /// Create a new SimulationRun container and run auctions for all impressions
-    pub fn new(impressions: &Impressions, campaigns: &Campaigns, campaign_params: &CampaignParams, sellers: &Sellers, seller_params: &SellerParams) -> Self {
-        let mut results = Vec::with_capacity(impressions.impressions.len());
+    pub fn new(marketplace: &Marketplace, campaign_params: &CampaignParams, seller_params: &SellerParams) -> Self {
+        let mut results = Vec::with_capacity(marketplace.impressions.impressions.len());
         
-        for impression in &impressions.impressions {
+        for impression in &marketplace.impressions.impressions {
             // Get the seller and seller_param for this impression
-            let seller = &sellers.sellers[impression.seller_id];
+            let seller = &marketplace.sellers.sellers[impression.seller_id];
             let seller_param = &seller_params.params[impression.seller_id];
-            let result = impression.run_auction(campaigns, campaign_params, seller, seller_param);
+            let result = impression.run_auction(&marketplace.campaigns, campaign_params, seller, seller_param);
             results.push(result);
         }
         
@@ -110,18 +109,18 @@ pub struct SimulationStat {
 }
 
 impl SimulationStat {
-    /// Generate statistics from campaigns, sellers, impressions, and simulation run
-    pub fn new(campaigns: &Campaigns, sellers: &Sellers, impressions: &Impressions, simulation_run: &SimulationRun) -> Self {
+    /// Generate statistics from marketplace and simulation run
+    pub fn new(marketplace: &Marketplace, simulation_run: &SimulationRun) -> Self {
         // Calculate campaign statistics
         let mut campaign_stats = Vec::new();
-        for campaign in &campaigns.campaigns {
+        for campaign in &marketplace.campaigns.campaigns {
             let mut impressions_obtained = 0;
             let mut total_supply_cost = 0.0;
             let mut total_virtual_cost = 0.0;
             let mut total_buyer_charge = 0.0;
             let mut total_value = 0.0;
 
-            for (index, impression) in impressions.impressions.iter().enumerate() {
+            for (index, impression) in marketplace.impressions.impressions.iter().enumerate() {
                 if let Winner::Campaign { campaign_id, virtual_cost, buyer_charge } = simulation_run.results[index].winner {
                     if campaign_id == campaign.campaign_id {
                         impressions_obtained += 1;
@@ -144,13 +143,13 @@ impl SimulationStat {
 
         // Calculate seller statistics
         let mut seller_stats = Vec::new();
-        for seller in &sellers.sellers {
+        for seller in &marketplace.sellers.sellers {
             let mut impressions_sold = 0;
             let mut total_supply_cost = 0.0;
             let mut total_virtual_cost = 0.0;
             let mut total_buyer_charge = 0.0;
 
-            for (index, impression) in impressions.impressions.iter().enumerate() {
+            for (index, impression) in marketplace.impressions.impressions.iter().enumerate() {
                 if impression.seller_id == seller.seller_id {
                     match simulation_run.results[index].winner {
                         Winner::Campaign { virtual_cost, buyer_charge, .. } => {
@@ -192,7 +191,7 @@ impl SimulationStat {
                     total_virtual_cost_all += virtual_cost;
                     total_buyer_charge_all += buyer_charge;
                     // Add value for the winning campaign
-                    let impression = &impressions.impressions[index];
+                    let impression = &marketplace.impressions.impressions[index];
                     total_value_all += impression.value_to_campaign_id[campaign_id] / 1000.0;
                 }
             }

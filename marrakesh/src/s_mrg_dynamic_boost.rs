@@ -98,9 +98,9 @@ fn run_variant(verbosity: Verbosity, mrg_boost_factor: f64, variant_description:
 /// a boost factor of 2.0 applied to the MRG seller. The boost factor affects how MRG
 /// impressions are valued in the marketplace.
 pub fn run(verbosity: Verbosity) -> Result<(), Box<dyn std::error::Error>> {
-
     // Run variant with boost_factor = 1.0 (default) for MRG seller
-    let stats_A = run_variant(verbosity, 1.0, "Running with Abundant HB impressions (MRG boost: 1.0)");    
+    let stats_A = run_variant(verbosity, 1.0, "Running with Abundant HB impressions (MRG boost: 1.0)");
+    
     // Run variant with boost_factor = 2.0 for MRG seller
     let stats_B = run_variant(verbosity, 2.0, "Running with Abundant HB impressions (MRG boost: 2.0)");
     
@@ -207,14 +207,14 @@ pub fn run(verbosity: Verbosity) -> Result<(), Box<dyn std::error::Error>> {
         }
         Ok(())
     } else {
-        Err(format!("Scenario 'MRGboost' validation failed:\n{}", errors.join("\n")).into())
+        Err(format!("Scenario 'MRGdynamicboost' validation failed:\n{}", errors.join("\n")).into())
     }
 }
 
 // Register this scenario in the catalog
 inventory::submit!(crate::scenarios::ScenarioEntry {
-    short_name: "MRGboost",
-    description: "Demonstrates the effect of MRG seller boost factor on marketplace dynamics",
+    short_name: "MRGdynamicboost",
+    description: "Demonstrates the effect of MRG seller boost factor on marketplace dynamics (dynamic version)",
     run,
 });
 

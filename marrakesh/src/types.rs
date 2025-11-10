@@ -200,6 +200,23 @@ impl Sellers {
     }
 }
 
+/// Marketplace containing campaigns, sellers, and impressions
+/// This groups together the three main components of the marketplace simulation
+pub struct Marketplace {
+    pub campaigns: Campaigns,
+    pub sellers: Sellers,
+    pub impressions: crate::impressions::Impressions,
+}
+
+impl Marketplace {
+    /// Print initialization information about the marketplace
+    pub fn printout(&self) {
+        println!("Initialized {} sellers", self.sellers.sellers.len());
+        println!("Initialized {} campaigns", self.campaigns.campaigns.len());
+        println!("Initialized {} impressions", self.impressions.impressions.len());
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

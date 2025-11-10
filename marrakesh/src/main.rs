@@ -8,9 +8,10 @@ mod scenarios;
 // Include scenario files so their constructors run
 mod s_one;
 mod s_mrg_boost;
+mod s_mrg_dynamic_boost;
 
 use types::{CampaignType, ChargeType, Campaigns, Sellers};
-use simulationrun::{CampaignParams, SellerParams, SimulationRun, SimulationStat};
+use simulationrun::{CampaignParams, SellerParams};
 use converge::SimulationConverge;
 use impressions::Impressions;
 
@@ -90,23 +91,24 @@ fn main() {
         );
         let impressions = Impressions::new(&sellers, &impressions_params);
 
-        println!("Initialized {} sellers", sellers.sellers.len());
-        println!("Initialized {} campaigns", campaigns.campaigns.len());
-        println!("Initialized {} impressions", impressions.impressions.len());
+        // Create marketplace containing campaigns, sellers, and impressions
+        let marketplace = types::Marketplace {
+            campaigns,
+            sellers,
+            impressions,
+        };
+        
+        marketplace.printout();
 
         // Create campaign parameters from campaigns (default pacing = 1.0)
-        let mut campaign_params = CampaignParams::new(&campaigns);
+        let initial_campaign_params = CampaignParams::new(&marketplace.campaigns);
         // Create seller parameters from sellers (default boost_factor = 1.0)
-        let seller_params = SellerParams::new(&sellers);
+        let initial_seller_params = SellerParams::new(&marketplace.sellers);
         
         // Run simulation loop with pacing adjustments (maximum 100 iterations)
         // Verbosity::None means only print convergence message and final solution
-        SimulationConverge::run(&impressions, &campaigns, &sellers, &mut campaign_params, &seller_params, 100, Verbosity::None);
-        
-        // Run final simulation and output complete statistics
-        let final_simulation_run = SimulationRun::new(&impressions, &campaigns, &campaign_params, &sellers, &seller_params);
-        let final_stats = SimulationStat::new(&campaigns, &sellers, &impressions, &final_simulation_run);
+        let (_final_simulation_run, final_stats, final_campaign_params) = SimulationConverge::run(&marketplace, &initial_campaign_params, &initial_seller_params, 100, Verbosity::None);
         println!("\n=== Final Results ===");
-        final_stats.printout(&campaigns, &sellers, &campaign_params);
+        final_stats.printout(&marketplace.campaigns, &marketplace.sellers, &final_campaign_params);
     }
 }

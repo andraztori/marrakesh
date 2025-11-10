@@ -1,12 +1,17 @@
-use crate::types::{CampaignType, ChargeType, Campaigns, Sellers};
-use crate::simulationrun::{CampaignParams, SellerParams, SimulationRun, SimulationStat};
+use crate::types::{CampaignType, ChargeType, Campaigns, Marketplace, Sellers};
+use crate::simulationrun::{CampaignParams, SellerParams, SimulationStat};
 use crate::converge::SimulationConverge;
 use crate::impressions::{Impressions, ImpressionsParam};
 use crate::scenarios::Verbosity;
 use crate::utils;
 
 /// Run a variant of the simulation with a specific number of HB impressions
-fn run_variant(verbosity: Verbosity, hb_impressions: usize) -> SimulationStat {
+fn run_variant(verbosity: Verbosity, hb_impressions: usize, variant_description: &str) -> SimulationStat {
+    // Print variant description if Summary or Full verbosity
+    if verbosity >= Verbosity::Summary {
+        println!("\n=== {} ===", variant_description);
+    }
+    
     // Initialize containers for campaigns and sellers
     let mut campaigns = Campaigns::new();
     let mut sellers = Sellers::new();
@@ -51,29 +56,30 @@ fn run_variant(verbosity: Verbosity, hb_impressions: usize) -> SimulationStat {
     );
     let impressions = Impressions::new(&sellers, &impressions_params);
 
+    // Create marketplace containing campaigns, sellers, and impressions
+    let marketplace = Marketplace {
+        campaigns,
+        sellers,
+        impressions,
+    };
+
     if verbosity == Verbosity::Full {
-        println!("Initialized {} sellers", sellers.sellers.len());
-        println!("Initialized {} campaigns", campaigns.campaigns.len());
-        println!("Initialized {} impressions", impressions.impressions.len());
+        marketplace.printout();
     }
 
     // Create campaign parameters from campaigns (default pacing = 1.0)
-    let mut campaign_params = CampaignParams::new(&campaigns);
+    let initial_campaign_params = CampaignParams::new(&marketplace.campaigns);
     // Create seller parameters from sellers (default boost_factor = 1.0)
-    let seller_params = SellerParams::new(&sellers);
+    let initial_seller_params = SellerParams::new(&marketplace.sellers);
     
     // Run simulation loop with pacing adjustments (maximum 100 iterations)
     // Pass verbosity parameter through
-    SimulationConverge::run(&impressions, &campaigns, &sellers, &mut campaign_params, &seller_params, 100, verbosity);
-    
-    // Run final simulation and return statistics
-    let final_simulation_run = SimulationRun::new(&impressions, &campaigns, &campaign_params, &sellers, &seller_params);
-    let stats = SimulationStat::new(&campaigns, &sellers, &impressions, &final_simulation_run);
+    let (_final_simulation_run, stats, final_campaign_params) = SimulationConverge::run(&marketplace, &initial_campaign_params, &initial_seller_params, 100, verbosity);
     
     // Print final stats if Summary or Full verbosity
     if verbosity >= Verbosity::Summary {
         if verbosity == Verbosity::Full {
-            stats.printout(&campaigns, &sellers, &campaign_params);
+            stats.printout(&marketplace.campaigns, &marketplace.sellers, &final_campaign_params);
         } else {
             // Summary mode: only print overall stats
             stats.printout_overall();
@@ -97,16 +103,10 @@ fn run_variant(verbosity: Verbosity, hb_impressions: usize) -> SimulationStat {
 /// - With 1000 HB impressions: Lower buyer charges, higher total value, but supply_cost > buyer_charge (unprofitable)
 pub fn run(verbosity: Verbosity) -> Result<(), Box<dyn std::error::Error>> {
     // Run variant with 100 HB impressions
-    if verbosity >= Verbosity::Summary {
-        println!("\n=== Running with Scarce HB impressions ===");
-    }
-    let stats_A = run_variant(verbosity, 100);
+    let stats_A = run_variant(verbosity, 100, "Running with Scarce HB impressions");
     
     // Run variant with 1000 HB impressions
-    if verbosity >= Verbosity::Summary {
-        println!("\n=== Running with Abundant HB impressions ===");
-    }
-    let stats_B = run_variant(verbosity, 1000);
+    let stats_B = run_variant(verbosity, 1000, "Running with Abundant HB impressions");
     
     // Compare the two variants to verify expected marketplace behavior
     // Variant A (100 HB) should have:
