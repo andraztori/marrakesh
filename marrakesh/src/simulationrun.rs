@@ -10,7 +10,7 @@ pub struct SimulationRun {
 
 impl SimulationRun {
     /// Create a new SimulationRun container and run auctions for all impressions
-    pub fn new(marketplace: &Marketplace, campaign_params: &CampaignParams, seller_params: &SellerParams) -> Self {
+    pub fn new(marketplace: &Marketplace, campaign_params: &CampaignConvergeParams, seller_params: &SellerConvergeParams) -> Self {
         let mut results = Vec::with_capacity(marketplace.impressions.impressions.len());
         
         for impression in &marketplace.impressions.impressions {
@@ -34,11 +34,11 @@ pub struct CampaignParam {
 
 /// Container for campaign parameters
 #[derive(Clone)]
-pub struct CampaignParams {
+pub struct CampaignConvergeParams {
     pub params: Vec<CampaignParam>,
 }
 
-impl CampaignParams {
+impl CampaignConvergeParams {
     /// Create campaign parameters from campaigns, defaulting all pacings to 1.0
     pub fn new(campaigns: &Campaigns) -> Self {
         let mut params = Vec::with_capacity(campaigns.campaigns.len());
@@ -59,11 +59,11 @@ pub struct SellerParam {
 }
 
 /// Container for seller parameters
-pub struct SellerParams {
+pub struct SellerConvergeParams {
     pub params: Vec<SellerParam>,
 }
 
-impl SellerParams {
+impl SellerConvergeParams {
     /// Create seller parameters from sellers, defaulting all boost_factors to 1.0
     pub fn new(sellers: &Sellers) -> Self {
         let mut params = Vec::with_capacity(sellers.sellers.len());
@@ -216,7 +216,7 @@ impl SimulationStat {
     }
 
     /// Output campaign statistics (without header, for compact iteration output)
-    pub fn printout_campaigns(&self, campaigns: &Campaigns, campaign_params: &CampaignParams, logger: &mut Logger, event: LogEvent) {
+    pub fn printout_campaigns(&self, campaigns: &Campaigns, campaign_params: &CampaignConvergeParams, logger: &mut Logger, event: LogEvent) {
         
         for (index, campaign_stat) in self.campaign_stats.iter().enumerate() {
             let campaign = &campaigns.campaigns[index];
@@ -243,7 +243,7 @@ impl SimulationStat {
     }
 
     /// Output complete statistics
-    pub fn printout(&self, campaigns: &Campaigns, sellers: &Sellers, campaign_params: &CampaignParams, logger: &mut Logger) {
+    pub fn printout(&self, campaigns: &Campaigns, sellers: &Sellers, campaign_params: &CampaignConvergeParams, logger: &mut Logger) {
         
         // Output campaign statistics
         logln!(logger, LogEvent::Variant, "\n=== Campaign Statistics ===");

@@ -1,11 +1,12 @@
 use crate::types::{CampaignType, ChargeType, Campaigns, Marketplace, Sellers};
-use crate::simulationrun::{CampaignParams, SellerParams, SimulationStat};
+use crate::simulationrun::{CampaignConvergeParams, SellerConvergeParams, SimulationStat};
 use crate::converge::SimulationConverge;
 use crate::impressions::{Impressions, ImpressionsParam};
 use crate::scenarios::Verbosity;
 use crate::utils;
 use crate::logger::{Logger, LogEvent, FileReceiver, sanitize_filename};
 use crate::logln;
+use crate::errln;
 use std::path::PathBuf;
 
 /// Run a variant of the simulation with a specific MRG boost factor
@@ -72,17 +73,17 @@ fn run_variant(mrg_boost_factor: f64, variant_description: &str, scenario_name: 
     marketplace.printout(logger);
 
     // Create campaign parameters from campaigns (default pacing = 1.0)
-    let initial_campaign_params = CampaignParams::new(&marketplace.campaigns);
+    let initial_campaign_converge_params = CampaignConvergeParams::new(&marketplace.campaigns);
     // Create seller parameters from sellers (default boost_factor = 1.0)
-    let mut initial_seller_params = SellerParams::new(&marketplace.sellers);
+    let mut initial_seller_converge_params = SellerConvergeParams::new(&marketplace.sellers);
     // Set boost_factor for MRG seller (seller_id 0)
-    initial_seller_params.params[0].boost_factor = mrg_boost_factor;
+    initial_seller_converge_params.params[0].boost_factor = mrg_boost_factor;
     
     // Run simulation loop with pacing adjustments (maximum 100 iterations)
-    let (_final_simulation_run, stats, final_campaign_params) = SimulationConverge::run(&marketplace, &initial_campaign_params, &initial_seller_params, 100, logger);
+    let (_final_simulation_run, stats, final_campaign_converge_params) = SimulationConverge::run(&marketplace, &initial_campaign_converge_params, &initial_seller_converge_params, 100, variant_name, logger);
     
     // Print final stats (variant-level output)
-    stats.printout(&marketplace.campaigns, &marketplace.sellers, &final_campaign_params, logger);
+    stats.printout(&marketplace.campaigns, &marketplace.sellers, &final_campaign_converge_params, logger);
     
     // Remove variant-specific receivers
     logger.remove_receiver(variant_receiver_id);
@@ -103,7 +104,7 @@ pub fn run(_verbosity: Verbosity, logger: &mut Logger) -> Result<(), Box<dyn std
     let scenario_receiver_id = logger.add_receiver(FileReceiver::new(&PathBuf::from(format!("log/{}/scenario.log", sanitize_filename(scenario_name))), vec![LogEvent::Scenario]));
 
     // Run variant with boost_factor = 1.0 (default) for MRG seller
-    let stats_A = run_variant(1.0, "Running with Abundant HB impressions (MRG boost: 1.0)", scenario_name, "boost_1.0", logger);
+    let stats_A = run_variant(1.0, "Running with Abundant HB impressions (MRG boost: 1.0)", scenario_name, "boost_1.0", logger);    
     // Run variant with boost_factor = 2.0 for MRG seller
     let stats_B = run_variant(2.0, "Running with Abundant HB impressions (MRG boost: 2.0)", scenario_name, "boost_2.0", logger);
     
@@ -119,87 +120,81 @@ pub fn run(_verbosity: Verbosity, logger: &mut Logger) -> Result<(), Box<dyn std
     let mut errors: Vec<String> = Vec::new();
     
     // Check: Variant A is unprofitable (overall)
+    let msg = format!(
+        "Variant A (MRG boost 1.0) is unprofitable (supply_cost > buyer_charge): {:.4} > {:.4}",
+        stats_A.overall_stat.total_supply_cost,
+        stats_A.overall_stat.total_buyer_charge
+    );
     if stats_A.overall_stat.total_supply_cost <= stats_A.overall_stat.total_buyer_charge {
-        errors.push(format!(
-            "Expected variant A (MRG boost 1.0) to be unprofitable (supply_cost > buyer_charge), but got {} <= {}",
-            stats_A.overall_stat.total_supply_cost,
-            stats_A.overall_stat.total_buyer_charge
-        ));
+        errors.push(msg.clone());
+        errln!(logger, LogEvent::Scenario, "{}", msg);
     } else {
-        logln!(logger, LogEvent::Scenario, "✓ Variant A (MRG boost 1.0) is unprofitable (supply_cost > buyer_charge): {:.4} > {:.4}",
-            stats_A.overall_stat.total_supply_cost,
-            stats_A.overall_stat.total_buyer_charge
-        );
+        logln!(logger, LogEvent::Scenario, "✓ {}", msg);
     }
     
     // Check: Variant B is profitable (overall)
+    let msg = format!(
+        "Variant B (MRG boost 2.0) is profitable (supply_cost < buyer_charge): {:.4} < {:.4}",
+        stats_B.overall_stat.total_supply_cost,
+        stats_B.overall_stat.total_buyer_charge
+    );
     if stats_B.overall_stat.total_supply_cost >= stats_B.overall_stat.total_buyer_charge {
-        errors.push(format!(
-            "Expected variant B (MRG boost 2.0) to be profitable (supply_cost < buyer_charge), but got {} >= {}",
-            stats_B.overall_stat.total_supply_cost,
-            stats_B.overall_stat.total_buyer_charge
-        ));
+        errors.push(msg.clone());
+        errln!(logger, LogEvent::Scenario, "{}", msg);
     } else {
-        logln!(logger, LogEvent::Scenario, "✓ Variant B (MRG boost 2.0) is profitable (supply_cost < buyer_charge): {:.4} < {:.4}",
-            stats_B.overall_stat.total_supply_cost,
-            stats_B.overall_stat.total_buyer_charge
-        );
+        logln!(logger, LogEvent::Scenario, "✓ {}", msg);
     }
     
     // Check: Seller 0 (MRG) is unprofitable in variant A
+    let msg = format!(
+        "Seller 0 (MRG) in variant A (MRG boost 1.0) is unprofitable (supply_cost > buyer_charge): {:.4} > {:.4}",
+        stats_A.seller_stats[0].total_supply_cost,
+        stats_A.seller_stats[0].total_buyer_charge
+    );
     if stats_A.seller_stats[0].total_supply_cost <= stats_A.seller_stats[0].total_buyer_charge {
-        errors.push(format!(
-            "Expected seller 0 (MRG) in variant A (MRG boost 1.0) to be unprofitable (supply_cost > buyer_charge), but got {} <= {}",
-            stats_A.seller_stats[0].total_supply_cost,
-            stats_A.seller_stats[0].total_buyer_charge
-        ));
+        errors.push(msg.clone());
+        errln!(logger, LogEvent::Scenario, "{}", msg);
     } else {
-        logln!(logger, LogEvent::Scenario, "✓ Seller 0 (MRG) in variant A (MRG boost 1.0) is unprofitable (supply_cost > buyer_charge): {:.4} > {:.4}",
-            stats_A.seller_stats[0].total_supply_cost,
-            stats_A.seller_stats[0].total_buyer_charge
-        );
+        logln!(logger, LogEvent::Scenario, "✓ {}", msg);
     }
     
     // Check: Seller 0 (MRG) is profitable in variant B
+    let msg = format!(
+        "Seller 0 (MRG) in variant B (MRG boost 2.0) is profitable (supply_cost < buyer_charge): {:.4} < {:.4}",
+        stats_B.seller_stats[0].total_supply_cost,
+        stats_B.seller_stats[0].total_buyer_charge
+    );
     if stats_B.seller_stats[0].total_supply_cost >= stats_B.seller_stats[0].total_buyer_charge {
-        errors.push(format!(
-            "Expected seller 0 (MRG) in variant B (MRG boost 2.0) to be profitable (supply_cost < buyer_charge), but got {} >= {}",
-            stats_B.seller_stats[0].total_supply_cost,
-            stats_B.seller_stats[0].total_buyer_charge
-        ));
+        errors.push(msg.clone());
+        errln!(logger, LogEvent::Scenario, "{}", msg);
     } else {
-        logln!(logger, LogEvent::Scenario, "✓ Seller 0 (MRG) in variant B (MRG boost 2.0) is profitable (supply_cost < buyer_charge): {:.4} < {:.4}",
-            stats_B.seller_stats[0].total_supply_cost,
-            stats_B.seller_stats[0].total_buyer_charge
-        );
+        logln!(logger, LogEvent::Scenario, "✓ {}", msg);
     }
     
     // Check: Variant A has more total value than variant B
+    let msg = format!(
+        "Variant A (MRG boost 1.0) has more total value than variant B (MRG boost 2.0): {:.4} > {:.4}",
+        stats_A.overall_stat.total_value,
+        stats_B.overall_stat.total_value
+    );
     if stats_A.overall_stat.total_value <= stats_B.overall_stat.total_value {
-        errors.push(format!(
-            "Expected variant A (MRG boost 1.0) to have more total value than variant B (MRG boost 2.0), but got {} <= {}",
-            stats_A.overall_stat.total_value,
-            stats_B.overall_stat.total_value
-        ));
+        errors.push(msg.clone());
+        errln!(logger, LogEvent::Scenario, "{}", msg);
     } else {
-        logln!(logger, LogEvent::Scenario, "✓ Variant A (MRG boost 1.0) has more total value: {:.4} > {:.4}",
-            stats_A.overall_stat.total_value,
-            stats_B.overall_stat.total_value
-        );
+        logln!(logger, LogEvent::Scenario, "✓ {}", msg);
     }
     
     // Check: Variant A has lower total cost than variant B
+    let msg = format!(
+        "Variant A (MRG boost 1.0) has lower total cost than variant B (MRG boost 2.0): {:.4} < {:.4}",
+        stats_A.overall_stat.total_buyer_charge,
+        stats_B.overall_stat.total_buyer_charge
+    );
     if stats_A.overall_stat.total_buyer_charge >= stats_B.overall_stat.total_buyer_charge {
-        errors.push(format!(
-            "Expected variant A (MRG boost 1.0) to have lower total cost than variant B (MRG boost 2.0), but got {} >= {}",
-            stats_A.overall_stat.total_buyer_charge,
-            stats_B.overall_stat.total_buyer_charge
-        ));
+        errors.push(msg.clone());
+        errln!(logger, LogEvent::Scenario, "{}", msg);
     } else {
-        logln!(logger, LogEvent::Scenario, "✓ Variant A (MRG boost 1.0) has lower total cost: {:.4} < {:.4}",
-            stats_A.overall_stat.total_buyer_charge,
-            stats_B.overall_stat.total_buyer_charge
-        );
+        logln!(logger, LogEvent::Scenario, "✓ {}", msg);
     }
     
     // Remove scenario-level receiver

@@ -1,7 +1,8 @@
 use crate::types::{CampaignType, Marketplace};
-use crate::simulationrun::{CampaignParams, SellerParams, SimulationRun, SimulationStat};
+use crate::simulationrun::{CampaignConvergeParams, SellerConvergeParams, SimulationRun, SimulationStat};
 use crate::logger::{Logger, LogEvent};
 use crate::logln;
+use crate::warnln;
 
 /// Proportional controller for adjusting campaign pacing based on target vs actual performance
 pub struct ControllerProportional {
@@ -58,41 +59,44 @@ impl SimulationConverge {
     /// Run simulation loop with pacing adjustments (maximum max_iterations iterations)
     /// 
     /// # Arguments
+    /// * `variant_name` - Name of the variant being run
     /// * `logger` - Logger for event-based logging
     /// 
     /// # Returns
-    /// Returns a tuple of (final SimulationRun, final SimulationStat, final CampaignParams)
+    /// Returns a tuple of (final SimulationRun, final SimulationStat, final CampaignConvergeParams)
     pub fn run(
         marketplace: &Marketplace,
-        campaign_params: &CampaignParams,
-        seller_params: &SellerParams,
+        initial_campaign_converge_params: &CampaignConvergeParams,
+        seller_converge_params: &SellerConvergeParams,
         max_iterations: usize,
+        variant_name: &str,
         logger: &mut Logger,
-    ) -> (SimulationRun, SimulationStat, CampaignParams) {
+    ) -> (SimulationRun, SimulationStat, CampaignConvergeParams) {
         
         let mut final_simulation_run = None;
         let mut final_stats = None;
-        let mut final_campaign_params = None;
+        let mut final_campaign_converge_params = None;
         let mut converged = false;
         
-        // Start with a clone of the input campaign_params
-        let mut current_campaign_params = campaign_params.clone();
+        // Initialize current campaign converge params from input for the first iteration
+        let mut current_campaign_converge_params = initial_campaign_converge_params.clone();
         
         for iteration in 0..max_iterations {
-            logln!(logger, LogEvent::Simulation, "\n=== Iteration {} ===", iteration + 1);
+            logln!(logger, LogEvent::Simulation, "\n=== {} - Iteration {} ===", variant_name, iteration + 1);
             
             // Run auctions for all impressions
-            let simulation_run = SimulationRun::new(marketplace, &current_campaign_params, seller_params);
+            let simulation_run = SimulationRun::new(marketplace, &current_campaign_converge_params, seller_converge_params);
 
             // Generate statistics
             let stats = SimulationStat::new(marketplace, &simulation_run);
             
-            // Adjust pacing for each campaign based on targets using proportional controller
+            // Calculate next iteration's campaign converge params based on current results
             let controller = ControllerProportional::new();
             let mut pacing_changed = false;
+            let mut next_campaign_converge_params = current_campaign_converge_params.clone();
             for (index, campaign) in marketplace.campaigns.campaigns.iter().enumerate() {
                 let campaign_stat = &stats.campaign_stats[index];
-                let current_pacing = current_campaign_params.params[index].pacing;
+                let current_pacing = current_campaign_converge_params.params[index].pacing;
                 
                 // Adjust pacing based on campaign type using controller
                 let (new_pacing, changed) = match &campaign.campaign_type {
@@ -108,44 +112,41 @@ impl SimulationConverge {
                     }
                 };
                 
-                current_campaign_params.params[index].pacing = new_pacing;
+                next_campaign_converge_params.params[index].pacing = new_pacing;
                 if changed {
                     pacing_changed = true;
                 }
             }
             
-            // Output campaign statistics for each iteration
-            stats.printout_campaigns(&marketplace.campaigns, &current_campaign_params, logger, LogEvent::Simulation);
+            // Output campaign statistics for each iteration (using the params that were actually used)
+            stats.printout_campaigns(&marketplace.campaigns, &current_campaign_converge_params, logger, LogEvent::Simulation);
+            
+            // Keep track of final simulation run and stats
+            final_simulation_run = Some(simulation_run);
+            final_stats = Some(stats);
+            final_campaign_converge_params = Some(current_campaign_converge_params);
             
             // Break early if no pacing changes were made (converged)
             if !pacing_changed {
-                final_simulation_run = Some(simulation_run);
-                final_stats = Some(stats);
-                final_campaign_params = Some(current_campaign_params);
                 converged = true;
-                logln!(logger, LogEvent::Convergence, "Converged after {} iterations", iteration + 1);
+                logln!(logger, LogEvent::Convergence, "{}: Converged after {} iterations", variant_name, iteration + 1);
                 break;
             }
             
-            // Keep track of final simulation run and stats in case we reach max_iterations
-            final_simulation_run = Some(simulation_run);
-            final_stats = Some(stats);
-            final_campaign_params = Some(current_campaign_params.clone());
+            // Prepare for next iteration
+            current_campaign_converge_params = next_campaign_converge_params;
         }
         
         // Log if we reached max iterations
         if !converged {
-            logln!(logger, LogEvent::Convergence, "Reached maximum iterations ({})", max_iterations);
-            logln!(logger, LogEvent::Variant, "Reached maximum iterations ({})", max_iterations);
-            logln!(logger, LogEvent::Scenario, "Reached maximum iterations ({})", max_iterations);
-            logln!(logger, LogEvent::Validation, "Reached maximum iterations ({})", max_iterations);
+            warnln!(logger, LogEvent::Convergence, "{}: Reached maximum iterations ({})", variant_name, max_iterations);
         }
         
-        // Return the final simulation run, stats, and campaign params
+        // Return the final simulation run, stats, and campaign converge params
         (
             final_simulation_run.expect("Should have at least one iteration"),
             final_stats.expect("Should have at least one iteration"),
-            final_campaign_params.expect("Should have at least one iteration"),
+            final_campaign_converge_params.expect("Should have at least one iteration"),
         )
     }
 }

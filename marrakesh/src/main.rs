@@ -12,7 +12,7 @@ mod s_mrg_boost;
 mod s_mrg_dynamic_boost;
 
 use types::{CampaignType, ChargeType, Campaigns, Sellers};
-use simulationrun::{CampaignParams, SellerParams};
+use simulationrun::{CampaignConvergeParams, SellerConvergeParams};
 use converge::SimulationConverge;
 use impressions::Impressions;
 use logger::{Logger, LogEvent, ConsoleReceiver, FileReceiver};
@@ -40,9 +40,8 @@ fn main() {
             log!(&mut logger, LogEvent::Validation, "{}: ", scenario.short_name);
             match (scenario.run)(Verbosity::None, &mut logger) {
                 Ok(()) => logln!(&mut logger, LogEvent::Validation, "✓ PASSED"),
-                Err(e) => {
+                Err(_e) => {
                     logln!(&mut logger, LogEvent::Validation, "✗ FAILED");
-                    logln!(&mut logger, LogEvent::Validation, "  Error: {}", e);
                 }
             }
             // Flush to ensure validation is written to summary.log
@@ -121,13 +120,13 @@ fn main() {
         marketplace.printout(&mut logger);
 
         // Create campaign parameters from campaigns (default pacing = 1.0)
-        let initial_campaign_params = CampaignParams::new(&marketplace.campaigns);
+        let initial_campaign_converge_params = CampaignConvergeParams::new(&marketplace.campaigns);
         // Create seller parameters from sellers (default boost_factor = 1.0)
-        let initial_seller_params = SellerParams::new(&marketplace.sellers);
+        let initial_seller_converge_params = SellerConvergeParams::new(&marketplace.sellers);
         
         // Run simulation loop with pacing adjustments (maximum 100 iterations)
-        let (_final_simulation_run, final_stats, final_campaign_params) = SimulationConverge::run(&marketplace, &initial_campaign_params, &initial_seller_params, 100, &mut logger);
+        let (_final_simulation_run, final_stats, final_campaign_converge_params) = SimulationConverge::run(&marketplace, &initial_campaign_converge_params, &initial_seller_converge_params, 100, "test", &mut logger);
         logln!(&mut logger, LogEvent::Variant, "\n=== Final Results ===");
-        final_stats.printout(&marketplace.campaigns, &marketplace.sellers, &final_campaign_params, &mut logger);
+        final_stats.printout(&marketplace.campaigns, &marketplace.sellers, &final_campaign_converge_params, &mut logger);
     }
 }

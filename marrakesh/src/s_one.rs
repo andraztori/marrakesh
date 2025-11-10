@@ -1,11 +1,12 @@
 use crate::types::{CampaignType, ChargeType, Campaigns, Marketplace, Sellers};
-use crate::simulationrun::{CampaignParams, SellerParams, SimulationStat};
+use crate::simulationrun::{CampaignConvergeParams, SellerConvergeParams, SimulationStat};
 use crate::converge::SimulationConverge;
 use crate::impressions::{Impressions, ImpressionsParam};
 use crate::scenarios::Verbosity;
 use crate::utils;
 use crate::logger::{Logger, LogEvent, FileReceiver, sanitize_filename};
 use crate::logln;
+use crate::errln;
 use std::path::PathBuf;
 
 /// Run a variant of the simulation with a specific number of HB impressions
@@ -72,15 +73,15 @@ fn run_variant(hb_impressions: usize, variant_description: &str, scenario_name: 
     marketplace.printout(logger);
 
     // Create campaign parameters from campaigns (default pacing = 1.0)
-    let initial_campaign_params = CampaignParams::new(&marketplace.campaigns);
+    let initial_campaign_converge_params = CampaignConvergeParams::new(&marketplace.campaigns);
     // Create seller parameters from sellers (default boost_factor = 1.0)
-    let initial_seller_params = SellerParams::new(&marketplace.sellers);
+    let initial_seller_converge_params = SellerConvergeParams::new(&marketplace.sellers);
     
     // Run simulation loop with pacing adjustments (maximum 100 iterations)
-    let (_final_simulation_run, stats, final_campaign_params) = SimulationConverge::run(&marketplace, &initial_campaign_params, &initial_seller_params, 100, logger);
+    let (_final_simulation_run, stats, final_campaign_converge_params) = SimulationConverge::run(&marketplace, &initial_campaign_converge_params, &initial_seller_converge_params, 100, variant_name, logger);
     
     // Print final stats (variant-level output)
-    stats.printout(&marketplace.campaigns, &marketplace.sellers, &final_campaign_params, logger);
+    stats.printout(&marketplace.campaigns, &marketplace.sellers, &final_campaign_converge_params, logger);
     
     // Remove variant-specific receivers
     logger.remove_receiver(variant_receiver_id);
@@ -129,59 +130,56 @@ pub fn run(_verbosity: Verbosity, logger: &mut Logger) -> Result<(), Box<dyn std
     let mut errors = Vec::new();
     
     // Check: Variant A has higher total cost charged to buyers
+    let msg = format!(
+        "Variant A (Scarce HB) has higher total buyer charge than variant B (Abundant HB): {:.4} > {:.4}",
+        stats_A.overall_stat.total_buyer_charge,
+        stats_B.overall_stat.total_buyer_charge
+    );
     if stats_A.overall_stat.total_buyer_charge <= stats_B.overall_stat.total_buyer_charge {
-        errors.push(format!(
-            "Expected variant A (Scarce HB) to have higher total buyer charge than variant B (Abundant HB), but got {} <= {}",
-            stats_A.overall_stat.total_buyer_charge,
-            stats_B.overall_stat.total_buyer_charge
-        ));
+        errors.push(msg.clone());
+        errln!(logger, LogEvent::Scenario, "{}", msg);
     } else {
-        logln!(logger, LogEvent::Scenario, "✓ Variant A (Scarce HB) has higher total buyer charge: {:.4} > {:.4}",
-            stats_A.overall_stat.total_buyer_charge,
-            stats_B.overall_stat.total_buyer_charge
-        );
+        logln!(logger, LogEvent::Scenario, "✓ {}", msg);
     }
     
     // Check: Variant A has lower total value
+    let msg = format!(
+        "Variant A (Scarce HB) has lower total value than variant B (Abundant HB): {:.4} < {:.4}",
+        stats_A.overall_stat.total_value,
+        stats_B.overall_stat.total_value
+    );
     if stats_A.overall_stat.total_value >= stats_B.overall_stat.total_value {
-        errors.push(format!(
-            "Expected variant A (Scarce HB) to have lower total value than variant B (Abundant HB), but got {} >= {}",
-            stats_A.overall_stat.total_value,
-            stats_B.overall_stat.total_value
-        ));
+        errors.push(msg.clone());
+        errln!(logger, LogEvent::Scenario, "{}", msg);
     } else {
-        logln!(logger, LogEvent::Scenario, "✓ Variant A (Scarce HB) has lower total value: {:.4} < {:.4}",
-            stats_A.overall_stat.total_value,
-            stats_B.overall_stat.total_value
-        );
+
+        logln!(logger, LogEvent::Scenario, "✓ {}", msg);
     }
     
     // Check: In variant A, cost of inventory is lower than cost charged to buyers
-    if stats_A.overall_stat.total_supply_cost >= stats_A.overall_stat.total_buyer_charge {
-        errors.push(format!(
-            "Expected variant A (Scarce HB) to have supply cost < buyer charge (profitable), but got {} >= {}",
-            stats_A.overall_stat.total_supply_cost,
-            stats_A.overall_stat.total_buyer_charge
-        ));
+    let msg = format!(
+        "Variant A (Scarce HB) is profitable (supply_cost < buyer_charge): {:.4} < {:.4}",
+        stats_A.overall_stat.total_supply_cost,
+        stats_A.overall_stat.total_buyer_charge
+    );
+    if stats_A.overall_stat.total_supply_cost <= stats_A.overall_stat.total_buyer_charge {
+        errors.push(msg.clone());
+        errln!(logger, LogEvent::Scenario, "{}", msg);
     } else {
-        logln!(logger, LogEvent::Scenario, "✓ Variant A (Scarce HB) is profitable (supply_cost < buyer_charge): {:.4} < {:.4}",
-            stats_A.overall_stat.total_supply_cost,
-            stats_A.overall_stat.total_buyer_charge
-        );
+        logln!(logger, LogEvent::Scenario, "✓ {}", msg);
     }
     
     // Check: In variant B, cost of inventory is higher than cost charged to buyers
+    let msg = format!(
+        "Variant B (Abundant HB) is unprofitable (supply_cost > buyer_charge): {:.4} > {:.4}",
+        stats_B.overall_stat.total_supply_cost,
+        stats_B.overall_stat.total_buyer_charge
+    );
     if stats_B.overall_stat.total_supply_cost <= stats_B.overall_stat.total_buyer_charge {
-        errors.push(format!(
-            "Expected variant B (Abundant HB) to have supply cost > buyer charge (unprofitable), but got {} <= {}",
-            stats_B.overall_stat.total_supply_cost,
-            stats_B.overall_stat.total_buyer_charge
-        ));
+        errors.push(msg.clone());
+        errln!(logger, LogEvent::Scenario, "{}", msg);
     } else {
-        logln!(logger, LogEvent::Scenario, "✓ Variant B (Abundant HB) is unprofitable (supply_cost > buyer_charge): {:.4} > {:.4}",
-            stats_B.overall_stat.total_supply_cost,
-            stats_B.overall_stat.total_buyer_charge
-        );
+        logln!(logger, LogEvent::Scenario, "✓ {}", msg);
     }
     
     // Remove scenario-level receiver

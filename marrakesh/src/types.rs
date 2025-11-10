@@ -54,7 +54,7 @@ pub struct Impression {
 impl Impression {
     /// Run an auction for this impression with the given campaigns, campaign parameters, seller, and seller parameters
     /// Returns the auction result
-    pub fn run_auction(&self, campaigns: &Campaigns, campaign_params: &crate::simulationrun::CampaignParams, _seller: &Seller, seller_param: &crate::simulationrun::SellerParam) -> AuctionResult {
+    pub fn run_auction(&self, campaigns: &Campaigns, campaign_params: &crate::simulationrun::CampaignConvergeParams, _seller: &Seller, seller_param: &crate::simulationrun::SellerParam) -> AuctionResult {
         // Get bids from all campaigns
         let mut winning_bid_cpm = 0.0;
         let mut winning_campaign_id: Option<usize> = None;

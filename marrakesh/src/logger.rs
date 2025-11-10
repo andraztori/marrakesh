@@ -139,6 +139,66 @@ impl Logger {
         self.log(event, &format!("{}\n", message))
     }
     
+    /// Helper method to write a message with newline to the specified event and all upward events
+    /// Hierarchy: Simulation -> Convergence -> Variant -> Scenario -> Validation
+    /// Each receiver receives the message only once, even if it listens to multiple events
+    fn log_with_prefix(&mut self, event: LogEvent, prefix: &str, message: &str) -> io::Result<()> {
+        let events = match event {
+            LogEvent::Simulation => vec![
+                LogEvent::Simulation,
+                LogEvent::Convergence,
+                LogEvent::Variant,
+                LogEvent::Scenario,
+                LogEvent::Validation,
+            ],
+            LogEvent::Convergence => vec![
+                LogEvent::Convergence,
+                LogEvent::Variant,
+                LogEvent::Scenario,
+                LogEvent::Validation,
+            ],
+            LogEvent::Variant => vec![
+                LogEvent::Variant,
+                LogEvent::Scenario,
+                LogEvent::Validation,
+            ],
+            LogEvent::Scenario => vec![
+                LogEvent::Scenario,
+                LogEvent::Validation,
+            ],
+            LogEvent::Validation => vec![
+                LogEvent::Validation,
+            ],
+        };
+        
+        let formatted_message = format!("{} {}\n", prefix, message);
+        // Send message to each receiver only once if it listens to any of the events
+        for (_, receiver) in &mut self.receivers {
+            // Check if receiver should log any of the events in the hierarchy
+            let should_receive = events.iter().any(|&evt| receiver.should_log(evt));
+            if should_receive {
+                receiver.write(&formatted_message)?;
+            }
+        }
+        Ok(())
+    }
+    
+    /// Write a message with newline to the specified event and all upward events
+    /// Hierarchy: Simulation -> Convergence -> Variant -> Scenario -> Validation
+    /// Automatically prepends "ERROR" to the message
+    /// Each receiver receives the message only once, even if it listens to multiple events
+    pub fn errln(&mut self, event: LogEvent, message: &str) -> io::Result<()> {
+        self.log_with_prefix(event, "ERROR", message)
+    }
+    
+    /// Write a message with newline to the specified event and all upward events
+    /// Hierarchy: Simulation -> Convergence -> Variant -> Scenario -> Validation
+    /// Automatically prepends "WARNING" to the message
+    /// Each receiver receives the message only once, even if it listens to multiple events
+    pub fn warnln(&mut self, event: LogEvent, message: &str) -> io::Result<()> {
+        self.log_with_prefix(event, "WARNING", message)
+    }
+    
     /// Flush all receivers
     pub fn flush(&mut self) -> io::Result<()> {
         for (_, receiver) in &mut self.receivers {
@@ -181,6 +241,29 @@ macro_rules! log {
     ($logger:expr, $event:expr, $($arg:tt)*) => {
         {
             let _ = $logger.log($event, &format!($($arg)*));
+        }
+    };
+}
+
+/// Macro to log a formatted string with newline to the specified event and all upward events
+/// Hierarchy: Simulation -> Convergence -> Variant -> Scenario -> Validation
+#[macro_export]
+macro_rules! errln {
+    ($logger:expr, $event:expr, $($arg:tt)*) => {
+        {
+            let _ = $logger.errln($event, &format!($($arg)*));
+        }
+    };
+}
+
+/// Macro to log a formatted string with newline to the specified event and all upward events
+/// Hierarchy: Simulation -> Convergence -> Variant -> Scenario -> Validation
+/// Automatically prepends "WARNING" to the message
+#[macro_export]
+macro_rules! warnln {
+    ($logger:expr, $event:expr, $($arg:tt)*) => {
+        {
+            let _ = $logger.warnln($event, &format!($($arg)*));
         }
     };
 }
