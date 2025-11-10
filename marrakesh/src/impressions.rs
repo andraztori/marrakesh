@@ -1,6 +1,8 @@
 use rand::{rngs::StdRng, SeedableRng};
 use rand_distr::Distribution;
-use crate::types::{ChargeType, Impression, Sellers, MAX_CAMPAIGNS};
+use crate::types::{ChargeType, Sellers, Winner, AuctionResult};
+use crate::campaigns::{Campaigns, MAX_CAMPAIGNS};
+use crate::simulationrun::{CampaignConvergeParams, SellerParam};
 
 /// Object-safe wrapper for Distribution<f64> that works with StdRng
 /// This is needed because Distribution<f64> cannot be made into a trait object
@@ -47,6 +49,81 @@ impl ImpressionsParam {
             base_impression_value_dist: Box::new(base_impression_value_dist),
             value_to_campaign_multiplier_dist: Box::new(value_to_campaign_multiplier_dist),
             fixed_cost_floor_cpm,
+        }
+    }
+}
+
+/// Represents an impression on offer
+#[derive(Debug, Clone)]
+pub struct Impression {
+    pub seller_id: usize,
+    pub charge_type: ChargeType,
+    pub best_other_bid_cpm: f64,
+    pub floor_cpm: f64,
+    pub value_to_campaign_id: [f64; MAX_CAMPAIGNS],
+}
+
+impl Impression {
+    /// Run an auction for this impression with the given campaigns, campaign parameters, seller, and seller parameters
+    /// Returns the auction result
+    pub fn run_auction(&self, campaigns: &Campaigns, campaign_params: &CampaignConvergeParams, _seller: &crate::types::Seller, seller_param: &SellerParam) -> AuctionResult {
+        // Get bids from all campaigns
+        let mut winning_bid_cpm = 0.0;
+        let mut winning_campaign_id: Option<usize> = None;
+
+        for campaign in &campaigns.campaigns {
+            if let Some(campaign_param) = campaign_params.params.get(campaign.campaign_id()) {
+                // Use the trait method for get_bid
+                let bid = campaign.get_bid(self, campaign_param.as_ref());
+                if bid > winning_bid_cpm {
+                    winning_bid_cpm = bid;
+                    winning_campaign_id = Some(campaign.campaign_id());
+                }
+            }
+        }
+
+        // Apply boost_factor to winning_bid_cpm
+        winning_bid_cpm *= seller_param.boost_factor;
+
+        // Helper function to get supply_cost based on charge type (in CPM)
+        // For fixed cost, always use fixed_cost_cpm; for first price, use provided value (or 0.0 if no winner)
+        let get_supply_cost_cpm = |value: f64| -> f64 {
+            match self.charge_type {
+                ChargeType::FIXED_COST { fixed_cost_cpm } => fixed_cost_cpm,
+                ChargeType::FIRST_PRICE => value,
+            }
+        };
+
+        // Determine the result based on winning bid
+        let (winner, supply_cost) = if let Some(campaign_id) = winning_campaign_id {
+            if winning_bid_cpm < self.best_other_bid_cpm {
+                // Winning bid is below best other bid - other demand wins
+                (Winner::OTHER_DEMAND, get_supply_cost_cpm(0.0) / 1000.0)
+            } else if winning_bid_cpm < self.floor_cpm {
+                // Winning bid is below floor - no winner
+                (Winner::BELOW_FLOOR, get_supply_cost_cpm(0.0) / 1000.0)
+            } else {
+                // Valid winner - set cost values
+                // virtual_cost and buyer_charge are always the winning bid
+                let supply_cost_cpm = get_supply_cost_cpm(winning_bid_cpm);
+                let virtual_cost_cpm = winning_bid_cpm;
+                let buyer_charge_cpm = winning_bid_cpm;
+                
+                // Convert from CPM to actual cost by dividing by 1000
+                (Winner::Campaign {
+                    campaign_id,
+                    virtual_cost: virtual_cost_cpm / 1000.0,
+                    buyer_charge: buyer_charge_cpm / 1000.0,
+                }, supply_cost_cpm / 1000.0)
+            }
+        } else {
+            // No campaigns participated
+            (Winner::NO_DEMAND, get_supply_cost_cpm(0.0) / 1000.0)
+        };
+
+        AuctionResult {
+            winner,
+            supply_cost,
         }
     }
 }

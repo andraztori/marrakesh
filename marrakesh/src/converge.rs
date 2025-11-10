@@ -1,56 +1,10 @@
-use crate::types::{CampaignType, Marketplace};
+use crate::types::Marketplace;
+use crate::campaigns::CampaignTrait;
 use crate::simulationrun::{CampaignConvergeParams, SellerConvergeParams, SimulationRun, SimulationStat};
 use crate::logger::{Logger, LogEvent};
 use crate::logln;
 use crate::warnln;
-
-/// Proportional controller for adjusting campaign pacing based on target vs actual performance
-pub struct ControllerProportional {
-    tolerance_fraction: f64,      // Tolerance as a fraction of target (e.g., 0.005 = 0.5%)
-    max_adjustment_factor: f64,   // Maximum adjustment factor (e.g., 0.2 = 20%)
-    proportional_gain: f64,       // Proportional gain (e.g., 0.2 = 20% of error)
-}
-
-impl ControllerProportional {
-    /// Create a new proportional controller with default parameters
-    pub fn new() -> Self {
-        Self {
-            tolerance_fraction: 0.005,  // 0.5% tolerance
-            max_adjustment_factor: 0.2,  // Max 20% adjustment
-            proportional_gain: 0.2,      // 20% of error
-        }
-    }
-
-    /// Adjust pacing based on target and actual values
-    /// 
-    /// # Arguments
-    /// * `target` - Target value to achieve
-    /// * `actual` - Actual value achieved
-    /// * `current_pacing` - Current pacing value
-    /// 
-    /// # Returns
-    /// Tuple of (new_pacing, changed) where changed indicates if pacing was modified
-    pub fn adjust_pacing(&self, target: f64, actual: f64, current_pacing: f64) -> (f64, bool) {
-        let tolerance = target * self.tolerance_fraction;
-        
-        if actual < target - tolerance {
-            // Below target - increase pacing
-            let error_ratio = (target - actual) / target;
-            let adjustment_factor = (error_ratio * self.proportional_gain).min(self.max_adjustment_factor);
-            let new_pacing = current_pacing * (1.0 + adjustment_factor);
-            (new_pacing, true)
-        } else if actual > target + tolerance {
-            // Above target - decrease pacing
-            let error_ratio = (actual - target) / target;
-            let adjustment_factor = (error_ratio * self.proportional_gain).min(self.max_adjustment_factor);
-            let new_pacing = current_pacing * (1.0 - adjustment_factor);
-            (new_pacing, true)
-        } else {
-            // Within tolerance - keep constant
-            (current_pacing, false)
-        }
-    }
-}
+use crate::utils::ControllerProportional;
 
 /// Object for running simulation convergence with pacing adjustments
 pub struct SimulationConverge;
@@ -92,30 +46,15 @@ impl SimulationConverge {
             
             // Calculate next iteration's campaign converge params based on current results
             let controller = ControllerProportional::new();
-            let mut pacing_changed = false;
             let mut next_campaign_converge_params = current_campaign_converge_params.clone();
+            let mut pacing_changed = false;
             for (index, campaign) in marketplace.campaigns.campaigns.iter().enumerate() {
                 let campaign_stat = &stats.campaign_stats[index];
-                let current_pacing = current_campaign_converge_params.params[index].pacing;
+                let current_converge = current_campaign_converge_params.params[index].as_ref();
+                let next_converge = next_campaign_converge_params.params[index].as_mut();
                 
-                // Adjust pacing based on campaign type using controller
-                let (new_pacing, changed) = match &campaign.campaign_type {
-                    CampaignType::FIXED_IMPRESSIONS { total_impressions_target } => {
-                        let target = *total_impressions_target as f64;
-                        let actual = campaign_stat.impressions_obtained as f64;
-                        controller.adjust_pacing(target, actual, current_pacing)
-                    }
-                    CampaignType::FIXED_BUDGET { total_budget_target } => {
-                        let target = *total_budget_target;
-                        let actual = campaign_stat.total_buyer_charge;
-                        controller.adjust_pacing(target, actual, current_pacing)
-                    }
-                };
-                
-                next_campaign_converge_params.params[index].pacing = new_pacing;
-                if changed {
-                    pacing_changed = true;
-                }
+                // Use the campaign's converge_iteration method (now part of CampaignTrait)
+                pacing_changed |= campaign.converge_iteration(current_converge, next_converge, campaign_stat, &controller);
             }
             
             // Output campaign statistics for each iteration (using the params that were actually used)

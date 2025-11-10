@@ -1,4 +1,5 @@
-use crate::types::{CampaignType, ChargeType, Campaigns, Marketplace, Sellers};
+use crate::types::{ChargeType, Marketplace, Sellers};
+use crate::campaigns::{CampaignType, Campaigns};
 use crate::simulationrun::{CampaignConvergeParams, SellerConvergeParams, SimulationStat};
 use crate::converge::SimulationConverge;
 use crate::impressions::{Impressions, ImpressionsParam};

@@ -1,4 +1,5 @@
-use crate::types::{AuctionResult, Campaigns, CampaignType, ChargeType, Marketplace, Sellers, Winner};
+use crate::types::{AuctionResult, ChargeType, Marketplace, Sellers, Winner};
+use crate::campaigns::Campaigns;
 use crate::logger::{Logger, LogEvent};
 use crate::logln;
 
@@ -26,26 +27,33 @@ impl SimulationRun {
 }
 
 /// Represents campaign parameters (pacing, etc.)
-/// Note: CampaignParam is matched to Campaign by index in the vectors
+/// Note: This struct is kept for backward compatibility but is no longer used.
+/// Campaign convergence parameters now use the CampaignConverge trait.
 #[derive(Debug, Clone)]
 pub struct CampaignParam {
     pub pacing: f64,
 }
 
-/// Container for campaign parameters
-#[derive(Clone)]
+/// Container for campaign convergence parameters
+/// Uses dynamic dispatch to support different campaign types
 pub struct CampaignConvergeParams {
-    pub params: Vec<CampaignParam>,
+    pub params: Vec<Box<dyn crate::campaigns::CampaignConverge>>,
+}
+
+impl Clone for CampaignConvergeParams {
+    fn clone(&self) -> Self {
+        Self {
+            params: self.params.iter().map(|p| p.clone_box()).collect(),
+        }
+    }
 }
 
 impl CampaignConvergeParams {
     /// Create campaign parameters from campaigns, defaulting all pacings to 1.0
     pub fn new(campaigns: &Campaigns) -> Self {
         let mut params = Vec::with_capacity(campaigns.campaigns.len());
-        for _campaign in &campaigns.campaigns {
-            params.push(CampaignParam {
-                pacing: 1.0,
-            });
+        for campaign in &campaigns.campaigns {
+            params.push(campaign.create_converge_param(1.0));
         }
         Self { params }
     }
@@ -115,8 +123,10 @@ impl SimulationStat {
     /// Generate statistics from marketplace and simulation run
     pub fn new(marketplace: &Marketplace, simulation_run: &SimulationRun) -> Self {
         // Calculate campaign statistics
+        use crate::campaigns::CampaignTrait;
         let mut campaign_stats = Vec::new();
         for campaign in &marketplace.campaigns.campaigns {
+            let campaign_id = campaign.campaign_id();
             let mut impressions_obtained = 0;
             let mut total_supply_cost = 0.0;
             let mut total_virtual_cost = 0.0;
@@ -124,13 +134,13 @@ impl SimulationStat {
             let mut total_value = 0.0;
 
             for (index, impression) in marketplace.impressions.impressions.iter().enumerate() {
-                if let Winner::Campaign { campaign_id, virtual_cost, buyer_charge } = simulation_run.results[index].winner {
-                    if campaign_id == campaign.campaign_id {
+                if let Winner::Campaign { campaign_id: winner_campaign_id, virtual_cost, buyer_charge } = simulation_run.results[index].winner {
+                    if winner_campaign_id == campaign_id {
                         impressions_obtained += 1;
                         total_supply_cost += simulation_run.results[index].supply_cost;
                         total_virtual_cost += virtual_cost;
                         total_buyer_charge += buyer_charge;
-                        total_value += impression.value_to_campaign_id[campaign.campaign_id] / 1000.0;
+                        total_value += impression.value_to_campaign_id[campaign_id] / 1000.0;
                     }
                 }
             }
@@ -217,22 +227,17 @@ impl SimulationStat {
 
     /// Output campaign statistics (without header, for compact iteration output)
     pub fn printout_campaigns(&self, campaigns: &Campaigns, campaign_params: &CampaignConvergeParams, logger: &mut Logger, event: LogEvent) {
+        use crate::campaigns::CampaignTrait;
         
         for (index, campaign_stat) in self.campaign_stats.iter().enumerate() {
             let campaign = &campaigns.campaigns[index];
-            let pacing = campaign_params.params[index].pacing;
+            let pacing = campaign_params.params[index].pacing();
             
-            let type_and_target = match &campaign.campaign_type {
-                CampaignType::FIXED_IMPRESSIONS { total_impressions_target } => {
-                    format!("FIXED_IMPRESSIONS (target: {})", total_impressions_target)
-                }
-                CampaignType::FIXED_BUDGET { total_budget_target } => {
-                    format!("FIXED_BUDGET (target: {:.2})", total_budget_target)
-                }
-            };
+            // Use the trait method to get type and target string
+            let type_and_target = campaign.type_and_target_string();
             
             logln!(logger, event, "\nCampaign {} ({}) - {} - Pacing: {:.4}", 
-                     campaign.campaign_id, campaign.campaign_name, type_and_target, pacing);
+                     campaign.campaign_id(), campaign.campaign_name(), type_and_target, pacing);
             logln!(logger, event, "  Impressions Obtained: {}", campaign_stat.impressions_obtained);
             logln!(logger, event, "  Costs (supply/virtual/buyer): {:.2} / {:.2} / {:.2}", 
                      campaign_stat.total_supply_cost, 
