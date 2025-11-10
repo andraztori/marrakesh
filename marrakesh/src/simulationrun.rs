@@ -31,6 +31,7 @@ pub struct CampaignParam {
 }
 
 /// Container for campaign parameters
+#[derive(Clone)]
 pub struct CampaignParams {
     pub params: Vec<CampaignParam>,
 }

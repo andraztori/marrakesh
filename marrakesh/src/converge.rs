@@ -4,12 +4,9 @@ use crate::scenarios::Verbosity;
 
 /// Proportional controller for adjusting campaign pacing based on target vs actual performance
 pub struct ControllerProportional {
-    /// Tolerance as a fraction of target (e.g., 0.005 = 0.5%)
-    tolerance_fraction: f64,
-    /// Maximum adjustment factor (e.g., 0.2 = 20%)
-    max_adjustment_factor: f64,
-    /// Proportional gain (e.g., 0.2 = 20% of error)
-    proportional_gain: f64,
+    tolerance_fraction: f64,      // Tolerance as a fraction of target (e.g., 0.005 = 0.5%)
+    max_adjustment_factor: f64,   // Maximum adjustment factor (e.g., 0.2 = 20%)
+    proportional_gain: f64,       // Proportional gain (e.g., 0.2 = 20% of error)
 }
 
 impl ControllerProportional {
@@ -77,9 +74,7 @@ impl SimulationConverge {
         let mut converged = false;
         
         // Start with a clone of the input campaign_params
-        let mut current_campaign_params = CampaignParams {
-            params: campaign_params.params.clone(),
-        };
+        let mut current_campaign_params = campaign_params.clone();
         
         for iteration in 0..max_iterations {
             if verbosity == Verbosity::Full {
@@ -139,9 +134,7 @@ impl SimulationConverge {
             // Keep track of final simulation run and stats in case we reach max_iterations
             final_simulation_run = Some(simulation_run);
             final_stats = Some(stats);
-            final_campaign_params = Some(CampaignParams {
-                params: current_campaign_params.params.clone(),
-            });
+            final_campaign_params = Some(current_campaign_params.clone());
         }
         
         // Print final solution only for Full verbosity

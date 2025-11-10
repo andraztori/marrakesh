@@ -20,14 +20,14 @@ fn run_variant(verbosity: Verbosity, hb_impressions: usize, variant_description:
     campaigns.add(
         "Campaign 0".to_string(),  // campaign_name
         CampaignType::FIXED_IMPRESSIONS {
-            total_impressions_target: 100,
+            total_impressions_target: 1000,
         },  // campaign_type
     );
 
     campaigns.add(
         "Campaign 1".to_string(),  // campaign_name
         CampaignType::FIXED_BUDGET {
-            total_budget_target: 2.0,
+            total_budget_target: 20.0,
         },  // campaign_type
     );
 
@@ -37,7 +37,7 @@ fn run_variant(verbosity: Verbosity, hb_impressions: usize, variant_description:
         ChargeType::FIXED_COST {
             fixed_cost_cpm: 10.0,
         },  // charge_type
-        100,  // num_impressions
+        1000,  // num_impressions
     );
 
     sellers.add(
@@ -103,10 +103,10 @@ fn run_variant(verbosity: Verbosity, hb_impressions: usize, variant_description:
 /// - With 1000 HB impressions: Lower buyer charges, higher total value, but supply_cost > buyer_charge (unprofitable)
 pub fn run(verbosity: Verbosity) -> Result<(), Box<dyn std::error::Error>> {
     // Run variant with 100 HB impressions
-    let stats_A = run_variant(verbosity, 100, "Running with Scarce HB impressions");
+    let stats_A = run_variant(verbosity, 1000, "Running with Scarce HB impressions");
     
     // Run variant with 1000 HB impressions
-    let stats_B = run_variant(verbosity, 1000, "Running with Abundant HB impressions");
+    let stats_B = run_variant(verbosity, 10000, "Running with Abundant HB impressions");
     
     // Compare the two variants to verify expected marketplace behavior
     // Variant A (100 HB) should have:

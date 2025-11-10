@@ -20,14 +20,14 @@ fn run_variant(verbosity: Verbosity, mrg_boost_factor: f64, variant_description:
     campaigns.add(
         "Campaign 0".to_string(),  // campaign_name
         CampaignType::FIXED_IMPRESSIONS {
-            total_impressions_target: 100,
+            total_impressions_target: 1000,
         },  // campaign_type
     );
 
     campaigns.add(
         "Campaign 1".to_string(),  // campaign_name
         CampaignType::FIXED_BUDGET {
-            total_budget_target: 2.0,
+            total_budget_target: 20.0,
         },  // campaign_type
     );
 
@@ -37,13 +37,13 @@ fn run_variant(verbosity: Verbosity, mrg_boost_factor: f64, variant_description:
         ChargeType::FIXED_COST {
             fixed_cost_cpm: 10.0,
         },  // charge_type
-        100,  // num_impressions
+        1000,  // num_impressions
     );
 
     sellers.add(
         "HB".to_string(),  // seller_name
         ChargeType::FIRST_PRICE,  // charge_type
-        1000,  // num_impressions
+        10000,  // num_impressions
     );
 
     // Create impressions for all sellers using default parameters
