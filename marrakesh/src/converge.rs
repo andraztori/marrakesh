@@ -1,6 +1,7 @@
 use crate::types::{CampaignType, Marketplace};
 use crate::simulationrun::{CampaignParams, SellerParams, SimulationRun, SimulationStat};
-use crate::scenarios::Verbosity;
+use crate::logger::{Logger, LogEvent};
+use crate::logln;
 
 /// Proportional controller for adjusting campaign pacing based on target vs actual performance
 pub struct ControllerProportional {
@@ -57,7 +58,7 @@ impl SimulationConverge {
     /// Run simulation loop with pacing adjustments (maximum max_iterations iterations)
     /// 
     /// # Arguments
-    /// * `verbosity` - Controls output level: None (no output), Summary (final stats only), Full (all iterations)
+    /// * `logger` - Logger for event-based logging
     /// 
     /// # Returns
     /// Returns a tuple of (final SimulationRun, final SimulationStat, final CampaignParams)
@@ -66,8 +67,9 @@ impl SimulationConverge {
         campaign_params: &CampaignParams,
         seller_params: &SellerParams,
         max_iterations: usize,
-        verbosity: Verbosity,
+        logger: &mut Logger,
     ) -> (SimulationRun, SimulationStat, CampaignParams) {
+        
         let mut final_simulation_run = None;
         let mut final_stats = None;
         let mut final_campaign_params = None;
@@ -77,9 +79,7 @@ impl SimulationConverge {
         let mut current_campaign_params = campaign_params.clone();
         
         for iteration in 0..max_iterations {
-            if verbosity == Verbosity::Full {
-                println!("\n=== Iteration {} ===", iteration + 1);
-            }
+            logln!(logger, LogEvent::Simulation, "\n=== Iteration {} ===", iteration + 1);
             
             // Run auctions for all impressions
             let simulation_run = SimulationRun::new(marketplace, &current_campaign_params, seller_params);
@@ -114,10 +114,8 @@ impl SimulationConverge {
                 }
             }
             
-            // Output campaign statistics only during iterations if full verbosity
-            if verbosity == Verbosity::Full {
-                stats.printout_campaigns(&marketplace.campaigns, &current_campaign_params);
-            }
+            // Output campaign statistics for each iteration
+            stats.printout_campaigns(&marketplace.campaigns, &current_campaign_params, logger, LogEvent::Simulation);
             
             // Break early if no pacing changes were made (converged)
             if !pacing_changed {
@@ -125,9 +123,7 @@ impl SimulationConverge {
                 final_stats = Some(stats);
                 final_campaign_params = Some(current_campaign_params);
                 converged = true;
-                if verbosity == Verbosity::Full {
-                    println!("Converged after {} iterations", iteration + 1);
-                }
+                logln!(logger, LogEvent::Convergence, "Converged after {} iterations", iteration + 1);
                 break;
             }
             
@@ -137,20 +133,9 @@ impl SimulationConverge {
             final_campaign_params = Some(current_campaign_params.clone());
         }
         
-        // Print final solution only for Full verbosity
-        // Summary verbosity will be handled by the caller (e.g., run_variant)
-        if verbosity == Verbosity::Full {
-                if let Some(ref stats) = final_stats {
-                    if !converged {
-                        println!("Reached maximum iterations ({})", max_iterations);
-                    }
-                    if let Some(ref final_params) = final_campaign_params {
-                        stats.printout_campaigns(&marketplace.campaigns, final_params);
-                    }
-                }
-        } else if !converged && verbosity == Verbosity::None {
-            // Only print if we didn't converge (and verbosity is None)
-            println!("Reached maximum iterations ({})", max_iterations);
+        // Log if we reached max iterations
+        if !converged {
+            logln!(logger, LogEvent::Convergence, "Reached maximum iterations ({})", max_iterations);
         }
         
         // Return the final simulation run, stats, and campaign params

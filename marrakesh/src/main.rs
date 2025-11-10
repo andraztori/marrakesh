@@ -4,6 +4,7 @@ mod converge;
 mod utils;
 mod impressions;
 mod scenarios;
+mod logger;
 
 // Include scenario files so their constructors run
 mod s_one;
@@ -14,6 +15,8 @@ use types::{CampaignType, ChargeType, Campaigns, Sellers};
 use simulationrun::{CampaignParams, SellerParams};
 use converge::SimulationConverge;
 use impressions::Impressions;
+use logger::{Logger, LogEvent, ConsoleReceiver, FileReceiver};
+use std::path::PathBuf;
 
 use scenarios::{Verbosity, get_scenario_catalog};
 
@@ -22,20 +25,35 @@ fn main() {
     
     // Check if "all" argument is provided
     if args.len() > 1 && args[1] == "all" {
+        // Set up logger with console and validation file receivers
+        let mut logger = Logger::new();
+        let console_receiver = ConsoleReceiver::new(vec![
+            LogEvent::Validation,
+        ]);
+        logger.add_receiver(Box::new(console_receiver));
+        
+        // Add validation receiver (for validation events)
+        let summary_receiver_id = logger.add_receiver(FileReceiver::new(&PathBuf::from("log/summary.log"), vec![LogEvent::Validation]));
+        
         // Run all scenarios from the catalog in non-verbose mode
         let scenarios = get_scenario_catalog();
-        println!("Running all scenarios...\n");
+        logln!(&mut logger, LogEvent::Validation, "Running all scenarios...\n");
         
         for scenario in scenarios {
-            print!("{}: ", scenario.short_name);
+            log!(&mut logger, LogEvent::Validation, "{}: ", scenario.short_name);
             match (scenario.run)(Verbosity::None) {
-                Ok(()) => println!("✓ PASSED"),
+                Ok(()) => logln!(&mut logger, LogEvent::Validation, "✓ PASSED"),
                 Err(e) => {
-                    println!("✗ FAILED");
-                    eprintln!("  Error: {}", e);
+                    logln!(&mut logger, LogEvent::Validation, "✗ FAILED");
+                    logln!(&mut logger, LogEvent::Validation, "  Error: {}", e);
                 }
             }
+            // Flush to ensure validation is written to summary.log
+            let _ = logger.flush();
         }
+        
+        // Remove validation receiver
+        logger.remove_receiver(summary_receiver_id);
     } else {
         // Default behavior: Run the first scenario (or s_mrg_boost) with summary verbosity
         // For now, default to s_mrg_boost, but could be made configurable
@@ -98,7 +116,15 @@ fn main() {
             impressions,
         };
         
-        marketplace.printout();
+        let mut logger = Logger::new();
+        let console_receiver = ConsoleReceiver::new(vec![
+            LogEvent::Simulation,
+            LogEvent::Convergence,
+            LogEvent::Variant,
+        ]);
+        logger.add_receiver(Box::new(console_receiver));
+        
+        marketplace.printout(&mut logger);
 
         // Create campaign parameters from campaigns (default pacing = 1.0)
         let initial_campaign_params = CampaignParams::new(&marketplace.campaigns);
@@ -106,9 +132,8 @@ fn main() {
         let initial_seller_params = SellerParams::new(&marketplace.sellers);
         
         // Run simulation loop with pacing adjustments (maximum 100 iterations)
-        // Verbosity::None means only print convergence message and final solution
-        let (_final_simulation_run, final_stats, final_campaign_params) = SimulationConverge::run(&marketplace, &initial_campaign_params, &initial_seller_params, 100, Verbosity::None);
-        println!("\n=== Final Results ===");
-        final_stats.printout(&marketplace.campaigns, &marketplace.sellers, &final_campaign_params);
+        let (_final_simulation_run, final_stats, final_campaign_params) = SimulationConverge::run(&marketplace, &initial_campaign_params, &initial_seller_params, 100, &mut logger);
+        logln!(&mut logger, LogEvent::Variant, "\n=== Final Results ===");
+        final_stats.printout(&marketplace.campaigns, &marketplace.sellers, &final_campaign_params, &mut logger);
     }
 }

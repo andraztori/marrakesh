@@ -1,3 +1,6 @@
+use crate::logger::{Logger, LogEvent};
+use crate::logln;
+
 /// Maximum number of campaigns supported (determines size of value_to_campaign_id array)
 pub const MAX_CAMPAIGNS: usize = 10;
 
@@ -210,10 +213,11 @@ pub struct Marketplace {
 
 impl Marketplace {
     /// Print initialization information about the marketplace
-    pub fn printout(&self) {
-        println!("Initialized {} sellers", self.sellers.sellers.len());
-        println!("Initialized {} campaigns", self.campaigns.campaigns.len());
-        println!("Initialized {} impressions", self.impressions.impressions.len());
+    pub fn printout(&self, logger: &mut Logger) {
+        
+        logln!(logger, LogEvent::Simulation, "Initialized {} sellers", self.sellers.sellers.len());
+        logln!(logger, LogEvent::Simulation, "Initialized {} campaigns", self.campaigns.campaigns.len());
+        logln!(logger, LogEvent::Simulation, "Initialized {} impressions", self.impressions.impressions.len());
     }
 }
 

@@ -4,13 +4,19 @@ use crate::converge::SimulationConverge;
 use crate::impressions::{Impressions, ImpressionsParam};
 use crate::scenarios::Verbosity;
 use crate::utils;
+use crate::logger::{Logger, LogEvent, ConsoleReceiver, FileReceiver, sanitize_filename};
+use crate::logln;
+use std::path::PathBuf;
 
 /// Run a variant of the simulation with a specific number of HB impressions
-fn run_variant(verbosity: Verbosity, hb_impressions: usize, variant_description: &str) -> SimulationStat {
-    // Print variant description if Summary or Full verbosity
-    if verbosity >= Verbosity::Summary {
-        println!("\n=== {} ===", variant_description);
-    }
+fn run_variant(hb_impressions: usize, variant_description: &str, scenario_name: &str, variant_name: &str, logger: &mut Logger) -> SimulationStat {
+    // Add variant iterations receiver (for simulation and convergence events)
+    let iterations_receiver_id = logger.add_receiver(FileReceiver::new(&PathBuf::from(format!("log/{}/{}_iterations.log", sanitize_filename(scenario_name), sanitize_filename(variant_name))), vec![LogEvent::Simulation, LogEvent::Convergence]));
+    
+    // Add variant receiver (for variant events)
+    let variant_receiver_id = logger.add_receiver(FileReceiver::new(&PathBuf::from(format!("log/{}/{}.log", sanitize_filename(scenario_name), sanitize_filename(variant_name))), vec![LogEvent::Variant]));
+    
+    logln!(logger, LogEvent::Variant, "\n=== {} ===", variant_description);
     
     // Initialize containers for campaigns and sellers
     let mut campaigns = Campaigns::new();
@@ -63,9 +69,7 @@ fn run_variant(verbosity: Verbosity, hb_impressions: usize, variant_description:
         impressions,
     };
 
-    if verbosity == Verbosity::Full {
-        marketplace.printout();
-    }
+    marketplace.printout(logger);
 
     // Create campaign parameters from campaigns (default pacing = 1.0)
     let initial_campaign_params = CampaignParams::new(&marketplace.campaigns);
@@ -73,18 +77,14 @@ fn run_variant(verbosity: Verbosity, hb_impressions: usize, variant_description:
     let initial_seller_params = SellerParams::new(&marketplace.sellers);
     
     // Run simulation loop with pacing adjustments (maximum 100 iterations)
-    // Pass verbosity parameter through
-    let (_final_simulation_run, stats, final_campaign_params) = SimulationConverge::run(&marketplace, &initial_campaign_params, &initial_seller_params, 100, verbosity);
+    let (_final_simulation_run, stats, final_campaign_params) = SimulationConverge::run(&marketplace, &initial_campaign_params, &initial_seller_params, 100, logger);
     
-    // Print final stats if Summary or Full verbosity
-    if verbosity >= Verbosity::Summary {
-        if verbosity == Verbosity::Full {
-            stats.printout(&marketplace.campaigns, &marketplace.sellers, &final_campaign_params);
-        } else {
-            // Summary mode: only print overall stats
-            stats.printout_overall();
-        }
-    }
+    // Print final stats (variant-level output)
+    stats.printout(&marketplace.campaigns, &marketplace.sellers, &final_campaign_params, logger);
+    
+    // Remove variant-specific receivers
+    logger.remove_receiver(variant_receiver_id);
+    logger.remove_receiver(iterations_receiver_id);
     
     stats
 }
@@ -101,12 +101,28 @@ fn run_variant(verbosity: Verbosity, hb_impressions: usize, variant_description:
 /// Expected behavior:
 /// - With 100 HB impressions: Higher buyer charges, lower total value, but supply_cost < buyer_charge (profitable)
 /// - With 1000 HB impressions: Lower buyer charges, higher total value, but supply_cost > buyer_charge (unprofitable)
-pub fn run(verbosity: Verbosity) -> Result<(), Box<dyn std::error::Error>> {
+pub fn run(_verbosity: Verbosity) -> Result<(), Box<dyn std::error::Error>> {
+    let scenario_name = "HBabundance";
+    
+    // Set up main logger with console receiver
+    let mut logger = Logger::new();
+    let console_receiver = ConsoleReceiver::new(vec![
+        LogEvent::Simulation,
+        LogEvent::Convergence,
+        LogEvent::Variant,
+        LogEvent::Scenario,
+        LogEvent::Validation,
+    ]);
+    logger.add_receiver(Box::new(console_receiver));
+    
+    // Add scenario-level receiver
+    let scenario_receiver_id = logger.add_receiver(FileReceiver::new(&PathBuf::from(format!("log/{}/scenario.log", sanitize_filename(scenario_name))), vec![LogEvent::Scenario]));
+    
     // Run variant with 100 HB impressions
-    let stats_A = run_variant(verbosity, 1000, "Running with Scarce HB impressions");
+    let stats_A = run_variant(1000, "Running with Scarce HB impressions", scenario_name, "scarce", &mut logger);
     
     // Run variant with 1000 HB impressions
-    let stats_B = run_variant(verbosity, 10000, "Running with Abundant HB impressions");
+    let stats_B = run_variant(10000, "Running with Abundant HB impressions", scenario_name, "abundant", &mut logger);
     
     // Compare the two variants to verify expected marketplace behavior
     // Variant A (100 HB) should have:
@@ -119,9 +135,7 @@ pub fn run(verbosity: Verbosity) -> Result<(), Box<dyn std::error::Error>> {
     // - Higher total value obtained (more impressions available)
     // - Supply cost > buyer charge (marketplace becomes unprofitable)
     
-    if verbosity >= Verbosity::Summary {
-        println!();
-    }
+    logln!(&mut logger, LogEvent::Scenario, "");
     
     let mut errors = Vec::new();
     
@@ -132,8 +146,8 @@ pub fn run(verbosity: Verbosity) -> Result<(), Box<dyn std::error::Error>> {
             stats_A.overall_stat.total_buyer_charge,
             stats_B.overall_stat.total_buyer_charge
         ));
-    } else if verbosity >= Verbosity::Summary {
-        println!("✓ Variant A (Scarce HB) has higher total buyer charge: {:.4} > {:.4}",
+    } else {
+        logln!(&mut logger, LogEvent::Scenario, "✓ Variant A (Scarce HB) has higher total buyer charge: {:.4} > {:.4}",
             stats_A.overall_stat.total_buyer_charge,
             stats_B.overall_stat.total_buyer_charge
         );
@@ -146,8 +160,8 @@ pub fn run(verbosity: Verbosity) -> Result<(), Box<dyn std::error::Error>> {
             stats_A.overall_stat.total_value,
             stats_B.overall_stat.total_value
         ));
-    } else if verbosity >= Verbosity::Summary {
-        println!("✓ Variant A (Scarce HB) has lower total value: {:.4} < {:.4}",
+    } else {
+        logln!(&mut logger, LogEvent::Scenario, "✓ Variant A (Scarce HB) has lower total value: {:.4} < {:.4}",
             stats_A.overall_stat.total_value,
             stats_B.overall_stat.total_value
         );
@@ -160,8 +174,8 @@ pub fn run(verbosity: Verbosity) -> Result<(), Box<dyn std::error::Error>> {
             stats_A.overall_stat.total_supply_cost,
             stats_A.overall_stat.total_buyer_charge
         ));
-    } else if verbosity >= Verbosity::Summary {
-        println!("✓ Variant A (Scarce HB) is profitable (supply_cost < buyer_charge): {:.4} < {:.4}",
+    } else {
+        logln!(&mut logger, LogEvent::Scenario, "✓ Variant A (Scarce HB) is profitable (supply_cost < buyer_charge): {:.4} < {:.4}",
             stats_A.overall_stat.total_supply_cost,
             stats_A.overall_stat.total_buyer_charge
         );
@@ -174,20 +188,20 @@ pub fn run(verbosity: Verbosity) -> Result<(), Box<dyn std::error::Error>> {
             stats_B.overall_stat.total_supply_cost,
             stats_B.overall_stat.total_buyer_charge
         ));
-    } else if verbosity >= Verbosity::Summary {
-        println!("✓ Variant B (Abundant HB) is unprofitable (supply_cost > buyer_charge): {:.4} > {:.4}",
+    } else {
+        logln!(&mut logger, LogEvent::Scenario, "✓ Variant B (Abundant HB) is unprofitable (supply_cost > buyer_charge): {:.4} > {:.4}",
             stats_B.overall_stat.total_supply_cost,
             stats_B.overall_stat.total_buyer_charge
         );
     }
     
+    // Remove scenario-level receiver
+    logger.remove_receiver(scenario_receiver_id);
+    
     if errors.is_empty() {
-        if verbosity >= Verbosity::Summary {
-            println!("\nAll validations passed!");
-        }
         Ok(())
     } else {
-        Err(format!("Scenario 'HBabundance' validation failed:\n{}", errors.join("\n")).into())
+        Err(format!("Scenario '{}' validation failed:\n{}", scenario_name, errors.join("\n")).into())
     }
 }
 
@@ -197,4 +211,3 @@ inventory::submit!(crate::scenarios::ScenarioEntry {
     description: "Example of how availability of a lot of HB impressions changes pricing to buyer (downwards) and increases bought value. But increasing HB impressions leads to price advertiser pays being less than what we need to pay to supply",
     run,
 });
-

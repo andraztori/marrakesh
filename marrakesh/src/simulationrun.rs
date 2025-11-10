@@ -1,4 +1,6 @@
-use crate::types::{AuctionResult, Campaigns, ChargeType, Marketplace, Sellers, Winner};
+use crate::types::{AuctionResult, Campaigns, CampaignType, ChargeType, Marketplace, Sellers, Winner};
+use crate::logger::{Logger, LogEvent};
+use crate::logln;
 
 /// Container for auction results
 /// Note: SimulationRun results are matched to Impressions by index in the vectors
@@ -213,9 +215,8 @@ impl SimulationStat {
         }
     }
 
-    /// Output campaign statistics to terminal (without header, for compact iteration output)
-    pub fn printout_campaigns(&self, campaigns: &Campaigns, campaign_params: &CampaignParams) {
-        use crate::types::CampaignType;
+    /// Output campaign statistics (without header, for compact iteration output)
+    pub fn printout_campaigns(&self, campaigns: &Campaigns, campaign_params: &CampaignParams, logger: &mut Logger, event: LogEvent) {
         
         for (index, campaign_stat) in self.campaign_stats.iter().enumerate() {
             let campaign = &campaigns.campaigns[index];
@@ -230,25 +231,26 @@ impl SimulationStat {
                 }
             };
             
-            println!("\nCampaign {} ({}) - {} - Pacing: {:.4}", 
+            logln!(logger, event, "\nCampaign {} ({}) - {} - Pacing: {:.4}", 
                      campaign.campaign_id, campaign.campaign_name, type_and_target, pacing);
-            println!("  Impressions Obtained: {}", campaign_stat.impressions_obtained);
-            println!("  Costs (supply/virtual/buyer): {:.2} / {:.2} / {:.2}", 
+            logln!(logger, event, "  Impressions Obtained: {}", campaign_stat.impressions_obtained);
+            logln!(logger, event, "  Costs (supply/virtual/buyer): {:.2} / {:.2} / {:.2}", 
                      campaign_stat.total_supply_cost, 
                      campaign_stat.total_virtual_cost, 
                      campaign_stat.total_buyer_charge);
-            println!("  Obtained Value: {:.2}", campaign_stat.total_value);
+            logln!(logger, event, "  Obtained Value: {:.2}", campaign_stat.total_value);
         }
     }
 
-    /// Output complete statistics to terminal
-    pub fn printout(&self, campaigns: &Campaigns, sellers: &Sellers, campaign_params: &CampaignParams) {
+    /// Output complete statistics
+    pub fn printout(&self, campaigns: &Campaigns, sellers: &Sellers, campaign_params: &CampaignParams, logger: &mut Logger) {
+        
         // Output campaign statistics
-        println!("\n=== Campaign Statistics ===");
-        self.printout_campaigns(campaigns, campaign_params);
+        logln!(logger, LogEvent::Variant, "\n=== Campaign Statistics ===");
+        self.printout_campaigns(campaigns, campaign_params, logger, LogEvent::Variant);
 
         // Output seller statistics
-        println!("\n=== Seller Statistics ===");
+        logln!(logger, LogEvent::Variant, "\n=== Seller Statistics ===");
         for (index, seller_stat) in self.seller_stats.iter().enumerate() {
             let seller = &sellers.sellers[index];
             let charge_type_str = match seller.charge_type {
@@ -256,30 +258,31 @@ impl SimulationStat {
                 ChargeType::FIRST_PRICE => "FIRST_PRICE".to_string(),
             };
 
-            println!("\nSeller {} ({}) - {}", seller.seller_id, seller.seller_name, charge_type_str);
-            println!("  Impressions (sold/on offer): {} / {}", seller_stat.impressions_sold, seller.num_impressions);
-            println!("  Total Costs (supply/virtual/buyer): {:.2} / {:.2} / {:.2}", 
+            logln!(logger, LogEvent::Variant, "\nSeller {} ({}) - {}", seller.seller_id, seller.seller_name, charge_type_str);
+            logln!(logger, LogEvent::Variant, "  Impressions (sold/on offer): {} / {}", seller_stat.impressions_sold, seller.num_impressions);
+            logln!(logger, LogEvent::Variant, "  Total Costs (supply/virtual/buyer): {:.2} / {:.2} / {:.2}", 
                      seller_stat.total_supply_cost, 
                      seller_stat.total_virtual_cost, 
                      seller_stat.total_buyer_charge);
         }
 
         // Output overall statistics
-        self.printout_overall();
+        self.printout_overall(logger);
     }
 
     /// Output only overall statistics (no per-campaign or per-seller breakdown)
-    pub fn printout_overall(&self) {
-        println!("=== Overall Statistics ===");
-        println!("Impressions (below floor/other demand/no bids): {} / {} / {}", 
+    pub fn printout_overall(&self, logger: &mut Logger) {
+        
+        logln!(logger, LogEvent::Variant, "\n=== Overall Statistics ===");
+        logln!(logger, LogEvent::Variant, "Impressions (below floor/other demand/no bids): {} / {} / {}", 
                  self.overall_stat.below_floor_count,
                  self.overall_stat.other_demand_count,
                  self.overall_stat.no_bids_count);
-        println!("Total Costs (supply/virtual/buyer): {:.2} / {:.2} / {:.2}", 
+        logln!(logger, LogEvent::Variant, "Total Costs (supply/virtual/buyer): {:.2} / {:.2} / {:.2}", 
                  self.overall_stat.total_supply_cost, 
                  self.overall_stat.total_virtual_cost, 
                  self.overall_stat.total_buyer_charge);
-        println!("Total Obtained Value: {:.2}", self.overall_stat.total_value);
+        logln!(logger, LogEvent::Variant, "Total Obtained Value: {:.2}", self.overall_stat.total_value);
     }
 }
 
