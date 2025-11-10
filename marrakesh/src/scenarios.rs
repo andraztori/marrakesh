@@ -1,20 +1,8 @@
 use std::error::Error;
 use crate::logger::Logger;
 
-/// Verbosity levels for scenario execution
-/// Ordering: None < Summary < Full
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Verbosity {
-    /// No output
-    None,
-    /// Print final stats for each variant, but not iterations
-    Summary,
-    /// Print everything including iterations
-    Full,
-}
-
 /// Function type for scenario entry functions
-pub type ScenarioFn = fn(verbosity: Verbosity, logger: &mut Logger) -> Result<(), Box<dyn Error>>;
+pub type ScenarioFn = fn(logger: &mut Logger) -> Result<(), Box<dyn Error>>;
 
 /// Entry in the scenario catalog
 #[derive(Clone)]

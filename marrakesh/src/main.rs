@@ -18,7 +18,7 @@ use impressions::Impressions;
 use logger::{Logger, LogEvent, ConsoleReceiver, FileReceiver};
 use std::path::PathBuf;
 
-use scenarios::{Verbosity, get_scenario_catalog};
+use scenarios::get_scenario_catalog;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -38,7 +38,7 @@ fn main() {
         
         for scenario in scenarios {
             log!(&mut logger, LogEvent::Validation, "{}: ", scenario.short_name);
-            match (scenario.run)(Verbosity::None, &mut logger) {
+            match (scenario.run)(&mut logger) {
                 Ok(()) => logln!(&mut logger, LogEvent::Validation, "✓ PASSED"),
                 Err(_e) => {
                     logln!(&mut logger, LogEvent::Validation, "✗ FAILED");
@@ -55,7 +55,7 @@ fn main() {
         // For now, default to s_mrg_boost, but could be made configurable
         let mut logger = Logger::new();
         logger.add_receiver(ConsoleReceiver::new(vec![LogEvent::Simulation, LogEvent::Convergence, LogEvent::Variant]));
-        if let Err(e) = s_mrg_boost::run(Verbosity::Summary, &mut logger) {
+        if let Err(e) = s_mrg_boost::run(&mut logger) {
             eprintln!("Error running scenario: {}", e);
             std::process::exit(1);
         }
