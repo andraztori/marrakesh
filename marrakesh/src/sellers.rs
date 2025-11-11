@@ -1,12 +1,39 @@
 use crate::impressions::DistributionF64;
+use crate::utils::ControllerProportional;
 use rand::rngs::StdRng;
 
 /// Seller type for different pricing models
 #[allow(non_camel_case_types)]
 #[derive(Debug, Clone, PartialEq)]
 pub enum SellerType {
-    FIXED_COST { fixed_cost_cpm: f64 },
+    FIXED_COST_FIXED_BOOST { fixed_cost_cpm: f64 },
+    FIXED_COST_DYNAMIC_BOOST { fixed_cost_cpm: f64 },
     FIRST_PRICE,
+}
+
+/// Trait for seller convergence parameters
+/// Each seller type has its own associated convergence parameter type
+pub trait SellerConverge: std::any::Any {
+    /// Clone the convergence parameter
+    fn clone_box(&self) -> Box<dyn SellerConverge>;
+    
+    /// Get a reference to Any for downcasting
+    fn as_any(&self) -> &dyn std::any::Any;
+    
+    /// Get a mutable reference to Any for downcasting
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any;
+}
+
+/// Convergence parameter for seller boost factor
+#[derive(Clone)]
+pub struct SellerBoostParam {
+    pub boost_factor: f64,
+}
+
+impl SellerConverge for SellerBoostParam {
+    fn clone_box(&self) -> Box<dyn SellerConverge> { Box::new(self.clone()) }
+    fn as_any(&self) -> &dyn std::any::Any { self }
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
 }
 
 /// Trait for sellers participating in auctions
@@ -39,17 +66,35 @@ pub trait SellerTrait {
     
     /// Get a string representation of the charge type for logging
     fn charge_type_string(&self) -> String;
+    
+    /// Create a new convergence parameter for this seller type
+    fn create_converge_param(&self) -> Box<dyn SellerConverge>;
+    
+    /// Perform one iteration of convergence, updating the next convergence parameter
+    /// This method encapsulates the convergence logic for each seller type
+    /// 
+    /// # Arguments
+    /// * `current_converge` - Current convergence parameter (immutable)
+    /// * `next_converge` - Next convergence parameter to be updated (mutable)
+    /// * `seller_stat` - Statistics from the current simulation run
+    /// 
+    /// # Returns
+    /// `true` if boost_factor was changed, `false` if it remained the same
+    fn converge_iteration(&self, current_converge: &dyn SellerConverge, next_converge: &mut dyn SellerConverge, seller_stat: &crate::simulationrun::SellerStat) -> bool;
+    
+    /// Get a formatted string representation of the convergence parameters
+    fn converge_params_string(&self, converge_param: &dyn SellerConverge) -> String;
 }
 
-/// Seller with fixed cost pricing
-pub struct SellerFixedCost {
+/// Seller with fixed cost pricing and fixed boost factor
+pub struct SellerFixedCostFixedBoost {
     pub seller_id: usize,
     pub seller_name: String,
     pub fixed_cost_cpm: f64,
     pub num_impressions: usize,
 }
 
-impl SellerTrait for SellerFixedCost {
+impl SellerTrait for SellerFixedCostFixedBoost {
     fn seller_id(&self) -> usize { self.seller_id }
     fn seller_name(&self) -> &str { &self.seller_name }
     fn num_impressions(&self) -> usize { self.num_impressions }
@@ -64,6 +109,74 @@ impl SellerTrait for SellerFixedCost {
     
     fn charge_type_string(&self) -> String {
         format!("FIXED_COST ({} CPM)", self.fixed_cost_cpm)
+    }
+    
+    fn create_converge_param(&self) -> Box<dyn SellerConverge> {
+        Box::new(SellerBoostParam { boost_factor: 1.0 })
+    }
+    
+    fn converge_iteration(&self, _current_converge: &dyn SellerConverge, _next_converge: &mut dyn SellerConverge, _seller_stat: &crate::simulationrun::SellerStat) -> bool {
+        // Fixed boost - no convergence
+        false
+    }
+    
+    fn converge_params_string(&self, converge_param: &dyn SellerConverge) -> String {
+        let converge_param = converge_param.as_any().downcast_ref::<SellerBoostParam>().unwrap();
+        format!("Fixed Boost: {:.2}", converge_param.boost_factor)
+    }
+}
+
+/// Seller with fixed cost pricing and dynamic boost factor
+pub struct SellerFixedCostDynamicBoost {
+    pub seller_id: usize,
+    pub seller_name: String,
+    pub fixed_cost_cpm: f64,
+    pub num_impressions: usize,
+    pub boost_converger: ControllerProportional,
+}
+
+impl SellerTrait for SellerFixedCostDynamicBoost {
+    fn seller_id(&self) -> usize { self.seller_id }
+    fn seller_name(&self) -> &str { &self.seller_name }
+    fn num_impressions(&self) -> usize { self.num_impressions }
+    
+    fn get_supply_cost_cpm(&self, _buyer_win_cpm: f64) -> f64 {
+        self.fixed_cost_cpm
+    }
+    
+    fn generate_impression(&self, _best_other_bid_dist: &dyn DistributionF64, _floor_cpm_dist: &dyn DistributionF64, fixed_cost_floor_cpm: f64, _rng: &mut StdRng) -> (f64, f64) {
+        (0.0, fixed_cost_floor_cpm)
+    }
+    
+    fn charge_type_string(&self) -> String {
+        format!("FIXED_COST ({} CPM)", self.fixed_cost_cpm)
+    }
+    
+    fn create_converge_param(&self) -> Box<dyn SellerConverge> {
+        Box::new(SellerBoostParam { boost_factor: 1.0 })
+    }
+    
+    fn converge_iteration(&self, current_converge: &dyn SellerConverge, next_converge: &mut dyn SellerConverge, seller_stat: &crate::simulationrun::SellerStat) -> bool {
+        // Downcast to concrete types at the beginning
+        let current_converge = current_converge.as_any().downcast_ref::<SellerBoostParam>().unwrap();
+        let next_converge = next_converge.as_any_mut().downcast_mut::<SellerBoostParam>().unwrap();
+        
+        // For fixed cost sellers, we might want to converge based on impressions sold
+        // For now, let's use a simple target (e.g., 80% of available impressions)
+        let target = self.num_impressions as f64;
+        let actual = seller_stat.impressions_sold as f64;
+        let current_boost = current_converge.boost_factor;
+        
+        // Use the same controller logic as campaigns, but for boost_factor
+        let (new_boost, changed) = self.boost_converger.pacing_in_next_iteration(target, actual, current_boost);
+        next_converge.boost_factor = new_boost;
+        
+        changed
+    }
+    
+    fn converge_params_string(&self, converge_param: &dyn SellerConverge) -> String {
+        let converge_param = converge_param.as_any().downcast_ref::<SellerBoostParam>().unwrap();
+        format!("Dynamic Boost: {:.2}", converge_param.boost_factor)
     }
 }
 
@@ -93,6 +206,20 @@ impl SellerTrait for SellerFirstPrice {
     fn charge_type_string(&self) -> String {
         "FIRST_PRICE".to_string()
     }
+    
+    fn create_converge_param(&self) -> Box<dyn SellerConverge> {
+        Box::new(SellerBoostParam { boost_factor: 1.0 })
+    }
+    
+    fn converge_iteration(&self, _current_converge: &dyn SellerConverge, _next_converge: &mut dyn SellerConverge, _seller_stat: &crate::simulationrun::SellerStat) -> bool {
+        // First price sellers don't converge boost
+        false
+    }
+    
+    fn converge_params_string(&self, converge_param: &dyn SellerConverge) -> String {
+        let converge_param = converge_param.as_any().downcast_ref::<SellerBoostParam>().unwrap();
+        format!("Fixed Boost: {:.2}", converge_param.boost_factor)
+    }
 }
 
 /// Container for sellers with methods to add sellers
@@ -112,17 +239,26 @@ impl Sellers {
     /// 
     /// # Arguments
     /// * `seller_name` - Name of the seller
-    /// * `seller_type` - Seller type (FIXED_COST with fixed_cost_cpm, or FIRST_PRICE)
+    /// * `seller_type` - Seller type (FIXED_COST_FIXED_BOOST, FIXED_COST_DYNAMIC_BOOST, or FIRST_PRICE)
     /// * `num_impressions` - Number of impressions this seller will offer
     pub fn add(&mut self, seller_name: String, seller_type: SellerType, num_impressions: usize) {
         let seller_id = self.sellers.len();
         match seller_type {
-            SellerType::FIXED_COST { fixed_cost_cpm } => {
-                self.sellers.push(Box::new(SellerFixedCost {
+            SellerType::FIXED_COST_FIXED_BOOST { fixed_cost_cpm } => {
+                self.sellers.push(Box::new(SellerFixedCostFixedBoost {
                     seller_id,
                     seller_name,
                     fixed_cost_cpm,
                     num_impressions,
+                }));
+            }
+            SellerType::FIXED_COST_DYNAMIC_BOOST { fixed_cost_cpm } => {
+                self.sellers.push(Box::new(SellerFixedCostDynamicBoost {
+                    seller_id,
+                    seller_name,
+                    fixed_cost_cpm,
+                    num_impressions,
+                    boost_converger: ControllerProportional::new(),
                 }));
             }
             SellerType::FIRST_PRICE => {

@@ -16,7 +16,6 @@ mod s_mrg_dynamic_boost;
 use sellers::SellerType;
 use sellers::Sellers;
 use campaigns::{CampaignType, Campaigns};
-use simulationrun::{CampaignConvergeParams, SellerConvergeParams};
 use converge::SimulationConverge;
 use impressions::Impressions;
 use logger::{Logger, LogEvent, ConsoleReceiver, FileReceiver};
@@ -89,7 +88,7 @@ fn main() {
         // Add two sellers (IDs are automatically set to match Vec index)
         sellers.add(
             "MRG".to_string(),  // seller_name
-            SellerType::FIXED_COST {
+            SellerType::FIXED_COST_FIXED_BOOST {
                 fixed_cost_cpm: 10.0,
             },  // charge_type
             1000,  // num_impressions
@@ -123,14 +122,12 @@ fn main() {
         
         marketplace.printout(&mut logger);
 
-        // Create campaign parameters from campaigns (default pacing = 1.0)
-        let initial_campaign_converge_params = CampaignConvergeParams::new(&marketplace.campaigns);
-        // Create seller parameters from sellers (default boost_factor = 1.0)
-        let initial_seller_converge_params = SellerConvergeParams::new(&marketplace.sellers);
+        // Create simulation converge instance (initializes campaign and seller params internally)
+        let simulation_converge = SimulationConverge::new(marketplace);
         
         // Run simulation loop with pacing adjustments (maximum 100 iterations)
-        let (_final_simulation_run, final_stats, final_campaign_converge_params) = SimulationConverge::run(&marketplace, &initial_campaign_converge_params, &initial_seller_converge_params, 100, "test", &mut logger);
+        let (_final_simulation_run, final_stats, final_campaign_converge_params) = simulation_converge.run(100, "test", &mut logger);
         logln!(&mut logger, LogEvent::Variant, "\n=== Final Results ===");
-        final_stats.printout(&marketplace.campaigns, &marketplace.sellers, &final_campaign_converge_params, &mut logger);
+        final_stats.printout(&simulation_converge.marketplace.campaigns, &simulation_converge.marketplace.sellers, &final_campaign_converge_params, &simulation_converge.initial_seller_converge_params, &mut logger);
     }
 }

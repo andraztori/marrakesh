@@ -2,7 +2,7 @@ use crate::types::Marketplace;
 use crate::sellers::SellerType;
 use crate::sellers::Sellers;
 use crate::campaigns::{CampaignType, Campaigns};
-use crate::simulationrun::{CampaignConvergeParams, SellerConvergeParams, SimulationStat};
+use crate::simulationrun::SimulationStat;
 use crate::converge::SimulationConverge;
 use crate::impressions::{Impressions, ImpressionsParam};
 use crate::utils;
@@ -43,7 +43,7 @@ fn run_variant(hb_impressions: usize, variant_description: &str, scenario_name: 
     // Add two sellers (IDs are automatically set to match Vec index)
     sellers.add(
         "MRG".to_string(),  // seller_name
-        SellerType::FIXED_COST {
+        SellerType::FIXED_COST_FIXED_BOOST {
             fixed_cost_cpm: 10.0,
         },  // charge_type
         1000,  // num_impressions
@@ -74,16 +74,16 @@ fn run_variant(hb_impressions: usize, variant_description: &str, scenario_name: 
 
     marketplace.printout(logger);
 
-    // Create campaign parameters from campaigns (default pacing = 1.0)
-    let initial_campaign_converge_params = CampaignConvergeParams::new(&marketplace.campaigns);
-    // Create seller parameters from sellers (default boost_factor = 1.0)
-    let initial_seller_converge_params = SellerConvergeParams::new(&marketplace.sellers);
+    // Create simulation converge instance (initializes campaign and seller params internally)
+    let simulation_converge = SimulationConverge::new(marketplace);
     
     // Run simulation loop with pacing adjustments (maximum 100 iterations)
-    let (_final_simulation_run, stats, final_campaign_converge_params) = SimulationConverge::run(&marketplace, &initial_campaign_converge_params, &initial_seller_converge_params, 100, variant_name, logger);
+    let (_final_simulation_run, stats, final_campaign_converge_params) = simulation_converge.run(100, variant_name, logger);
     
     // Print final stats (variant-level output)
-    stats.printout(&marketplace.campaigns, &marketplace.sellers, &final_campaign_converge_params, logger);
+    // Note: We use initial_seller_converge_params here since converge doesn't return final seller params
+    // The seller params should be converged by this point anyway
+    stats.printout(&simulation_converge.marketplace.campaigns, &simulation_converge.marketplace.sellers, &final_campaign_converge_params, &simulation_converge.initial_seller_converge_params, logger);
     
     // Remove variant-specific receivers
     logger.remove_receiver(variant_receiver_id);

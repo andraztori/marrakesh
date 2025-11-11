@@ -18,7 +18,7 @@ impl SimulationRun {
         for impression in &marketplace.impressions.impressions {
             // Get the seller and seller_param for this impression
             let seller = marketplace.sellers.sellers[impression.seller_id].as_ref();
-            let seller_param = &seller_params.params[seller.seller_id()];
+            let seller_param = seller_params.params[seller.seller_id()].as_ref();
             let result = impression.run_auction(&marketplace.campaigns, campaign_params, seller, seller_param);
             results.push(result);
         }
@@ -52,26 +52,26 @@ impl CampaignConvergeParams {
     }
 }
 
-/// Represents seller parameters (boost_factor, etc.)
-/// Note: SellerParam is matched to Seller by index in the vectors
-#[derive(Debug, Clone)]
-pub struct SellerParam {
-    pub boost_factor: f64,
+/// Container for seller convergence parameters
+/// Uses dynamic dispatch to support different seller types
+pub struct SellerConvergeParams {
+    pub params: Vec<Box<dyn crate::sellers::SellerConverge>>,
 }
 
-/// Container for seller parameters
-pub struct SellerConvergeParams {
-    pub params: Vec<SellerParam>,
+impl Clone for SellerConvergeParams {
+    fn clone(&self) -> Self {
+        Self {
+            params: self.params.iter().map(|p| p.clone_box()).collect(),
+        }
+    }
 }
 
 impl SellerConvergeParams {
-    /// Create seller parameters from sellers, defaulting all boost_factors to 1.0
+    /// Create seller parameters from sellers
     pub fn new(sellers: &Sellers) -> Self {
         let mut params = Vec::with_capacity(sellers.sellers.len());
-        for _seller in &sellers.sellers {
-            params.push(SellerParam {
-                boost_factor: 1.0,
-            });
+        for seller in &sellers.sellers {
+            params.push(seller.create_converge_param());
         }
         Self { params }
     }
@@ -213,8 +213,27 @@ impl SimulationStat {
         }
     }
 
+    /// Output seller statistics (without header, for compact iteration output)
+    pub fn printout_sellers(&self, sellers: &Sellers, seller_params: &SellerConvergeParams, logger: &mut Logger, event: LogEvent) {
+        
+        for (index, seller_stat) in self.seller_stats.iter().enumerate() {
+            let seller = &sellers.sellers[index];
+            let converge_param = seller_params.params[index].as_ref();
+            
+            let formatted_params = seller.converge_params_string(converge_param);
+            
+            logln!(logger, event, "\nSeller {} ({}) - {} - {}", 
+                     seller.seller_id(), seller.seller_name(), seller.charge_type_string(), formatted_params);
+            logln!(logger, event, "  Impressions (sold/on offer): {} / {}", seller_stat.impressions_sold, seller.num_impressions());
+            logln!(logger, event, "  Total Costs (supply/virtual/buyer): {:.2} / {:.2} / {:.2}", 
+                     seller_stat.total_supply_cost, 
+                     seller_stat.total_virtual_cost, 
+                     seller_stat.total_buyer_charge);
+        }
+    }
+
     /// Output complete statistics
-    pub fn printout(&self, campaigns: &Campaigns, sellers: &Sellers, campaign_params: &CampaignConvergeParams, logger: &mut Logger) {
+    pub fn printout(&self, campaigns: &Campaigns, sellers: &Sellers, campaign_params: &CampaignConvergeParams, seller_params: &SellerConvergeParams, logger: &mut Logger) {
         
         // Output campaign statistics
         logln!(logger, LogEvent::Variant, "\n=== Campaign Statistics ===");
@@ -222,15 +241,7 @@ impl SimulationStat {
 
         // Output seller statistics
         logln!(logger, LogEvent::Variant, "\n=== Seller Statistics ===");
-        for (index, seller_stat) in self.seller_stats.iter().enumerate() {
-            let seller = &sellers.sellers[index];
-            logln!(logger, LogEvent::Variant, "\nSeller {} ({}) - {}", seller.seller_id(), seller.seller_name(), seller.charge_type_string());
-            logln!(logger, LogEvent::Variant, "  Impressions (sold/on offer): {} / {}", seller_stat.impressions_sold, seller.num_impressions());
-            logln!(logger, LogEvent::Variant, "  Total Costs (supply/virtual/buyer): {:.2} / {:.2} / {:.2}", 
-                     seller_stat.total_supply_cost, 
-                     seller_stat.total_virtual_cost, 
-                     seller_stat.total_buyer_charge);
-        }
+        self.printout_sellers(sellers, seller_params, logger, LogEvent::Variant);
 
         // Output overall statistics
         self.printout_overall(logger);

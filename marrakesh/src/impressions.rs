@@ -1,9 +1,9 @@
 use rand::{rngs::StdRng, SeedableRng};
 use rand_distr::Distribution;
 use crate::types::{Winner, AuctionResult};
-use crate::sellers::{Sellers, SellerTrait};
+use crate::sellers::{Sellers, SellerTrait, SellerConverge};
 use crate::campaigns::{Campaigns, MAX_CAMPAIGNS};
-use crate::simulationrun::{CampaignConvergeParams, SellerParam};
+use crate::simulationrun::CampaignConvergeParams;
 
 /// Object-safe wrapper for Distribution<f64> that works with StdRng
 /// This is needed because Distribution<f64> cannot be made into a trait object
@@ -64,9 +64,9 @@ pub struct Impression {
 }
 
 impl Impression {
-    /// Run an auction for this impression with the given campaigns, campaign parameters, seller, and seller parameters
+    /// Run an auction for this impression with the given campaigns, campaign parameters, seller, and seller convergence parameters
     /// Returns the auction result
-    pub fn run_auction(&self, campaigns: &Campaigns, campaign_params: &CampaignConvergeParams, seller: &dyn SellerTrait, seller_param: &SellerParam) -> AuctionResult {
+    pub fn run_auction(&self, campaigns: &Campaigns, campaign_params: &CampaignConvergeParams, seller: &dyn SellerTrait, seller_converge: &dyn SellerConverge) -> AuctionResult {
         // Get bids from all campaigns
         let mut winning_bid_cpm = 0.0;
         let mut winning_campaign_id: Option<usize> = None;
@@ -82,8 +82,9 @@ impl Impression {
             }
         }
 
-        // Apply boost_factor to winning_bid_cpm
-        winning_bid_cpm *= seller_param.boost_factor;
+        // Get boost_factor from seller convergence parameter
+        let seller_boost_param = seller_converge.as_any().downcast_ref::<crate::sellers::SellerBoostParam>().unwrap();
+        winning_bid_cpm *= seller_boost_param.boost_factor;
 
         // Determine the result based on winning bid
         let (winner, supply_cost) = if let Some(campaign_id) = winning_campaign_id {

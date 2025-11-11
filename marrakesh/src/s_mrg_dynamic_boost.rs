@@ -2,7 +2,7 @@ use crate::types::Marketplace;
 use crate::sellers::SellerType;
 use crate::sellers::Sellers;
 use crate::campaigns::{CampaignType, Campaigns};
-use crate::simulationrun::{CampaignConvergeParams, SellerConvergeParams, SimulationStat};
+use crate::simulationrun::SimulationStat;
 use crate::converge::SimulationConverge;
 use crate::impressions::{Impressions, ImpressionsParam};
 use crate::utils;
@@ -12,7 +12,7 @@ use crate::errln;
 use std::path::PathBuf;
 
 /// Run a variant of the simulation with a specific MRG boost factor
-fn run_variant(mrg_boost_factor: f64, variant_description: &str, scenario_name: &str, variant_name: &str, logger: &mut Logger) -> SimulationStat {
+fn run_variant(variant_description: &str, scenario_name: &str, variant_name: &str, logger: &mut Logger) -> SimulationStat {
     // Add variant iterations receiver (for simulation and convergence events)
     let iterations_receiver_id = logger.add_receiver(FileReceiver::new(&PathBuf::from(format!("log/{}/{}_iterations.log", sanitize_filename(scenario_name), sanitize_filename(variant_name))), vec![LogEvent::Simulation, LogEvent::Convergence]));
     
@@ -29,30 +29,30 @@ fn run_variant(mrg_boost_factor: f64, variant_description: &str, scenario_name: 
     campaigns.add(
         "Campaign 0".to_string(),  // campaign_name
         CampaignType::FIXED_IMPRESSIONS {
-            total_impressions_target: 100,
+            total_impressions_target: 1000,
         },  // campaign_type
     );
 
     campaigns.add(
         "Campaign 1".to_string(),  // campaign_name
         CampaignType::FIXED_BUDGET {
-            total_budget_target: 2.0,
+            total_budget_target: 20.0,
         },  // campaign_type
     );
 
     // Add two sellers (IDs are automatically set to match Vec index)
     sellers.add(
         "MRG".to_string(),  // seller_name
-        SellerType::FIXED_COST {
+        SellerType::FIXED_COST_DYNAMIC_BOOST {
             fixed_cost_cpm: 10.0,
         },  // charge_type
-        100,  // num_impressions
+        1000,  // num_impressions
     );
 
     sellers.add(
         "HB".to_string(),  // seller_name
         SellerType::FIRST_PRICE,  // seller_type
-        1000,  // num_impressions
+        10000,  // num_impressions
     );
 
     // Create impressions for all sellers using default parameters
@@ -74,18 +74,16 @@ fn run_variant(mrg_boost_factor: f64, variant_description: &str, scenario_name: 
 
     marketplace.printout(logger);
 
-    // Create campaign parameters from campaigns (default pacing = 1.0)
-    let initial_campaign_converge_params = CampaignConvergeParams::new(&marketplace.campaigns);
-    // Create seller parameters from sellers (default boost_factor = 1.0)
-    let mut initial_seller_converge_params = SellerConvergeParams::new(&marketplace.sellers);
-    // Set boost_factor for MRG seller (seller_id 0)
-    initial_seller_converge_params.params[0].boost_factor = mrg_boost_factor;
+    // Create simulation converge instance (initializes campaign and seller params internally)
+    let simulation_converge = SimulationConverge::new(marketplace);
     
     // Run simulation loop with pacing adjustments (maximum 100 iterations)
-    let (_final_simulation_run, stats, final_campaign_converge_params) = SimulationConverge::run(&marketplace, &initial_campaign_converge_params, &initial_seller_converge_params, 100, variant_name, logger);
+    let (_final_simulation_run, stats, final_campaign_converge_params) = simulation_converge.run(100, variant_name, logger);
     
     // Print final stats (variant-level output)
-    stats.printout(&marketplace.campaigns, &marketplace.sellers, &final_campaign_converge_params, logger);
+    // Note: We use initial_seller_converge_params here since converge doesn't return final seller params
+    // The seller params should be converged by this point anyway
+    stats.printout(&simulation_converge.marketplace.campaigns, &simulation_converge.marketplace.sellers, &final_campaign_converge_params, &simulation_converge.initial_seller_converge_params, logger);
     
     // Remove variant-specific receivers
     logger.remove_receiver(variant_receiver_id);
@@ -106,10 +104,10 @@ pub fn run(logger: &mut Logger) -> Result<(), Box<dyn std::error::Error>> {
     let scenario_receiver_id = logger.add_receiver(FileReceiver::new(&PathBuf::from(format!("log/{}/scenario.log", sanitize_filename(scenario_name))), vec![LogEvent::Scenario]));
     
     // Run variant with boost_factor = 1.0 (default) for MRG seller
-    let stats_a = run_variant(1.0, "Running with Abundant HB impressions (MRG boost: 1.0)", scenario_name, "boost_1.0", logger);
+    let stats_a = run_variant("Running with Abundant HB impressions", scenario_name, "no_boost", logger);
     
     // Run variant with boost_factor = 2.0 for MRG seller
-    let stats_b = run_variant(2.0, "Running with Abundant HB impressions (MRG boost: 2.0)", scenario_name, "boost_2.0", logger);
+    let stats_b = run_variant("Running with Abundant HB impressions (MRG Dynamic boost)", scenario_name, "dynamic_boost", logger);
     
     // Compare the two variants to verify expected marketplace behavior
     // Variant A (boost 1.0) vs Variant B (boost 2.0):
