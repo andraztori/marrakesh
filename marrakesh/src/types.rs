@@ -22,14 +22,6 @@ pub struct AuctionResult {
     pub supply_cost: f64,
 }
 
-/// Charge type for impressions and sellers
-#[allow(non_camel_case_types)]
-#[derive(Debug, Clone, PartialEq)]
-pub enum ChargeType {
-    FIXED_COST { fixed_cost_cpm: f64 },
-    FIRST_PRICE,
-}
-
 /// Marketplace containing campaigns, sellers, and impressions
 /// This groups together the three main components of the marketplace simulation
 pub struct Marketplace {

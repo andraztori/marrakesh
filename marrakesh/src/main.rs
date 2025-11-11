@@ -13,7 +13,7 @@ mod s_one;
 mod s_mrg_boost;
 mod s_mrg_dynamic_boost;
 
-use types::ChargeType;
+use sellers::SellerType;
 use sellers::Sellers;
 use campaigns::{CampaignType, Campaigns};
 use simulationrun::{CampaignConvergeParams, SellerConvergeParams};
@@ -89,7 +89,7 @@ fn main() {
         // Add two sellers (IDs are automatically set to match Vec index)
         sellers.add(
             "MRG".to_string(),  // seller_name
-            ChargeType::FIXED_COST {
+            SellerType::FIXED_COST {
                 fixed_cost_cpm: 10.0,
             },  // charge_type
             1000,  // num_impressions
@@ -97,7 +97,7 @@ fn main() {
 
         sellers.add(
             "HB".to_string(),  // seller_name
-            ChargeType::FIRST_PRICE,  // charge_type
+            SellerType::FIRST_PRICE,  // seller_type
             1000,  // num_impressions
         );
 

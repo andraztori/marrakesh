@@ -1,4 +1,5 @@
-use crate::types::{ChargeType, Marketplace};
+use crate::types::Marketplace;
+use crate::sellers::SellerType;
 use crate::sellers::Sellers;
 use crate::campaigns::{CampaignType, Campaigns};
 use crate::simulationrun::{CampaignConvergeParams, SellerConvergeParams, SimulationStat};
@@ -42,7 +43,7 @@ fn run_variant(hb_impressions: usize, variant_description: &str, scenario_name: 
     // Add two sellers (IDs are automatically set to match Vec index)
     sellers.add(
         "MRG".to_string(),  // seller_name
-        ChargeType::FIXED_COST {
+        SellerType::FIXED_COST {
             fixed_cost_cpm: 10.0,
         },  // charge_type
         1000,  // num_impressions
@@ -50,7 +51,7 @@ fn run_variant(hb_impressions: usize, variant_description: &str, scenario_name: 
 
     sellers.add(
         "HB".to_string(),  // seller_name
-        ChargeType::FIRST_PRICE,  // charge_type
+        SellerType::FIRST_PRICE,  // seller_type
         hb_impressions,  // num_impressions
     );
 

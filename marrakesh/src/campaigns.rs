@@ -236,7 +236,6 @@ impl Campaigns {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::ChargeType;
 
     #[test]
     fn test_get_bid() {
@@ -259,7 +258,6 @@ mod tests {
 
         let impression = Impression {
             seller_id: 0,
-            charge_type: ChargeType::FIRST_PRICE,
             best_other_bid_cpm: 0.0,
             floor_cpm: 0.0,
             value_to_campaign_id,
@@ -291,9 +289,6 @@ mod tests {
 
         let impression = Impression {
             seller_id: 1,
-            charge_type: ChargeType::FIXED_COST {
-                fixed_cost_cpm: 10.0,
-            },
             best_other_bid_cpm: 0.0,
             floor_cpm: 0.0,
             value_to_campaign_id,
@@ -325,7 +320,6 @@ mod tests {
 
         let impression = Impression {
             seller_id: 0,
-            charge_type: ChargeType::FIRST_PRICE,
             best_other_bid_cpm: 0.0,
             floor_cpm: 0.0,
             value_to_campaign_id,
