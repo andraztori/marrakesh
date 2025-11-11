@@ -42,7 +42,7 @@ impl ControllerProportional {
         }
     }
 
-    /// Adjust pacing based on target and actual values
+    /// Calculate pacing for next iteration based on target and actual values
     /// 
     /// # Arguments
     /// * `target` - Target value to achieve
@@ -51,7 +51,7 @@ impl ControllerProportional {
     /// 
     /// # Returns
     /// Tuple of (new_pacing, changed) where changed indicates if pacing was modified
-    pub fn adjust_pacing(&self, target: f64, actual: f64, current_pacing: f64) -> (f64, bool) {
+    pub fn pacing_in_next_iteration(&self, target: f64, actual: f64, current_pacing: f64) -> (f64, bool) {
         let tolerance = target * self.tolerance_fraction;
         
         if actual < target - tolerance {

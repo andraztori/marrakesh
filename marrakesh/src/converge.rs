@@ -1,10 +1,8 @@
 use crate::types::Marketplace;
-use crate::campaigns::CampaignTrait;
 use crate::simulationrun::{CampaignConvergeParams, SellerConvergeParams, SimulationRun, SimulationStat};
 use crate::logger::{Logger, LogEvent};
 use crate::logln;
 use crate::warnln;
-use crate::utils::ControllerProportional;
 
 /// Object for running simulation convergence with pacing adjustments
 pub struct SimulationConverge;
@@ -45,7 +43,6 @@ impl SimulationConverge {
             let stats = SimulationStat::new(marketplace, &simulation_run);
             
             // Calculate next iteration's campaign converge params based on current results
-            let controller = ControllerProportional::new();
             let mut next_campaign_converge_params = current_campaign_converge_params.clone();
             let mut pacing_changed = false;
             for (index, campaign) in marketplace.campaigns.campaigns.iter().enumerate() {
@@ -54,7 +51,7 @@ impl SimulationConverge {
                 let next_converge = next_campaign_converge_params.params[index].as_mut();
                 
                 // Use the campaign's converge_iteration method (now part of CampaignTrait)
-                pacing_changed |= campaign.converge_iteration(current_converge, next_converge, campaign_stat, &controller);
+                pacing_changed |= campaign.converge_iteration(current_converge, next_converge, campaign_stat);
             }
             
             // Output campaign statistics for each iteration (using the params that were actually used)

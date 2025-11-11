@@ -45,7 +45,7 @@ impl CampaignConvergeParams {
     pub fn new(campaigns: &Campaigns) -> Self {
         let mut params = Vec::with_capacity(campaigns.campaigns.len());
         for campaign in &campaigns.campaigns {
-            params.push(campaign.create_converge_param(1.0));
+            params.push(campaign.create_converge_param());
         }
         Self { params }
     }
@@ -195,13 +195,14 @@ impl SimulationStat {
         
         for (index, campaign_stat) in self.campaign_stats.iter().enumerate() {
             let campaign = &campaigns.campaigns[index];
-            let pacing = campaign_params.params[index].pacing();
+            let converge_param = campaign_params.params[index].as_ref();
             
             // Use the trait method to get type and target string
             let type_and_target = campaign.type_and_target_string();
+            let formatted_params = campaign.converge_params_string(converge_param);
             
-            logln!(logger, event, "\nCampaign {} ({}) - {} - Pacing: {:.4}", 
-                     campaign.campaign_id(), campaign.campaign_name(), type_and_target, pacing);
+            logln!(logger, event, "\nCampaign {} ({}) - {} - {}", 
+                     campaign.campaign_id(), campaign.campaign_name(), type_and_target, formatted_params);
             logln!(logger, event, "  Impressions Obtained: {}", campaign_stat.impressions_obtained);
             logln!(logger, event, "  Costs (supply/virtual/buyer): {:.2} / {:.2} / {:.2}", 
                      campaign_stat.total_supply_cost, 
