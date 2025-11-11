@@ -1,8 +1,9 @@
 use crate::types::Marketplace;
 use crate::simulationrun::{CampaignConvergeParams, SellerConvergeParams, SimulationRun, SimulationStat};
-use crate::logger::{Logger, LogEvent};
+use crate::logger::{Logger, LogEvent, FileReceiver, sanitize_filename};
 use crate::logln;
 use crate::warnln;
+use std::path::PathBuf;
 
 /// Object for running simulation convergence with pacing adjustments
 pub struct SimulationConverge {
@@ -122,6 +123,50 @@ impl SimulationConverge {
             final_stats.expect("Should have at least one iteration"),
             final_campaign_converge_params.expect("Should have at least one iteration"),
         )
+    }
+    
+    /// Run simulation variant with logging setup and cleanup
+    /// 
+    /// # Arguments
+    /// * `variant_description` - Description of the variant being run
+    /// * `scenario_name` - Name of the scenario (for log file paths)
+    /// * `variant_name` - Name of the variant (for log file paths)
+    /// * `max_iterations` - Maximum number of iterations to run
+    /// * `logger` - Logger for event-based logging
+    /// 
+    /// # Returns
+    /// Returns the final SimulationStat
+    pub fn run_variant(
+        &self,
+        variant_description: &str,
+        scenario_name: &str,
+        variant_name: &str,
+        max_iterations: usize,
+        logger: &mut Logger,
+    ) -> SimulationStat {
+        // Add variant iterations receiver (for simulation and convergence events)
+        let iterations_receiver_id = logger.add_receiver(FileReceiver::new(&PathBuf::from(format!("log/{}/{}_iterations.log", sanitize_filename(scenario_name), sanitize_filename(variant_name))), vec![LogEvent::Simulation, LogEvent::Convergence]));
+        
+        // Add variant receiver (for variant events)
+        let variant_receiver_id = logger.add_receiver(FileReceiver::new(&PathBuf::from(format!("log/{}/{}.log", sanitize_filename(scenario_name), sanitize_filename(variant_name))), vec![LogEvent::Variant]));
+        
+        logln!(logger, LogEvent::Variant, "\n=== {} ===", variant_description);
+        
+        self.marketplace.printout(logger);
+        
+        // Run simulation loop with pacing adjustments
+        let (_final_simulation_run, stats, final_campaign_converge_params) = self.run(max_iterations, variant_name, logger);
+        
+        // Print final stats (variant-level output)
+        // Note: We use initial_seller_converge_params here since converge doesn't return final seller params
+        // The seller params should be converged by this point anyway
+        stats.printout(&self.marketplace.campaigns, &self.marketplace.sellers, &final_campaign_converge_params, &self.initial_seller_converge_params, logger);
+        
+        // Remove variant-specific receivers
+        logger.remove_receiver(variant_receiver_id);
+        logger.remove_receiver(iterations_receiver_id);
+        
+        stats
     }
 }
 

@@ -2,7 +2,6 @@ use crate::types::Marketplace;
 use crate::sellers::SellerType;
 use crate::sellers::Sellers;
 use crate::campaigns::{CampaignType, Campaigns};
-use crate::simulationrun::SimulationStat;
 use crate::converge::SimulationConverge;
 use crate::impressions::{Impressions, ImpressionsParam};
 use crate::utils;
@@ -11,16 +10,8 @@ use crate::logln;
 use crate::errln;
 use std::path::PathBuf;
 
-/// Run a variant of the simulation with a specific MRG boost factor
-fn run_variant(variant_description: &str, scenario_name: &str, variant_name: &str, logger: &mut Logger) -> SimulationStat {
-    // Add variant iterations receiver (for simulation and convergence events)
-    let iterations_receiver_id = logger.add_receiver(FileReceiver::new(&PathBuf::from(format!("log/{}/{}_iterations.log", sanitize_filename(scenario_name), sanitize_filename(variant_name))), vec![LogEvent::Simulation, LogEvent::Convergence]));
-    
-    // Add variant receiver (for variant events)
-    let variant_receiver_id = logger.add_receiver(FileReceiver::new(&PathBuf::from(format!("log/{}/{}.log", sanitize_filename(scenario_name), sanitize_filename(variant_name))), vec![LogEvent::Variant]));
-    
-    logln!(logger, LogEvent::Variant, "\n=== {} ===", variant_description);
-    
+/// Prepare simulation converge instance with campaign and seller setup
+fn prepare_simulationconverge() -> SimulationConverge {
     // Initialize containers for campaigns and sellers
     let mut campaigns = Campaigns::new();
     let mut sellers = Sellers::new();
@@ -72,25 +63,10 @@ fn run_variant(variant_description: &str, scenario_name: &str, variant_name: &st
         impressions,
     };
 
-    marketplace.printout(logger);
-
     // Create simulation converge instance (initializes campaign and seller params internally)
-    let simulation_converge = SimulationConverge::new(marketplace);
-    
-    // Run simulation loop with pacing adjustments (maximum 100 iterations)
-    let (_final_simulation_run, stats, final_campaign_converge_params) = simulation_converge.run(100, variant_name, logger);
-    
-    // Print final stats (variant-level output)
-    // Note: We use initial_seller_converge_params here since converge doesn't return final seller params
-    // The seller params should be converged by this point anyway
-    stats.printout(&simulation_converge.marketplace.campaigns, &simulation_converge.marketplace.sellers, &final_campaign_converge_params, &simulation_converge.initial_seller_converge_params, logger);
-    
-    // Remove variant-specific receivers
-    logger.remove_receiver(variant_receiver_id);
-    logger.remove_receiver(iterations_receiver_id);
-    
-    stats
+    SimulationConverge::new(marketplace)
 }
+
 
 /// Scenario demonstrating the effect of MRG seller boost factor on marketplace dynamics
 /// 
@@ -104,10 +80,12 @@ pub fn run(logger: &mut Logger) -> Result<(), Box<dyn std::error::Error>> {
     let scenario_receiver_id = logger.add_receiver(FileReceiver::new(&PathBuf::from(format!("log/{}/scenario.log", sanitize_filename(scenario_name))), vec![LogEvent::Scenario]));
     
     // Run variant with boost_factor = 1.0 (default) for MRG seller
-    let stats_a = run_variant("Running with Abundant HB impressions", scenario_name, "no_boost", logger);
+    let simulation_converge_a = prepare_simulationconverge();
+    let stats_a = simulation_converge_a.run_variant("Running with Abundant HB impressions", scenario_name, "no_boost", 100, logger);
     
     // Run variant with boost_factor = 2.0 for MRG seller
-    let stats_b = run_variant("Running with Abundant HB impressions (MRG Dynamic boost)", scenario_name, "dynamic_boost", logger);
+    let simulation_converge_b = prepare_simulationconverge();
+    let stats_b = simulation_converge_b.run_variant("Running with Abundant HB impressions (MRG Dynamic boost)", scenario_name, "dynamic_boost", 100, logger);
     
     // Compare the two variants to verify expected marketplace behavior
     // Variant A (boost 1.0) vs Variant B (boost 2.0):
