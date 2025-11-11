@@ -1,4 +1,4 @@
-use crate::types::{AuctionResult, ChargeType, Marketplace, Winner};
+use crate::types::{AuctionResult, Marketplace, Winner};
 use crate::sellers::Sellers;
 use crate::campaigns::Campaigns;
 use crate::logger::{Logger, LogEvent};
@@ -224,12 +224,7 @@ impl SimulationStat {
         logln!(logger, LogEvent::Variant, "\n=== Seller Statistics ===");
         for (index, seller_stat) in self.seller_stats.iter().enumerate() {
             let seller = &sellers.sellers[index];
-            let charge_type_str = match seller.charge_type() {
-                ChargeType::FIXED_COST { fixed_cost_cpm } => format!("FIXED_COST ({} CPM)", fixed_cost_cpm),
-                ChargeType::FIRST_PRICE => "FIRST_PRICE".to_string(),
-            };
-
-            logln!(logger, LogEvent::Variant, "\nSeller {} ({}) - {}", seller.seller_id(), seller.seller_name(), charge_type_str);
+            logln!(logger, LogEvent::Variant, "\nSeller {} ({}) - {}", seller.seller_id(), seller.seller_name(), seller.charge_type_string());
             logln!(logger, LogEvent::Variant, "  Impressions (sold/on offer): {} / {}", seller_stat.impressions_sold, seller.num_impressions());
             logln!(logger, LogEvent::Variant, "  Total Costs (supply/virtual/buyer): {:.2} / {:.2} / {:.2}", 
                      seller_stat.total_supply_cost, 

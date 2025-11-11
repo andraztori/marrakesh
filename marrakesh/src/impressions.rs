@@ -1,6 +1,6 @@
 use rand::{rngs::StdRng, SeedableRng};
 use rand_distr::Distribution;
-use crate::types::{ChargeType, Winner, AuctionResult};
+use crate::types::{Winner, AuctionResult};
 use crate::sellers::{Sellers, SellerTrait};
 use crate::campaigns::{Campaigns, MAX_CAMPAIGNS};
 use crate::simulationrun::{CampaignConvergeParams, SellerParam};
@@ -58,7 +58,6 @@ impl ImpressionsParam {
 #[derive(Debug, Clone)]
 pub struct Impression {
     pub seller_id: usize,
-    pub charge_type: ChargeType,
     pub best_other_bid_cpm: f64,
     pub floor_cpm: f64,
     pub value_to_campaign_id: [f64; MAX_CAMPAIGNS],
@@ -135,15 +134,12 @@ impl Impressions {
 
         for seller in &sellers.sellers {
             for _ in 0..seller.num_impressions() {
-                let (best_other_bid_cpm, floor_cpm) = match seller.charge_type() {
-                    ChargeType::FIRST_PRICE => {
-                        (
-                            params.best_other_bid_dist.sample(&mut rng),
-                            params.floor_cpm_dist.sample(&mut rng),
-                        )
-                    }
-                    ChargeType::FIXED_COST { .. } => (0.0, params.fixed_cost_floor_cpm),
-                };
+                let (best_other_bid_cpm, floor_cpm) = seller.generate_impression(
+                    params.best_other_bid_dist.as_ref(),
+                    params.floor_cpm_dist.as_ref(),
+                    params.fixed_cost_floor_cpm,
+                    &mut rng,
+                );
 
                 // First calculate base impression value
                 let base_impression_value = params.base_impression_value_dist.sample(&mut rng);
@@ -158,7 +154,6 @@ impl Impressions {
 
                 impressions.push(Impression {
                     seller_id: seller.seller_id(),
-                    charge_type: seller.charge_type(),
                     best_other_bid_cpm,
                     floor_cpm,
                     value_to_campaign_id,
