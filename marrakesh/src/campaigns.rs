@@ -12,6 +12,14 @@ pub enum CampaignType {
     FIXED_BUDGET { total_budget_target: f64 },
 }
 
+
+/// Architecture explanation:
+/// CampaignTrait is used to describe a campaign
+/// Each campaign can use a convergence mechanism that needs to store data locally (for example pacing parameter)
+/// These can be anything a trait implementation wants it to be, so they need to be dnyamically created by create_converge_param
+/// Simulation then creates such converge parameters for each campaign and uses them to be able to call converge_iteration() 
+
+
 /// Trait for campaign convergence parameters
 /// Each campaign type has its own associated convergence parameter type
 pub trait CampaignConverge: std::any::Any {
@@ -69,17 +77,9 @@ pub struct CampaignPacingParam {
 }
 
 impl CampaignConverge for CampaignPacingParam {
-    fn clone_box(&self) -> Box<dyn CampaignConverge> {
-        Box::new(self.clone())
-    }
-    
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-    
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
-    }
+    fn clone_box(&self) -> Box<dyn CampaignConverge> { Box::new(self.clone()) }
+    fn as_any(&self) -> &dyn std::any::Any { self }
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
 }
 
 /// Campaign with fixed impressions target

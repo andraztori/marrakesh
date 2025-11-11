@@ -41,7 +41,7 @@ impl Clone for CampaignConvergeParams {
 }
 
 impl CampaignConvergeParams {
-    /// Create campaign parameters from campaigns, defaulting all pacings to 1.0
+    /// Create campaign parameters from campaigns
     pub fn new(campaigns: &Campaigns) -> Self {
         let mut params = Vec::with_capacity(campaigns.campaigns.len());
         for campaign in &campaigns.campaigns {
