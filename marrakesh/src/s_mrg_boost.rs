@@ -5,10 +5,15 @@ use crate::campaigns::{CampaignType, Campaigns};
 use crate::converge::SimulationConverge;
 use crate::impressions::{Impressions, ImpressionsParam};
 use crate::utils;
-use crate::logger::{Logger, LogEvent, FileReceiver, sanitize_filename};
+use crate::logger::{Logger, LogEvent};
 use crate::logln;
 use crate::errln;
-use std::path::PathBuf;
+
+// Register this scenario in the catalog
+inventory::submit!(crate::scenarios::ScenarioEntry {
+    short_name: "MRGboost",
+    run,
+});
 
 /// Prepare simulation converge instance with campaign and seller setup
 fn prepare_simulationconverge(mrg_boost_factor: f64) -> SimulationConverge {
@@ -78,12 +83,7 @@ fn prepare_simulationconverge(mrg_boost_factor: f64) -> SimulationConverge {
 /// This scenario compares the abundant HB variant (1000 HB impressions) with and without
 /// a boost factor of 2.0 applied to the MRG seller. The boost factor affects how MRG
 /// impressions are valued in the marketplace.
-pub fn run(logger: &mut Logger) -> Result<(), Box<dyn std::error::Error>> {
-    let scenario_name = "MRGboost";
-    
-    // Add scenario-level receiver
-    let scenario_receiver_id = logger.add_receiver(FileReceiver::new(&PathBuf::from(format!("log/{}/scenario.log", sanitize_filename(scenario_name))), vec![LogEvent::Scenario]));
-
+pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::error::Error>> {
     // Run variant with boost_factor = 1.0 (default) for MRG seller
     let simulation_converge_a = prepare_simulationconverge(1.0);
     let stats_a = simulation_converge_a.run_variant("Running with Abundant HB impressions (MRG boost: 1.0)", scenario_name, "boost_1.0", 100, logger);
@@ -181,18 +181,9 @@ pub fn run(logger: &mut Logger) -> Result<(), Box<dyn std::error::Error>> {
         errln!(logger, LogEvent::Scenario, "{}", msg);
     }
     
-    // Remove scenario-level receiver
-    logger.remove_receiver(scenario_receiver_id);
-    
     if errors.is_empty() {
         Ok(())
     } else {
         Err(format!("Scenario '{}' validation failed:\n{}", scenario_name, errors.join("\n")).into())
     }
 }
-
-// Register this scenario in the catalog
-inventory::submit!(crate::scenarios::ScenarioEntry {
-    short_name: "MRGboost",
-    run,
-});

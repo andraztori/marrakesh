@@ -18,7 +18,7 @@ use sellers::Sellers;
 use campaigns::{CampaignType, Campaigns};
 use converge::SimulationConverge;
 use impressions::Impressions;
-use logger::{Logger, LogEvent, ConsoleReceiver, FileReceiver};
+use logger::{Logger, LogEvent, ConsoleReceiver, FileReceiver, sanitize_filename};
 use std::path::PathBuf;
 
 use scenarios::get_scenario_catalog;
@@ -41,12 +41,20 @@ fn main() {
         
         for scenario in scenarios {
             log!(&mut logger, LogEvent::Validation, "{}: ", scenario.short_name);
-            match (scenario.run)(&mut logger) {
+            
+            // Add scenario-level receiver
+            let scenario_receiver_id = logger.add_receiver(FileReceiver::new(&PathBuf::from(format!("log/{}/scenario.log", sanitize_filename(scenario.short_name))), vec![LogEvent::Scenario]));
+            
+            match (scenario.run)(scenario.short_name, &mut logger) {
                 Ok(()) => logln!(&mut logger, LogEvent::Validation, "✓ PASSED"),
                 Err(_e) => {
                     logln!(&mut logger, LogEvent::Validation, "✗ FAILED");
                 }
             }
+            
+            // Remove scenario-level receiver
+            logger.remove_receiver(scenario_receiver_id);
+            
             // Flush to ensure validation is written to summary.log
             let _ = logger.flush();
         }
@@ -58,10 +66,13 @@ fn main() {
         // For now, default to s_mrg_boost, but could be made configurable
         let mut logger = Logger::new();
         logger.add_receiver(ConsoleReceiver::new(vec![LogEvent::Simulation, LogEvent::Convergence, LogEvent::Variant]));
-        if let Err(e) = s_mrg_boost::run(&mut logger) {
+        let scenario_name = "MRGboost";
+        let scenario_receiver_id = logger.add_receiver(FileReceiver::new(&PathBuf::from(format!("log/{}/scenario.log", sanitize_filename(scenario_name))), vec![LogEvent::Scenario]));
+        if let Err(e) = s_mrg_boost::run(scenario_name, &mut logger) {
             eprintln!("Error running scenario: {}", e);
             std::process::exit(1);
         }
+        logger.remove_receiver(scenario_receiver_id);
     }
     
     // Old main code (unreachable)

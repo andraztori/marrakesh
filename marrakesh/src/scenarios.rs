@@ -2,7 +2,7 @@ use std::error::Error;
 use crate::logger::Logger;
 
 /// Function type for scenario entry functions
-pub type ScenarioFn = fn(logger: &mut Logger) -> Result<(), Box<dyn Error>>;
+pub type ScenarioFn = fn(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn Error>>;
 
 /// Entry in the scenario catalog
 #[derive(Clone)]

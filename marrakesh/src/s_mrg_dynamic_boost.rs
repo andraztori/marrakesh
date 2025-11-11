@@ -5,13 +5,18 @@ use crate::campaigns::{CampaignType, Campaigns};
 use crate::converge::SimulationConverge;
 use crate::impressions::{Impressions, ImpressionsParam};
 use crate::utils;
-use crate::logger::{Logger, LogEvent, FileReceiver, sanitize_filename};
+use crate::logger::{Logger, LogEvent};
 use crate::logln;
 use crate::errln;
-use std::path::PathBuf;
+
+// Register this scenario in the catalog
+inventory::submit!(crate::scenarios::ScenarioEntry {
+    short_name: "MRGdynamicboost",
+    run,
+});
 
 /// Prepare simulation converge instance with campaign and seller setup
-fn prepare_simulationconverge(dynamic_boost: bool) -> SimulationConverge {
+fn prepare_variant(dynamic_boost: bool) -> SimulationConverge {
     // Initialize containers for campaigns and sellers
     let mut campaigns = Campaigns::new();
     let mut sellers = Sellers::new();
@@ -80,18 +85,13 @@ fn prepare_simulationconverge(dynamic_boost: bool) -> SimulationConverge {
 /// This scenario compares the abundant HB variant (1000 HB impressions) with and without
 /// a boost factor of 2.0 applied to the MRG seller. The boost factor affects how MRG
 /// impressions are valued in the marketplace.
-pub fn run(logger: &mut Logger) -> Result<(), Box<dyn std::error::Error>> {
-    let scenario_name = "MRGdynamicboost";
-    
-    // Add scenario-level receiver
-    let scenario_receiver_id = logger.add_receiver(FileReceiver::new(&PathBuf::from(format!("log/{}/scenario.log", sanitize_filename(scenario_name))), vec![LogEvent::Scenario]));
-    
+pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::error::Error>> {
     // Run variant with fixed boost (no convergence) for MRG seller
-    let simulation_converge_a = prepare_simulationconverge(false);
+    let simulation_converge_a = prepare_variant(false);
     let stats_a = simulation_converge_a.run_variant("Running with Abundant HB impressions", scenario_name, "no_boost", 100, logger);
     
     // Run variant with dynamic boost (convergence) for MRG seller
-    let simulation_converge_b = prepare_simulationconverge(true);
+    let simulation_converge_b = prepare_variant(true);
     let stats_b = simulation_converge_b.run_variant("Running with Abundant HB impressions (MRG Dynamic boost)", scenario_name, "dynamic_boost", 100, logger);
     
     // Validate expected marketplace behavior
@@ -141,18 +141,9 @@ pub fn run(logger: &mut Logger) -> Result<(), Box<dyn std::error::Error>> {
         errln!(logger, LogEvent::Scenario, "{}", msg);
     }
     
-    // Remove scenario-level receiver
-    logger.remove_receiver(scenario_receiver_id);
-    
     if errors.is_empty() {
         Ok(())
     } else {
         Err(format!("Scenario '{}' validation failed:\n{}", scenario_name, errors.join("\n")).into())
     }
 }
-
-// Register this scenario in the catalog
-inventory::submit!(crate::scenarios::ScenarioEntry {
-    short_name: "MRGdynamicboost",
-    run,
-});
