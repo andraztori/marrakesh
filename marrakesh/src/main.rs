@@ -4,6 +4,7 @@ mod converge;
 mod utils;
 mod impressions;
 mod campaigns;
+mod sellers;
 mod scenarios;
 mod logger;
 
@@ -12,7 +13,8 @@ mod s_one;
 mod s_mrg_boost;
 mod s_mrg_dynamic_boost;
 
-use types::{ChargeType, Sellers};
+use types::ChargeType;
+use sellers::Sellers;
 use campaigns::{CampaignType, Campaigns};
 use simulationrun::{CampaignConvergeParams, SellerConvergeParams};
 use converge::SimulationConverge;

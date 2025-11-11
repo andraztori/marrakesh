@@ -1,4 +1,5 @@
-use crate::types::{AuctionResult, ChargeType, Marketplace, Sellers, Winner};
+use crate::types::{AuctionResult, ChargeType, Marketplace, Winner};
+use crate::sellers::Sellers;
 use crate::campaigns::Campaigns;
 use crate::logger::{Logger, LogEvent};
 use crate::logln;
@@ -16,8 +17,8 @@ impl SimulationRun {
         
         for impression in &marketplace.impressions.impressions {
             // Get the seller and seller_param for this impression
-            let seller = &marketplace.sellers.sellers[impression.seller_id];
-            let seller_param = &seller_params.params[impression.seller_id];
+            let seller = marketplace.sellers.sellers[impression.seller_id].as_ref();
+            let seller_param = &seller_params.params[seller.seller_id()];
             let result = impression.run_auction(&marketplace.campaigns, campaign_params, seller, seller_param);
             results.push(result);
         }
@@ -223,13 +224,13 @@ impl SimulationStat {
         logln!(logger, LogEvent::Variant, "\n=== Seller Statistics ===");
         for (index, seller_stat) in self.seller_stats.iter().enumerate() {
             let seller = &sellers.sellers[index];
-            let charge_type_str = match seller.charge_type {
+            let charge_type_str = match seller.charge_type() {
                 ChargeType::FIXED_COST { fixed_cost_cpm } => format!("FIXED_COST ({} CPM)", fixed_cost_cpm),
                 ChargeType::FIRST_PRICE => "FIRST_PRICE".to_string(),
             };
 
-            logln!(logger, LogEvent::Variant, "\nSeller {} ({}) - {}", seller.seller_id, seller.seller_name, charge_type_str);
-            logln!(logger, LogEvent::Variant, "  Impressions (sold/on offer): {} / {}", seller_stat.impressions_sold, seller.num_impressions);
+            logln!(logger, LogEvent::Variant, "\nSeller {} ({}) - {}", seller.seller_id(), seller.seller_name(), charge_type_str);
+            logln!(logger, LogEvent::Variant, "  Impressions (sold/on offer): {} / {}", seller_stat.impressions_sold, seller.num_impressions());
             logln!(logger, LogEvent::Variant, "  Total Costs (supply/virtual/buyer): {:.2} / {:.2} / {:.2}", 
                      seller_stat.total_supply_cost, 
                      seller_stat.total_virtual_cost, 

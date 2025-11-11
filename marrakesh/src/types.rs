@@ -30,49 +30,11 @@ pub enum ChargeType {
     FIRST_PRICE,
 }
 
-/// Represents a seller offering impressions
-#[derive(Debug, Clone)]
-pub struct Seller {
-    pub seller_id: usize,
-    pub seller_name: String,
-    pub charge_type: ChargeType,
-    pub num_impressions: usize,
-}
-
-/// Container for sellers with methods to add sellers
-pub struct Sellers {
-    pub sellers: Vec<Seller>,
-}
-
-impl Sellers {
-    pub fn new() -> Self {
-        Self {
-            sellers: Vec::new(),
-        }
-    }
-
-    /// Add a seller to the collection
-    /// 
-    /// # Arguments
-    /// * `seller_name` - Name of the seller
-    /// * `charge_type` - Charge type (FIXED_COST with fixed_cost_cpm, or FIRST_PRICE)
-    /// * `num_impressions` - Number of impressions this seller will offer
-    pub fn add(&mut self, seller_name: String, charge_type: ChargeType, num_impressions: usize) {
-        let seller_id = self.sellers.len();
-        self.sellers.push(Seller {
-            seller_id,
-            seller_name,
-            charge_type,
-            num_impressions,
-        });
-    }
-}
-
 /// Marketplace containing campaigns, sellers, and impressions
 /// This groups together the three main components of the marketplace simulation
 pub struct Marketplace {
     pub campaigns: crate::campaigns::Campaigns,
-    pub sellers: Sellers,
+    pub sellers: crate::sellers::Sellers,
     pub impressions: crate::impressions::Impressions,
 }
 

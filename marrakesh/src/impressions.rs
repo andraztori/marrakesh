@@ -1,6 +1,7 @@
 use rand::{rngs::StdRng, SeedableRng};
 use rand_distr::Distribution;
-use crate::types::{ChargeType, Sellers, Winner, AuctionResult};
+use crate::types::{ChargeType, Winner, AuctionResult};
+use crate::sellers::{Sellers, SellerTrait};
 use crate::campaigns::{Campaigns, MAX_CAMPAIGNS};
 use crate::simulationrun::{CampaignConvergeParams, SellerParam};
 
@@ -66,7 +67,7 @@ pub struct Impression {
 impl Impression {
     /// Run an auction for this impression with the given campaigns, campaign parameters, seller, and seller parameters
     /// Returns the auction result
-    pub fn run_auction(&self, campaigns: &Campaigns, campaign_params: &CampaignConvergeParams, _seller: &crate::types::Seller, seller_param: &SellerParam) -> AuctionResult {
+    pub fn run_auction(&self, campaigns: &Campaigns, campaign_params: &CampaignConvergeParams, seller: &dyn SellerTrait, seller_param: &SellerParam) -> AuctionResult {
         // Get bids from all campaigns
         let mut winning_bid_cpm = 0.0;
         let mut winning_campaign_id: Option<usize> = None;
@@ -85,40 +86,31 @@ impl Impression {
         // Apply boost_factor to winning_bid_cpm
         winning_bid_cpm *= seller_param.boost_factor;
 
-        // Helper function to get supply_cost based on charge type (in CPM)
-        // For fixed cost, always use fixed_cost_cpm; for first price, use provided value (or 0.0 if no winner)
-        let get_supply_cost_cpm = |value: f64| -> f64 {
-            match self.charge_type {
-                ChargeType::FIXED_COST { fixed_cost_cpm } => fixed_cost_cpm,
-                ChargeType::FIRST_PRICE => value,
-            }
-        };
-
         // Determine the result based on winning bid
         let (winner, supply_cost) = if let Some(campaign_id) = winning_campaign_id {
             if winning_bid_cpm < self.best_other_bid_cpm {
                 // Winning bid is below best other bid - other demand wins
-                (Winner::OTHER_DEMAND, get_supply_cost_cpm(0.0) / 1000.0)
+                (Winner::OTHER_DEMAND, seller.get_supply_cost_cpm(0.0) / 1000.0)
             } else if winning_bid_cpm < self.floor_cpm {
                 // Winning bid is below floor - no winner
-                (Winner::BELOW_FLOOR, get_supply_cost_cpm(0.0) / 1000.0)
+                (Winner::BELOW_FLOOR, seller.get_supply_cost_cpm(0.0) / 1000.0)
             } else {
                 // Valid winner - set cost values
                 // virtual_cost and buyer_charge are always the winning bid
-                let supply_cost_cpm = get_supply_cost_cpm(winning_bid_cpm);
-                let virtual_cost_cpm = winning_bid_cpm;
-                let buyer_charge_cpm = winning_bid_cpm;
+                let supply_cost = seller.get_supply_cost_cpm(winning_bid_cpm) / 1000.0;
+                let virtual_cost = winning_bid_cpm / 1000.0;
+                let buyer_charge = winning_bid_cpm / 1000.0;
                 
                 // Convert from CPM to actual cost by dividing by 1000
                 (Winner::Campaign {
                     campaign_id,
-                    virtual_cost: virtual_cost_cpm / 1000.0,
-                    buyer_charge: buyer_charge_cpm / 1000.0,
-                }, supply_cost_cpm / 1000.0)
+                    virtual_cost: virtual_cost,
+                    buyer_charge: buyer_charge,
+                }, supply_cost )
             }
         } else {
             // No campaigns participated
-            (Winner::NO_DEMAND, get_supply_cost_cpm(0.0) / 1000.0)
+            (Winner::NO_DEMAND, seller.get_supply_cost_cpm(0.0) / 1000.0)
         };
 
         AuctionResult {
@@ -142,8 +134,8 @@ impl Impressions {
         let mut impressions = Vec::new();
 
         for seller in &sellers.sellers {
-            for _ in 0..seller.num_impressions {
-                let (best_other_bid_cpm, floor_cpm) = match seller.charge_type {
+            for _ in 0..seller.num_impressions() {
+                let (best_other_bid_cpm, floor_cpm) = match seller.charge_type() {
                     ChargeType::FIRST_PRICE => {
                         (
                             params.best_other_bid_dist.sample(&mut rng),
@@ -165,8 +157,8 @@ impl Impressions {
                 }
 
                 impressions.push(Impression {
-                    seller_id: seller.seller_id,
-                    charge_type: seller.charge_type.clone(),
+                    seller_id: seller.seller_id(),
+                    charge_type: seller.charge_type(),
                     best_other_bid_cpm,
                     floor_cpm,
                     value_to_campaign_id,

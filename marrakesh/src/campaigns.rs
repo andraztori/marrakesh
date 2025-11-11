@@ -45,6 +45,12 @@ pub trait CampaignTrait {
     /// Bid = converge_param.pacing() * impression.value_to_campaign_id[campaign_id]
     fn get_bid(&self, impression: &Impression, converge_param: &dyn CampaignConverge) -> f64;
     
+
+    
+    
+    /// Create a new convergence parameter for this campaign type
+    fn create_converge_param(&self) -> Box<dyn CampaignConverge>;
+
     /// Perform one iteration of convergence, updating the next convergence parameter
     /// This method encapsulates the convergence logic for each campaign type
     /// 
@@ -54,11 +60,6 @@ pub trait CampaignTrait {
     /// * `campaign_stat` - Statistics from the current simulation run
     /// 
     /// # Returns
-    
-    
-    /// Create a new convergence parameter for this campaign type with default pacing (1.0)
-    fn create_converge_param(&self) -> Box<dyn CampaignConverge>;
-
     /// `true` if pacing was changed, `false` if it remained the same
     fn converge_iteration(&self, current_converge: &dyn CampaignConverge, next_converge: &mut dyn CampaignConverge, campaign_stat: &crate::simulationrun::CampaignStat) -> bool;
 
