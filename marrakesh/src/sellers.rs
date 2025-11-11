@@ -161,10 +161,10 @@ impl SellerTrait for SellerFixedCostDynamicBoost {
         let current_converge = current_converge.as_any().downcast_ref::<SellerBoostParam>().unwrap();
         let next_converge = next_converge.as_any_mut().downcast_mut::<SellerBoostParam>().unwrap();
         
-        // For fixed cost sellers, we might want to converge based on impressions sold
-        // For now, let's use a simple target (e.g., 80% of available impressions)
-        let target = self.num_impressions as f64;
-        let actual = seller_stat.impressions_sold as f64;
+        // Converge when cost of impressions (num_impressions * fixed_cost_cpm) matches virtual price
+        // fixed_cost_cpm is in CPM (cost per 1000 impressions), so divide by 1000 to get cost per impression
+        let target = (self.num_impressions as f64) * self.fixed_cost_cpm / 1000.0;
+        let actual = seller_stat.total_virtual_cost;
         let current_boost = current_converge.boost_factor;
         
         // Use the same controller logic as campaigns, but for boost_factor

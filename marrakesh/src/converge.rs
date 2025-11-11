@@ -38,17 +38,18 @@ impl SimulationConverge {
     /// * `logger` - Logger for event-based logging
     /// 
     /// # Returns
-    /// Returns a tuple of (final SimulationRun, final SimulationStat, final CampaignConvergeParams)
+    /// Returns a tuple of (final SimulationRun, final SimulationStat, final CampaignConvergeParams, final SellerConvergeParams)
     pub fn run(
         &self,
         max_iterations: usize,
         variant_name: &str,
         logger: &mut Logger,
-    ) -> (SimulationRun, SimulationStat, CampaignConvergeParams) {
+    ) -> (SimulationRun, SimulationStat, CampaignConvergeParams, SellerConvergeParams) {
         
         let mut final_simulation_run = None;
         let mut final_stats = None;
         let mut final_campaign_converge_params = None;
+        let mut final_seller_converge_params = None;
         let mut converged = false;
         
         // Initialize current campaign converge params from input for the first iteration
@@ -98,7 +99,8 @@ impl SimulationConverge {
             // Keep track of final simulation run and stats
             final_simulation_run = Some(simulation_run);
             final_stats = Some(stats);
-            final_campaign_converge_params = Some(current_campaign_converge_params);
+            final_campaign_converge_params = Some(current_campaign_converge_params.clone());
+            final_seller_converge_params = Some(current_seller_converge_params.clone());
             
             // Break early if no pacing or boost changes were made (converged)
             if !pacing_changed && !boost_changed {
@@ -117,11 +119,12 @@ impl SimulationConverge {
             warnln!(logger, LogEvent::Convergence, "{}: Reached maximum iterations ({})", variant_name, max_iterations);
         }
         
-        // Return the final simulation run, stats, and campaign converge params
+        // Return the final simulation run, stats, and converge params
         (
             final_simulation_run.expect("Should have at least one iteration"),
             final_stats.expect("Should have at least one iteration"),
             final_campaign_converge_params.expect("Should have at least one iteration"),
+            final_seller_converge_params.expect("Should have at least one iteration"),
         )
     }
     
@@ -155,12 +158,10 @@ impl SimulationConverge {
         self.marketplace.printout(logger);
         
         // Run simulation loop with pacing adjustments
-        let (_final_simulation_run, stats, final_campaign_converge_params) = self.run(max_iterations, variant_name, logger);
+        let (_final_simulation_run, stats, final_campaign_converge_params, final_seller_converge_params) = self.run(max_iterations, variant_name, logger);
         
         // Print final stats (variant-level output)
-        // Note: We use initial_seller_converge_params here since converge doesn't return final seller params
-        // The seller params should be converged by this point anyway
-        stats.printout(&self.marketplace.campaigns, &self.marketplace.sellers, &final_campaign_converge_params, &self.initial_seller_converge_params, logger);
+        stats.printout(&self.marketplace.campaigns, &self.marketplace.sellers, &final_campaign_converge_params, &final_seller_converge_params, logger);
         
         // Remove variant-specific receivers
         logger.remove_receiver(variant_receiver_id);

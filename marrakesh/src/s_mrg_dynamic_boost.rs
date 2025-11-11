@@ -11,7 +11,7 @@ use crate::errln;
 use std::path::PathBuf;
 
 /// Prepare simulation converge instance with campaign and seller setup
-fn prepare_simulationconverge() -> SimulationConverge {
+fn prepare_simulationconverge(dynamic_boost: bool) -> SimulationConverge {
     // Initialize containers for campaigns and sellers
     let mut campaigns = Campaigns::new();
     let mut sellers = Sellers::new();
@@ -32,11 +32,18 @@ fn prepare_simulationconverge() -> SimulationConverge {
     );
 
     // Add two sellers (IDs are automatically set to match Vec index)
+    // First seller (MRG) type depends on dynamic_boost parameter
     sellers.add(
         "MRG".to_string(),  // seller_name
-        SellerType::FIXED_COST_DYNAMIC_BOOST {
-            fixed_cost_cpm: 10.0,
-        },  // charge_type
+        if dynamic_boost {
+            SellerType::FIXED_COST_DYNAMIC_BOOST {
+                fixed_cost_cpm: 10.0,
+            }
+        } else {
+            SellerType::FIXED_COST_FIXED_BOOST {
+                fixed_cost_cpm: 10.0,
+            }
+        },
         1000,  // num_impressions
     );
 
@@ -79,12 +86,12 @@ pub fn run(logger: &mut Logger) -> Result<(), Box<dyn std::error::Error>> {
     // Add scenario-level receiver
     let scenario_receiver_id = logger.add_receiver(FileReceiver::new(&PathBuf::from(format!("log/{}/scenario.log", sanitize_filename(scenario_name))), vec![LogEvent::Scenario]));
     
-    // Run variant with boost_factor = 1.0 (default) for MRG seller
-    let simulation_converge_a = prepare_simulationconverge();
+    // Run variant with fixed boost (no convergence) for MRG seller
+    let simulation_converge_a = prepare_simulationconverge(false);
     let stats_a = simulation_converge_a.run_variant("Running with Abundant HB impressions", scenario_name, "no_boost", 100, logger);
     
-    // Run variant with boost_factor = 2.0 for MRG seller
-    let simulation_converge_b = prepare_simulationconverge();
+    // Run variant with dynamic boost (convergence) for MRG seller
+    let simulation_converge_b = prepare_simulationconverge(true);
     let stats_b = simulation_converge_b.run_variant("Running with Abundant HB impressions (MRG Dynamic boost)", scenario_name, "dynamic_boost", 100, logger);
     
     // Compare the two variants to verify expected marketplace behavior
