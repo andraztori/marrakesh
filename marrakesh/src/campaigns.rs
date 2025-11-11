@@ -46,17 +46,20 @@ pub trait CampaignTrait {
     /// * `campaign_stat` - Statistics from the current simulation run
     /// 
     /// # Returns
+    
+    
+    /// Create a new convergence parameter for this campaign type with default pacing (1.0)
+    fn create_converge_param(&self) -> Box<dyn CampaignConverge>;
+
     /// `true` if pacing was changed, `false` if it remained the same
     fn converge_iteration(&self, current_converge: &dyn CampaignConverge, next_converge: &mut dyn CampaignConverge, campaign_stat: &crate::simulationrun::CampaignStat) -> bool;
-    
+
     /// Get a string representation of the campaign type and target
     fn type_and_target_string(&self) -> String;
     
     /// Get a formatted string representation of the convergence parameters
     fn converge_params_string(&self, converge_param: &dyn CampaignConverge) -> String;
-    
-    /// Create a new convergence parameter for this campaign type with default pacing (1.0)
-    fn create_converge_param(&self) -> Box<dyn CampaignConverge>;
+
 }
 
 /// Convergence parameter for campaign pacing
