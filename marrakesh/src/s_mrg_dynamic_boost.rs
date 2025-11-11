@@ -94,89 +94,47 @@ pub fn run(logger: &mut Logger) -> Result<(), Box<dyn std::error::Error>> {
     let simulation_converge_b = prepare_simulationconverge(true);
     let stats_b = simulation_converge_b.run_variant("Running with Abundant HB impressions (MRG Dynamic boost)", scenario_name, "dynamic_boost", 100, logger);
     
-    // Compare the two variants to verify expected marketplace behavior
-    // Variant A (boost 1.0) vs Variant B (boost 2.0):
-    // - Variant A is unprofitable (overall), while variant B is profitable
-    // - Specifically seller 0 (MRG) is unprofitable in variant A and profitable in variant B
-    // - Variant A should obtain more total value than variant B
-    // - Variant A should have lower total cost than variant B
-    
+    // Validate expected marketplace behavior
     logln!(logger, LogEvent::Scenario, "");
     
     let mut errors: Vec<String> = Vec::new();
     
-    // Check: Variant A is unprofitable (overall)
+    // Check: Variant A (no boost) - seller 0 should not be profitable (supply_cost > virtual_cost)
     let msg = format!(
-        "Variant A (MRG boost 1.0) is unprofitable (supply_cost > buyer_charge): {:.2} > {:.2}",
-        stats_a.overall_stat.total_supply_cost,
-        stats_a.overall_stat.total_buyer_charge
-    );
-    if stats_a.overall_stat.total_supply_cost > stats_a.overall_stat.total_buyer_charge {
-        logln!(logger, LogEvent::Scenario, "✓ {}", msg);
-    } else {
-        errors.push(msg.clone());
-        errln!(logger, LogEvent::Scenario, "{}", msg);
-    }
-    
-    // Check: Variant B is profitable (overall)
-    let msg = format!(
-        "Variant B (MRG boost 2.0) is profitable (supply_cost < buyer_charge): {:.2} < {:.2}",
-        stats_b.overall_stat.total_supply_cost,
-        stats_b.overall_stat.total_buyer_charge
-    );
-    if stats_b.overall_stat.total_supply_cost < stats_b.overall_stat.total_buyer_charge {
-        logln!(logger, LogEvent::Scenario, "✓ {}", msg);
-    } else {
-        errors.push(msg.clone());
-        errln!(logger, LogEvent::Scenario, "{}", msg);
-    }
-    
-    // Check: Seller 0 (MRG) is unprofitable in variant A
-    let msg = format!(
-        "Seller 0 (MRG) in variant A (MRG boost 1.0) is unprofitable (supply_cost > buyer_charge): {:.2} > {:.2}",
+        "Variant A (no boost) - Seller 0 (MRG) is not profitable (supply_cost > virtual_cost): {:.2} > {:.2}",
         stats_a.seller_stats[0].total_supply_cost,
-        stats_a.seller_stats[0].total_buyer_charge
+        stats_a.seller_stats[0].total_virtual_cost
     );
-    if stats_a.seller_stats[0].total_supply_cost > stats_a.seller_stats[0].total_buyer_charge {
+    if stats_a.seller_stats[0].total_supply_cost > stats_a.seller_stats[0].total_virtual_cost {
         logln!(logger, LogEvent::Scenario, "✓ {}", msg);
     } else {
         errors.push(msg.clone());
         errln!(logger, LogEvent::Scenario, "{}", msg);
     }
     
-    // Check: Seller 0 (MRG) is profitable in variant B
+    // Check: Variant B (dynamic boost) - total overall supply and virtual cost should be nearly equal (max 1% off)
+    let supply_cost = stats_b.overall_stat.total_supply_cost;
+    let virtual_cost = stats_b.overall_stat.total_virtual_cost;
+    let diff = (supply_cost - virtual_cost).abs();
+    let max_diff = supply_cost.max(virtual_cost) * 0.01; // 1% of the larger value
     let msg = format!(
-        "Seller 0 (MRG) in variant B (MRG boost 2.0) is profitable (supply_cost < buyer_charge): {:.2} < {:.2}",
-        stats_b.seller_stats[0].total_supply_cost,
-        stats_b.seller_stats[0].total_buyer_charge
+        "Variant B (dynamic boost) - Total overall supply and virtual cost are nearly equal (within 1%): supply={:.2}, virtual={:.2}, diff={:.2}, max_diff={:.2}",
+        supply_cost, virtual_cost, diff, max_diff
     );
-    if stats_b.seller_stats[0].total_supply_cost < stats_b.seller_stats[0].total_buyer_charge {
+    if diff <= max_diff {
         logln!(logger, LogEvent::Scenario, "✓ {}", msg);
     } else {
         errors.push(msg.clone());
         errln!(logger, LogEvent::Scenario, "{}", msg);
     }
     
-    // Check: Variant A has more total value than variant B
+    // Check: Variant B (dynamic boost) total supply cost should be lower than variant A (no boost)
     let msg = format!(
-        "Variant A (MRG boost 1.0) has more total value than variant B (MRG boost 2.0): {:.2} > {:.2}",
-        stats_a.overall_stat.total_value,
-        stats_b.overall_stat.total_value
+        "Variant B (dynamic boost) total supply cost is lower than variant A (no boost): {:.2} < {:.2}",
+        stats_b.overall_stat.total_supply_cost,
+        stats_a.overall_stat.total_supply_cost
     );
-    if stats_a.overall_stat.total_value > stats_b.overall_stat.total_value {
-        logln!(logger, LogEvent::Scenario, "✓ {}", msg);
-    } else {
-        errors.push(msg.clone());
-        errln!(logger, LogEvent::Scenario, "{}", msg);
-    }
-    
-    // Check: Variant A has lower total cost than variant B
-    let msg = format!(
-        "Variant A (MRG boost 1.0) has lower total cost than variant B (MRG boost 2.0): {:.2} < {:.2}",
-        stats_a.overall_stat.total_buyer_charge,
-        stats_b.overall_stat.total_buyer_charge
-    );
-    if stats_a.overall_stat.total_buyer_charge < stats_b.overall_stat.total_buyer_charge {
+    if stats_b.overall_stat.total_supply_cost < stats_a.overall_stat.total_supply_cost {
         logln!(logger, LogEvent::Scenario, "✓ {}", msg);
     } else {
         errors.push(msg.clone());
