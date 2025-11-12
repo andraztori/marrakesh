@@ -174,9 +174,9 @@ impl SellerTrait for SellerFixedCostDynamicBoost {
         changed
     }
     
-    fn converge_string(&self, converge_param: &dyn SellerConverge) -> String {
-        let converge_param = converge_param.as_any().downcast_ref::<SellerConvergeBoost>().unwrap();
-        format!("Dynamic Boost: {:.2}", converge_param.boost_factor)
+    fn converge_string(&self, converge: &dyn SellerConverge) -> String {
+        let converge = converge.as_any().downcast_ref::<SellerConvergeBoost>().unwrap();
+        format!("Dynamic Boost: {:.2}", converge.boost_factor)
     }
 }
 
