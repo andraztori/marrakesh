@@ -1,4 +1,3 @@
-mod types;
 mod simulationrun;
 mod converge;
 mod utils;
@@ -66,13 +65,10 @@ fn main() {
         // For now, default to s_mrg_boost, but could be made configurable
         let mut logger = Logger::new();
         logger.add_receiver(ConsoleReceiver::new(vec![LogEvent::Simulation, LogEvent::Convergence, LogEvent::Variant]));
-        let scenario_name = "MRGboost";
-        let scenario_receiver_id = logger.add_receiver(FileReceiver::new(&PathBuf::from(format!("log/{}/scenario.log", sanitize_filename(scenario_name))), vec![LogEvent::Scenario]));
-        if let Err(e) = s_mrg_boost::run(scenario_name, &mut logger) {
+        if let Err(e) = s_mrg_boost::run("MRGboost", &mut logger) {
             eprintln!("Error running scenario: {}", e);
             std::process::exit(1);
         }
-        logger.remove_receiver(scenario_receiver_id);
     }
     
     // Old main code (unreachable)
@@ -122,7 +118,7 @@ fn main() {
         let impressions = Impressions::new(&sellers, &impressions_params);
 
         // Create marketplace containing campaigns, sellers, and impressions
-        let marketplace = types::Marketplace {
+        let marketplace = simulationrun::Marketplace {
             campaigns,
             sellers,
             impressions,

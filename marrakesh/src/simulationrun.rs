@@ -1,8 +1,26 @@
-use crate::types::{AuctionResult, Marketplace, Winner};
+use crate::impressions::{AuctionResult, Winner};
 use crate::sellers::Sellers;
 use crate::campaigns::Campaigns;
 use crate::logger::{Logger, LogEvent};
 use crate::logln;
+
+/// Marketplace containing campaigns, sellers, and impressions
+/// This groups together the three main components of the marketplace simulation
+pub struct Marketplace {
+    pub campaigns: crate::campaigns::Campaigns,
+    pub sellers: crate::sellers::Sellers,
+    pub impressions: crate::impressions::Impressions,
+}
+
+impl Marketplace {
+    /// Print initialization information about the marketplace
+    pub fn printout(&self, logger: &mut Logger) {
+        
+        logln!(logger, LogEvent::Simulation, "Initialized {} sellers", self.sellers.sellers.len());
+        logln!(logger, LogEvent::Simulation, "Initialized {} campaigns", self.campaigns.campaigns.len());
+        logln!(logger, LogEvent::Simulation, "Initialized {} impressions", self.impressions.impressions.len());
+            }
+}
 
 /// Container for auction results
 /// Note: SimulationRun results are matched to Impressions by index in the vectors
@@ -150,7 +168,7 @@ impl SimulationStat {
         };
 
         // Iterate through impressions once and accumulate all statistics
-        for (index, impression) in marketplace.impressions.impressions.iter().enumerate() {
+            for (index, impression) in marketplace.impressions.impressions.iter().enumerate() {
             let result = &simulation_run.results[index];
             let seller_id = impression.seller_id;
 

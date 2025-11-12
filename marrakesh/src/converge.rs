@@ -1,5 +1,4 @@
-use crate::types::Marketplace;
-use crate::simulationrun::{CampaignConvergeParams, SellerConvergeParams, SimulationRun, SimulationStat};
+use crate::simulationrun::{Marketplace, CampaignConvergeParams, SellerConvergeParams, SimulationRun, SimulationStat};
 use crate::logger::{Logger, LogEvent, FileReceiver, sanitize_filename};
 use crate::logln;
 use crate::warnln;
@@ -97,8 +96,8 @@ impl SimulationConverge {
             stats.printout_sellers(&self.marketplace.sellers, &current_seller_converge_params, logger, LogEvent::Simulation);
             
             // Keep track of final simulation run and stats
-            final_simulation_run = Some(simulation_run);
-            final_stats = Some(stats);
+                final_simulation_run = Some(simulation_run);
+                final_stats = Some(stats);
             final_campaign_converge_params = Some(current_campaign_converge_params.clone());
             final_seller_converge_params = Some(current_seller_converge_params.clone());
             
@@ -115,7 +114,7 @@ impl SimulationConverge {
         }
         
         // Log if we reached max iterations
-        if !converged {
+                    if !converged {
             warnln!(logger, LogEvent::Convergence, "{}: Reached maximum iterations ({})", variant_name, max_iterations);
         }
         

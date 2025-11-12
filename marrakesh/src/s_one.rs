@@ -1,4 +1,4 @@
-use crate::types::Marketplace;
+use crate::simulationrun::Marketplace;
 use crate::sellers::SellerType;
 use crate::sellers::Sellers;
 use crate::campaigns::{CampaignType, Campaigns};

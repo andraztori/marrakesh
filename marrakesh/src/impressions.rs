@@ -1,9 +1,29 @@
 use rand::{rngs::StdRng, SeedableRng};
 use rand_distr::Distribution;
-use crate::types::{Winner, AuctionResult};
 use crate::sellers::{Sellers, SellerTrait, SellerConverge};
 use crate::campaigns::{Campaigns, MAX_CAMPAIGNS};
 use crate::simulationrun::CampaignConvergeParams;
+
+/// Represents the winner of an auction
+#[allow(non_camel_case_types)]
+#[derive(Debug, Clone, PartialEq)]
+pub enum Winner {
+    Campaign { 
+        campaign_id: usize, 
+        virtual_cost: f64,
+        buyer_charge: f64,
+    },
+    OTHER_DEMAND,
+    BELOW_FLOOR,
+    NO_DEMAND,
+}
+
+/// Represents the result of an auction, subsuming the winner with cost information
+#[derive(Debug, Clone, PartialEq)]
+pub struct AuctionResult {
+    pub winner: Winner,
+    pub supply_cost: f64,
+}
 
 /// Object-safe wrapper for Distribution<f64> that works with StdRng
 /// This is needed because Distribution<f64> cannot be made into a trait object
