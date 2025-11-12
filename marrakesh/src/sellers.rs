@@ -68,7 +68,7 @@ pub trait SellerTrait {
     fn charge_type_string(&self) -> String;
     
     /// Create a new convergence parameter for this seller type
-    fn create_converge_param(&self) -> Box<dyn SellerConverge>;
+    fn create_converge(&self) -> Box<dyn SellerConverge>;
     
     /// Perform one iteration of convergence, updating the next convergence parameter
     /// This method encapsulates the convergence logic for each seller type
@@ -83,7 +83,7 @@ pub trait SellerTrait {
     fn converge_iteration(&self, current_converge: &dyn SellerConverge, next_converge: &mut dyn SellerConverge, seller_stat: &crate::simulationrun::SellerStat) -> bool;
     
     /// Get a formatted string representation of the convergence parameters
-    fn converge_params_string(&self, converge_param: &dyn SellerConverge) -> String;
+    fn converge_string(&self, converge: &dyn SellerConverge) -> String;
 }
 
 /// Seller with fixed cost pricing and fixed boost factor
@@ -111,7 +111,7 @@ impl SellerTrait for SellerFixedCostFixedBoost {
         format!("FIXED_COST ({} CPM)", self.fixed_cost_cpm)
     }
     
-    fn create_converge_param(&self) -> Box<dyn SellerConverge> {
+    fn create_converge(&self) -> Box<dyn SellerConverge> {
         Box::new(SellerBoostParam { boost_factor: 1.0 })
     }
     
@@ -120,9 +120,9 @@ impl SellerTrait for SellerFixedCostFixedBoost {
         false
     }
     
-    fn converge_params_string(&self, converge_param: &dyn SellerConverge) -> String {
-        let converge_param = converge_param.as_any().downcast_ref::<SellerBoostParam>().unwrap();
-        format!("Fixed Boost: {:.2}", converge_param.boost_factor)
+    fn converge_string(&self, converge: &dyn SellerConverge) -> String {
+        let converge = converge.as_any().downcast_ref::<SellerBoostParam>().unwrap();
+        format!("Fixed Boost: {:.2}", converge.boost_factor)
     }
 }
 
@@ -152,7 +152,7 @@ impl SellerTrait for SellerFixedCostDynamicBoost {
         format!("FIXED_COST ({} CPM)", self.fixed_cost_cpm)
     }
     
-    fn create_converge_param(&self) -> Box<dyn SellerConverge> {
+    fn create_converge(&self) -> Box<dyn SellerConverge> {
         Box::new(SellerBoostParam { boost_factor: 1.0 })
     }
     
@@ -174,7 +174,7 @@ impl SellerTrait for SellerFixedCostDynamicBoost {
         changed
     }
     
-    fn converge_params_string(&self, converge_param: &dyn SellerConverge) -> String {
+    fn converge_string(&self, converge_param: &dyn SellerConverge) -> String {
         let converge_param = converge_param.as_any().downcast_ref::<SellerBoostParam>().unwrap();
         format!("Dynamic Boost: {:.2}", converge_param.boost_factor)
     }
@@ -213,7 +213,7 @@ impl SellerTrait for SellerFirstPrice {
         "FIRST_PRICE".to_string()
     }
     
-    fn create_converge_param(&self) -> Box<dyn SellerConverge> {
+    fn create_converge(&self) -> Box<dyn SellerConverge> {
         Box::new(SellerBoostParam { boost_factor: 1.0 })
     }
     
@@ -222,9 +222,9 @@ impl SellerTrait for SellerFirstPrice {
         false
     }
     
-    fn converge_params_string(&self, converge_param: &dyn SellerConverge) -> String {
-        let converge_param = converge_param.as_any().downcast_ref::<SellerBoostParam>().unwrap();
-        format!("Fixed Boost: {:.2}", converge_param.boost_factor)
+    fn converge_string(&self, converge: &dyn SellerConverge) -> String {
+        let converge = converge.as_any().downcast_ref::<SellerBoostParam>().unwrap();
+        format!("Fixed Boost: {:.2}", converge.boost_factor)
     }
 }
 

@@ -2,7 +2,7 @@ use rand::{rngs::StdRng, SeedableRng};
 use rand_distr::Distribution;
 use crate::sellers::{Sellers, SellerTrait, SellerConverge};
 use crate::campaigns::{Campaigns, MAX_CAMPAIGNS};
-use crate::simulationrun::CampaignConvergeParams;
+use crate::simulationrun::CampaignConverges;
 
 /// Represents the winner of an auction
 #[allow(non_camel_case_types)]
@@ -96,9 +96,9 @@ pub struct Impression {
 }
 
 impl Impression {
-    /// Run an auction for this impression with the given campaigns, campaign parameters, seller, and seller convergence parameters
+    /// Run an auction for this impression with the given campaigns, campaign converges, seller, and seller convergence parameters
     /// Returns the auction result
-    pub fn run_auction(&self, campaigns: &Campaigns, campaign_params: &CampaignConvergeParams, seller: &dyn SellerTrait, seller_converge: &dyn SellerConverge) -> AuctionResult {
+    pub fn run_auction(&self, campaigns: &Campaigns, campaign_converges: &CampaignConverges, seller: &dyn SellerTrait, seller_converge: &dyn SellerConverge) -> AuctionResult {
         // Get bids from all campaigns
         let mut winning_bid_cpm = 0.0;
         let mut winning_campaign_id: Option<usize> = None;
@@ -109,9 +109,9 @@ impl Impression {
 
         for campaign in &campaigns.campaigns {
             let campaign_id = campaign.campaign_id();
-            let campaign_param = &campaign_params.params[campaign_id];
+            let campaign_converge = &campaign_converges.campaign_converges[campaign_id];
             // Use the trait method for get_bid
-            let bid = campaign.get_bid(self, campaign_param.as_ref(), seller_boost_factor);
+            let bid = campaign.get_bid(self, campaign_converge.as_ref(), seller_boost_factor);
             if bid > winning_bid_cpm {
                 winning_bid_cpm = bid;
                 winning_campaign_id = Some(campaign_id);

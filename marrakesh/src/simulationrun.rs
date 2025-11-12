@@ -30,14 +30,14 @@ pub struct SimulationRun {
 
 impl SimulationRun {
     /// Create a new SimulationRun container and run auctions for all impressions
-    pub fn new(marketplace: &Marketplace, campaign_params: &CampaignConvergeParams, seller_params: &SellerConvergeParams) -> Self {
+    pub fn new(marketplace: &Marketplace, campaign_converges: &CampaignConverges, seller_converges: &SellerConverges) -> Self {
         let mut results = Vec::with_capacity(marketplace.impressions.impressions.len());
         
         for impression in &marketplace.impressions.impressions {
-            // Get the seller and seller_param for this impression
+            // Get the seller and seller_converge for this impression
             let seller = marketplace.sellers.sellers[impression.seller_id].as_ref();
-            let seller_param = seller_params.params[seller.seller_id()].as_ref();
-            let result = impression.run_auction(&marketplace.campaigns, campaign_params, seller, seller_param);
+            let seller_converge = seller_converges.seller_converges[seller.seller_id()].as_ref();
+            let result = impression.run_auction(&marketplace.campaigns, campaign_converges, seller, seller_converge);
             results.push(result);
         }
         
@@ -47,51 +47,51 @@ impl SimulationRun {
 
 /// Container for campaign convergence parameters
 /// Uses dynamic dispatch to support different campaign types
-pub struct CampaignConvergeParams {
-    pub params: Vec<Box<dyn crate::campaigns::CampaignConverge>>,
+pub struct CampaignConverges {
+    pub campaign_converges: Vec<Box<dyn crate::campaigns::CampaignConverge>>,
 }
 
-impl Clone for CampaignConvergeParams {
+impl Clone for CampaignConverges {
     fn clone(&self) -> Self {
         Self {
-            params: self.params.iter().map(|p| p.clone_box()).collect(),
+            campaign_converges: self.campaign_converges.iter().map(|p| p.clone_box()).collect(),
         }
     }
 }
 
-impl CampaignConvergeParams {
-    /// Create campaign parameters from campaigns
+impl CampaignConverges {
+    /// Create campaign converges from campaigns
     pub fn new(campaigns: &Campaigns) -> Self {
-        let mut params = Vec::with_capacity(campaigns.campaigns.len());
+        let mut campaign_converges = Vec::with_capacity(campaigns.campaigns.len());
         for campaign in &campaigns.campaigns {
-            params.push(campaign.create_converge_param());
+            campaign_converges.push(campaign.create_converge());
         }
-        Self { params }
+        Self { campaign_converges }
     }
 }
 
 /// Container for seller convergence parameters
 /// Uses dynamic dispatch to support different seller types
-pub struct SellerConvergeParams {
-    pub params: Vec<Box<dyn crate::sellers::SellerConverge>>,
+pub struct SellerConverges {
+    pub seller_converges: Vec<Box<dyn crate::sellers::SellerConverge>>,
 }
 
-impl Clone for SellerConvergeParams {
+impl Clone for SellerConverges {
     fn clone(&self) -> Self {
         Self {
-            params: self.params.iter().map(|p| p.clone_box()).collect(),
+            seller_converges: self.seller_converges.iter().map(|p| p.clone_box()).collect(),
         }
     }
 }
 
-impl SellerConvergeParams {
-    /// Create seller parameters from sellers
+impl SellerConverges {
+    /// Create seller converges from sellers
     pub fn new(sellers: &Sellers) -> Self {
-        let mut params = Vec::with_capacity(sellers.sellers.len());
+        let mut seller_converges = Vec::with_capacity(sellers.sellers.len());
         for seller in &sellers.sellers {
-            params.push(seller.create_converge_param());
+            seller_converges.push(seller.create_converge());
         }
-        Self { params }
+        Self { seller_converges }
     }
 }
 
@@ -210,18 +210,18 @@ impl SimulationStat {
     }
 
     /// Output campaign statistics (without header, for compact iteration output)
-    pub fn printout_campaigns(&self, campaigns: &Campaigns, campaign_params: &CampaignConvergeParams, logger: &mut Logger, event: LogEvent) {
+    pub fn printout_campaigns(&self, campaigns: &Campaigns, campaign_converges: &CampaignConverges, logger: &mut Logger, event: LogEvent) {
         
         for (index, campaign_stat) in self.campaign_stats.iter().enumerate() {
             let campaign = &campaigns.campaigns[index];
-            let converge_param = campaign_params.params[index].as_ref();
+            let converge = campaign_converges.campaign_converges[index].as_ref();
             
             // Use the trait method to get type and target string
             let type_and_target = campaign.type_and_target_string();
-            let formatted_params = campaign.converge_params_string(converge_param);
+            let formatted_converge = campaign.converge_string(converge);
             
             logln!(logger, event, "\nCampaign {} ({}) - {} - {}", 
-                     campaign.campaign_id(), campaign.campaign_name(), type_and_target, formatted_params);
+                     campaign.campaign_id(), campaign.campaign_name(), type_and_target, formatted_converge);
             logln!(logger, event, "  Impressions Obtained: {}", campaign_stat.impressions_obtained);
             logln!(logger, event, "  Costs (supply/virtual/buyer): {:.2} / {:.2} / {:.2}", 
                      campaign_stat.total_supply_cost, 
@@ -232,16 +232,16 @@ impl SimulationStat {
     }
 
     /// Output seller statistics (without header, for compact iteration output)
-    pub fn printout_sellers(&self, sellers: &Sellers, seller_params: &SellerConvergeParams, logger: &mut Logger, event: LogEvent) {
+    pub fn printout_sellers(&self, sellers: &Sellers, seller_converges: &SellerConverges, logger: &mut Logger, event: LogEvent) {
         
         for (index, seller_stat) in self.seller_stats.iter().enumerate() {
             let seller = &sellers.sellers[index];
-            let converge_param = seller_params.params[index].as_ref();
+            let converge = seller_converges.seller_converges[index].as_ref();
             
-            let formatted_params = seller.converge_params_string(converge_param);
+            let formatted_converge = seller.converge_string(converge);
             
             logln!(logger, event, "\nSeller {} ({}) - {} - {}", 
-                     seller.seller_id(), seller.seller_name(), seller.charge_type_string(), formatted_params);
+                     seller.seller_id(), seller.seller_name(), seller.charge_type_string(), formatted_converge);
             logln!(logger, event, "  Impressions (sold/on offer): {} / {}", seller_stat.impressions_sold, seller.num_impressions());
             logln!(logger, event, "  Total Costs (supply/virtual/buyer): {:.2} / {:.2} / {:.2}", 
                      seller_stat.total_supply_cost, 
@@ -251,15 +251,15 @@ impl SimulationStat {
     }
 
     /// Output complete statistics
-    pub fn printout(&self, campaigns: &Campaigns, sellers: &Sellers, campaign_params: &CampaignConvergeParams, seller_params: &SellerConvergeParams, logger: &mut Logger) {
+    pub fn printout(&self, campaigns: &Campaigns, sellers: &Sellers, campaign_converges: &CampaignConverges, seller_converges: &SellerConverges, logger: &mut Logger) {
         
         // Output campaign statistics
         logln!(logger, LogEvent::Variant, "\n=== Campaign Statistics ===");
-        self.printout_campaigns(campaigns, campaign_params, logger, LogEvent::Variant);
+        self.printout_campaigns(campaigns, campaign_converges, logger, LogEvent::Variant);
 
         // Output seller statistics
         logln!(logger, LogEvent::Variant, "\n=== Seller Statistics ===");
-        self.printout_sellers(sellers, seller_params, logger, LogEvent::Variant);
+        self.printout_sellers(sellers, seller_converges, logger, LogEvent::Variant);
 
         // Output overall statistics
         self.printout_overall(logger);

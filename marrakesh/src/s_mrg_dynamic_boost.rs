@@ -75,7 +75,7 @@ fn prepare_variant(dynamic_boost: bool) -> SimulationConverge {
         impressions,
     };
 
-    // Create simulation converge instance (initializes campaign and seller params internally)
+    // Create simulation converge instance (initializes campaign and seller converges internally)
     SimulationConverge::new(marketplace)
 }
 

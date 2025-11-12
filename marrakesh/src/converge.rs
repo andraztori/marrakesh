@@ -1,4 +1,4 @@
-use crate::simulationrun::{Marketplace, CampaignConvergeParams, SellerConvergeParams, SimulationRun, SimulationStat};
+use crate::simulationrun::{Marketplace, CampaignConverges, SellerConverges, SimulationRun, SimulationStat};
 use crate::logger::{Logger, LogEvent, FileReceiver, sanitize_filename};
 use crate::logln;
 use crate::warnln;
@@ -7,8 +7,8 @@ use std::path::PathBuf;
 /// Object for running simulation convergence with pacing adjustments
 pub struct SimulationConverge {
     pub marketplace: Marketplace,
-    pub initial_campaign_converge_params: CampaignConvergeParams,
-    pub initial_seller_converge_params: SellerConvergeParams,
+    pub initial_campaign_converges: CampaignConverges,
+    pub initial_seller_converges: SellerConverges,
 }
 
 impl SimulationConverge {
@@ -19,13 +19,13 @@ impl SimulationConverge {
     /// 
     /// Initializes campaign and seller convergence parameters internally
     pub fn new(marketplace: Marketplace) -> Self {
-        let initial_campaign_converge_params = CampaignConvergeParams::new(&marketplace.campaigns);
-        let initial_seller_converge_params = SellerConvergeParams::new(&marketplace.sellers);
+        let initial_campaign_converges = CampaignConverges::new(&marketplace.campaigns);
+        let initial_seller_converges = SellerConverges::new(&marketplace.sellers);
         
         Self {
             marketplace,
-            initial_campaign_converge_params,
-            initial_seller_converge_params,
+            initial_campaign_converges,
+            initial_seller_converges,
         }
     }
     
@@ -37,69 +37,69 @@ impl SimulationConverge {
     /// * `logger` - Logger for event-based logging
     /// 
     /// # Returns
-    /// Returns a tuple of (final SimulationRun, final SimulationStat, final CampaignConvergeParams, final SellerConvergeParams)
+    /// Returns a tuple of (final SimulationRun, final SimulationStat, final CampaignConverges, final SellerConverges)
     pub fn run(
         &self,
         max_iterations: usize,
         variant_name: &str,
         logger: &mut Logger,
-    ) -> (SimulationRun, SimulationStat, CampaignConvergeParams, SellerConvergeParams) {
+    ) -> (SimulationRun, SimulationStat, CampaignConverges, SellerConverges) {
         
         let mut final_simulation_run = None;
         let mut final_stats = None;
-        let mut final_campaign_converge_params = None;
-        let mut final_seller_converge_params = None;
+        let mut final_campaign_converges = None;
+        let mut final_seller_converges = None;
         let mut converged = false;
         
-        // Initialize current campaign converge params from input for the first iteration
-        let mut current_campaign_converge_params = self.initial_campaign_converge_params.clone();
-        // Initialize current seller converge params from input for the first iteration
-        let mut current_seller_converge_params = self.initial_seller_converge_params.clone();
+        // Initialize current campaign converges from input for the first iteration
+        let mut current_campaign_converges = self.initial_campaign_converges.clone();
+        // Initialize current seller converges from input for the first iteration
+        let mut current_seller_converges = self.initial_seller_converges.clone();
         
         for iteration in 0..max_iterations {
             logln!(logger, LogEvent::Simulation, "\n=== {} - Iteration {} ===", variant_name, iteration + 1);
             
             // Run auctions for all impressions
-            let simulation_run = SimulationRun::new(&self.marketplace, &current_campaign_converge_params, &current_seller_converge_params);
+            let simulation_run = SimulationRun::new(&self.marketplace, &current_campaign_converges, &current_seller_converges);
 
             // Generate statistics
             let stats = SimulationStat::new(&self.marketplace, &simulation_run);
             
-            // Calculate next iteration's campaign converge params based on current results
-            let mut next_campaign_converge_params = current_campaign_converge_params.clone();
+            // Calculate next iteration's campaign converges based on current results
+            let mut next_campaign_converges = current_campaign_converges.clone();
             let mut pacing_changed = false;
             for (index, campaign) in self.marketplace.campaigns.campaigns.iter().enumerate() {
                 let campaign_stat = &stats.campaign_stats[index];
-                let current_converge = current_campaign_converge_params.params[index].as_ref();
-                let next_converge = next_campaign_converge_params.params[index].as_mut();
+                let current_converge = current_campaign_converges.campaign_converges[index].as_ref();
+                let next_converge = next_campaign_converges.campaign_converges[index].as_mut();
                 
                 // Use the campaign's converge_iteration method (now part of CampaignTrait)
                 pacing_changed |= campaign.converge_iteration(current_converge, next_converge, campaign_stat);
             }
             
-            // Calculate next iteration's seller converge params based on current results
-            let mut next_seller_converge_params = current_seller_converge_params.clone();
+            // Calculate next iteration's seller converges based on current results
+            let mut next_seller_converges = current_seller_converges.clone();
             let mut boost_changed = false;
             for (index, seller) in self.marketplace.sellers.sellers.iter().enumerate() {
                 let seller_stat = &stats.seller_stats[index];
-                let current_converge = current_seller_converge_params.params[index].as_ref();
-                let next_converge = next_seller_converge_params.params[index].as_mut();
+                let current_converge = current_seller_converges.seller_converges[index].as_ref();
+                let next_converge = next_seller_converges.seller_converges[index].as_mut();
                 
                 // Use the seller's converge_iteration method
                 boost_changed |= seller.converge_iteration(current_converge, next_converge, seller_stat);
             }
             
-            // Output campaign statistics for each iteration (using the params that were actually used)
-            stats.printout_campaigns(&self.marketplace.campaigns, &current_campaign_converge_params, logger, LogEvent::Simulation);
+            // Output campaign statistics for each iteration (using the converges that were actually used)
+            stats.printout_campaigns(&self.marketplace.campaigns, &current_campaign_converges, logger, LogEvent::Simulation);
             
-            // Output seller statistics for each iteration (using the params that were actually used)
-            stats.printout_sellers(&self.marketplace.sellers, &current_seller_converge_params, logger, LogEvent::Simulation);
+            // Output seller statistics for each iteration (using the converges that were actually used)
+            stats.printout_sellers(&self.marketplace.sellers, &current_seller_converges, logger, LogEvent::Simulation);
             
             // Keep track of final simulation run and stats
                 final_simulation_run = Some(simulation_run);
                 final_stats = Some(stats);
-            final_campaign_converge_params = Some(current_campaign_converge_params.clone());
-            final_seller_converge_params = Some(current_seller_converge_params.clone());
+            final_campaign_converges = Some(current_campaign_converges.clone());
+            final_seller_converges = Some(current_seller_converges.clone());
             
             // Break early if no pacing or boost changes were made (converged)
             if !pacing_changed && !boost_changed {
@@ -109,8 +109,8 @@ impl SimulationConverge {
             }
             
             // Prepare for next iteration
-            current_campaign_converge_params = next_campaign_converge_params;
-            current_seller_converge_params = next_seller_converge_params;
+            current_campaign_converges = next_campaign_converges;
+            current_seller_converges = next_seller_converges;
         }
         
         // Log if we reached max iterations
@@ -118,12 +118,12 @@ impl SimulationConverge {
             warnln!(logger, LogEvent::Convergence, "{}: Reached maximum iterations ({})", variant_name, max_iterations);
         }
         
-        // Return the final simulation run, stats, and converge params
+        // Return the final simulation run, stats, and converges
         (
             final_simulation_run.expect("Should have at least one iteration"),
             final_stats.expect("Should have at least one iteration"),
-            final_campaign_converge_params.expect("Should have at least one iteration"),
-            final_seller_converge_params.expect("Should have at least one iteration"),
+            final_campaign_converges.expect("Should have at least one iteration"),
+            final_seller_converges.expect("Should have at least one iteration"),
         )
     }
     
@@ -157,10 +157,10 @@ impl SimulationConverge {
         self.marketplace.printout(logger);
         
         // Run simulation loop with pacing adjustments
-        let (_final_simulation_run, stats, final_campaign_converge_params, final_seller_converge_params) = self.run(max_iterations, variant_name, logger);
+        let (_final_simulation_run, stats, final_campaign_converges, final_seller_converges) = self.run(max_iterations, variant_name, logger);
         
         // Print final stats (variant-level output)
-        stats.printout(&self.marketplace.campaigns, &self.marketplace.sellers, &final_campaign_converge_params, &final_seller_converge_params, logger);
+        stats.printout(&self.marketplace.campaigns, &self.marketplace.sellers, &final_campaign_converges, &final_seller_converges, logger);
         
         // Remove variant-specific receivers
         logger.remove_receiver(variant_receiver_id);

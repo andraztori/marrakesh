@@ -68,7 +68,7 @@ fn prepare_simulationconverge(hb_impressions: usize) -> SimulationConverge {
         impressions,
     };
 
-    // Create simulation converge instance (initializes campaign and seller params internally)
+    // Create simulation converge instance (initializes campaign and seller converges internally)
     SimulationConverge::new(marketplace)
 }
 

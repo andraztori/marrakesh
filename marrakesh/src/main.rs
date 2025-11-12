@@ -129,12 +129,12 @@ fn main() {
         
         marketplace.printout(&mut logger);
 
-        // Create simulation converge instance (initializes campaign and seller params internally)
+        // Create simulation converge instance (initializes campaign and seller converges internally)
         let simulation_converge = SimulationConverge::new(marketplace);
         
         // Run simulation loop with pacing adjustments (maximum 100 iterations)
-        let (_final_simulation_run, final_stats, final_campaign_converge_params, final_seller_converge_params) = simulation_converge.run(100, "test", &mut logger);
+        let (_final_simulation_run, final_stats, final_campaign_converges, final_seller_converges) = simulation_converge.run(100, "test", &mut logger);
         logln!(&mut logger, LogEvent::Variant, "\n=== Final Results ===");
-        final_stats.printout(&simulation_converge.marketplace.campaigns, &simulation_converge.marketplace.sellers, &final_campaign_converge_params, &final_seller_converge_params, &mut logger);
+        final_stats.printout(&simulation_converge.marketplace.campaigns, &simulation_converge.marketplace.sellers, &final_campaign_converges, &final_seller_converges, &mut logger);
     }
 }
