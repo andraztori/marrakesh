@@ -22,7 +22,7 @@ The framework enables investigation of:
 **Critical Design Decision**: The simulation assumes campaigns have access to perfect pacing algorithms that can adjust bid multipliers to exactly meet their targets. This is not a limitation but a deliberate choice.
 
 **Why This Matters**:
-- Pacing optimization is a well-studied problem with many existing solutions
+- Pacing optimization can be considered a separate problem from marketplace optimization
 - The interesting research questions lie in pricing, bidding strategies, and marketplace design
 - By removing pacing as a variable, we can cleanly observe other dynamics
 - Real-world systems typically have pacing solutions; the question is what happens after pacing is solved
@@ -71,7 +71,7 @@ The system tracks three distinct cost metrics to model realistic marketplace eco
 - **Virtual Cost**: What the marketplace tracks internally
 - **Buyer Charge**: What campaigns actually pay
 
-In the current implementation, virtual cost and buyer charge are identical, but the separation allows for future modeling of marketplace fees, discounts, or other platform mechanisms.
+In the current implementation, virtual cost and buyer charge are identical, but the separation allows for future modeling of marketplace fees, margins, discounts, or other platform mechanisms.
 
 ---
 
@@ -89,23 +89,72 @@ Each impression has a **value array**—one value per campaign—representing ho
 Campaigns bid based on:
 - Their valuation of the impression
 - Their current pacing multiplier (optimized to meet targets)
-- Their competitive position
+- The seller boost factor (applied by sellers to adjust bid values)
 
-The bid formula: `bid = pacing × value`
+The bid formula currently is: `bid = pacing × value × seller_boost_factor`. This will evolve as simluation gets more sophisticated.
 
-This simple model allows complex behavior to emerge from the interaction of multiple campaigns with different objectives.
+The seller boost factor allows for experimentation of what happens when seller can influence how buyer is valuing certain impression. This mainly can happen when we control both sides of the market and want to satisfy sellers to which we have promissed certain revenues. The other option of seller influencing the buyer is by setting the floors.
 
 ### Winner Determination
 
 The auction uses a **first-price sealed-bid** model with additional constraints:
-- Bids must exceed competing external demand (`best_other_bid_cpm`)
-- Bids must exceed seller floor prices (`floor_cpm`)
+- Bids must exceed seller floor prices (`floor_cpm`) - checked first
+- Bids must exceed competing external demand (`bid_cpm` from `ImpressionCompetition`) - if competition data exists
 - Highest valid bid wins
 
+The auction logic checks constraints in order:
+1. **BELOW_FLOOR**: Bid is below seller's floor price
+2. **OTHER_DEMAND**: Bid is below competing external demand (if competition data exists)
+3. **Campaign wins**: Valid bid that passes all checks
+4. **NO_DEMAND**: No campaigns participated
+
 This models realistic marketplace constraints where campaigns compete not just with each other, but also with:
-- External demand sources
+- External demand sources (modeled via `ImpressionCompetition`)
 - Seller minimum price requirements
 - Platform rules and policies
+
+### Impression Competition
+
+Impressions may include optional `ImpressionCompetition` data that models external competing demand. This includes:
+- `bid_cpm`: The competing bid that must be exceeded
+- Win rate prediction parameters (sigmoid offset/scale) for modeling predicted win probabilities
+- Win rate actual parameters (sigmoid offset/scale) for modeling actual win probabilities
+
+Sellers that use first-price auctions generate competition data; fixed-cost sellers do not.
+
+---
+
+## Seller Pricing Models
+
+### Three Seller Types
+
+Sellers operate under one of three pricing models:
+
+1. **Fixed Cost with Fixed Boost** (`FIXED_COST_FIXED_BOOST`): 
+   - Charges a fixed CPM regardless of winning bid
+   - Uses a fixed boost factor (typically 1.0, but can be set)
+   - Boost factor does not converge
+   - Simple, predictable pricing model
+
+2. **Fixed Cost with Dynamic Boost** (`FIXED_COST_DYNAMIC_BOOST`):
+   - Charges a fixed CPM regardless of winning bid
+   - Uses a dynamic boost factor that converges
+   - Boost factor adjusts to balance total supply cost with total virtual cost - supply is thus forcing buying to the demand side
+   - Enables sellers to optimize revenue while maintaining fixed pricing
+
+3. **First Price Auction** (`FIRST_PRICE`):
+   - Charges the winning bid amount
+   - Generates competition data (`ImpressionCompetition`) for each impression
+   - No boost factor (boost is always 1.0)
+   - Models auction-based pricing
+
+### Seller Boost Factors
+
+Boost factors allow sellers to influence how campaigns value their impressions:
+- Applied multiplicatively to campaign bids: `bid = pacing × value × boost_factor`
+- Fixed boost: Set once and remains constant
+- Dynamic boost: Converges to balance seller economics
+- Enables sellers to adjust pricing strategy without changing base cost structure
 
 ---
 
@@ -131,13 +180,34 @@ These two models represent the fundamental trade-offs in advertising:
 
 ### Convergence Mechanism
 
-The system uses an **iterative feedback loop** to find optimal pacing:
-- Run auctions with current pacing
+The system uses an **iterative feedback loop** to find optimal pacing and boost factors:
+- Run auctions with current pacing and boost factors
 - Measure actual performance vs. targets
-- Adjust pacing proportionally to error
-- Repeat until convergence (within 1% tolerance)
+- Adjust pacing/boost proportionally to error using proportional controllers
+- Repeat until convergence (no changes in an iteration)
 
-This is not a pacing algorithm to be studied—it's a **simulation calibration tool** that ensures campaigns operate at their optimal point, allowing clean observation of other marketplace dynamics.
+**Campaign Convergence**:
+- Campaigns converge their pacing multipliers to meet impression or budget targets
+- Uses `ControllerProportional` for smooth adjustments
+- Each campaign type has its own convergence logic
+
+**Seller Convergence**:
+- Sellers with dynamic boost factors converge to balance supply costs with virtual costs
+- Fixed boost sellers maintain constant boost factors
+- First-price sellers don't use boost factors
+
+This is not a pacing algorithm to be studied—it's a **simulation calibration tool** that ensures campaigns and sellers operate at their optimal point, allowing clean observation of other marketplace dynamics.
+
+### Convergence Architecture
+
+The system uses trait-based dynamic dispatch for convergence:
+- `CampaignConverge` trait: Defines convergence parameter interface for campaigns
+- `CampaignConvergePacing`: Concrete convergence parameter storing pacing multiplier
+- `SellerConverge` trait: Defines convergence parameter interface for sellers
+- `SellerConvergeBoost`: Concrete convergence parameter storing boost factor
+- `CampaignConverges` / `SellerConverges`: Containers holding convergence parameters for all campaigns/sellers
+
+This design allows each campaign and seller type to have its own convergence logic while maintaining a uniform interface.
 
 ---
 
@@ -184,17 +254,21 @@ The framework explicitly does **not** study:
 1. **Define Marketplace**: Create sellers with pricing models and inventory
 2. **Define Demand**: Create campaigns with objectives (impressions or budget)
 3. **Generate Supply**: Create impressions with valuations and constraints
-4. **Initialize Pacing**: Start with neutral pacing (1.0 = true value)
+4. **Initialize Convergence**: 
+   - Campaign pacing starts at 1.0 (true value)
+   - Seller boost factors start at 1.0 (no boost)
+   - `SimulationConverge` encapsulates marketplace and initial convergence state
 
 ### Convergence Phase
 
-Iteratively adjust pacing until campaigns meet their targets:
-- Run full auction simulation
-- Calculate performance metrics
-- Adjust pacing based on error
-- Repeat until convergence
+Iteratively adjust pacing and boost factors until campaigns and sellers meet their targets:
+- Run full auction simulation with current convergence parameters
+- Calculate performance metrics for campaigns and sellers
+- Adjust campaign pacing based on impression/budget targets
+- Adjust seller boost factors based on cost balance (for dynamic boost sellers)
+- Repeat until convergence (no changes in an iteration)
 
-This phase ensures campaigns operate optimally before observation begins.
+This phase ensures campaigns and sellers operate optimally before observation begins. The `SimulationConverge` struct manages this process, encapsulating the marketplace and convergence state.
 
 ### Observation Phase
 
@@ -208,13 +282,27 @@ Once converged, analyze:
 ### Experimentation
 
 Researchers can then vary:
-- Seller pricing models
-- Campaign objectives and constraints
-- Impression valuations
+- Seller pricing models (fixed cost, first price, boost strategies)
+- Campaign objectives and constraints (impressions vs. budget)
+- Impression valuations and competition data
 - Marketplace rules (floors, thresholds)
 - Supply composition
+- Boost factor strategies
 
-And observe how these changes affect outcomes under optimal pacing conditions.
+And observe how these changes affect outcomes under optimal pacing and boost conditions.
+
+### Scenario Framework
+
+The system includes a scenario framework for structured experimentation:
+- Scenarios are registered via `inventory::submit!` macro
+- Each scenario defines variants to compare
+- Scenarios include validation logic to verify expected behavior
+- Logging is organized by scenario and variant for easy analysis
+
+Example scenarios:
+- `s_one.rs`: Basic marketplace dynamics
+- `s_mrg_boost.rs`: Effect of seller boost factors
+- `s_mrg_dynamic_boost.rs`: Comparison of fixed vs. dynamic boost strategies
 
 ---
 
@@ -254,10 +342,13 @@ This multi-level view allows researchers to understand:
 ### Separation of Concerns
 
 The system separates:
-- **Data structures** (types.rs): Core entities and their relationships
-- **Simulation execution** (simulationrun.rs): Running auctions and calculating statistics
-- **Convergence logic** (converge.rs): Finding optimal pacing
-- **Initialization** (main.rs): Setting up experiments
+- **Impression and auction logic** (impressions.rs): Core auction mechanics, impression generation, winner determination
+- **Campaign logic** (campaigns.rs): Campaign types, bidding strategies, campaign convergence
+- **Seller logic** (sellers.rs): Seller types, pricing models, seller convergence
+- **Simulation execution** (simulationrun.rs): Running auctions, calculating statistics, marketplace structure
+- **Convergence logic** (converge.rs): Finding optimal pacing and boost factors
+- **Scenarios** (s_*.rs): Experimental setups and validations
+- **Initialization** (main.rs): Setting up experiments and scenario execution
 
 This allows each component to be understood, tested, and modified independently.
 
@@ -270,6 +361,16 @@ All entities use vector indices as IDs, ensuring:
 - Simple relationships between entities
 
 This design choice prioritizes simplicity and performance over flexibility.
+
+### Trait-Based Polymorphism
+
+The system uses Rust traits for extensibility:
+- `CampaignTrait`: Defines campaign interface (bidding, convergence, statistics)
+- `SellerTrait`: Defines seller interface (pricing, impression generation, convergence)
+- `CampaignConverge` / `SellerConverge`: Define convergence parameter interfaces
+- Dynamic dispatch via trait objects enables different implementations while maintaining uniform interfaces
+
+This allows new campaign and seller types to be added without modifying core simulation logic.
 
 ### Deterministic Execution
 
@@ -292,9 +393,10 @@ The framework is designed to be extended without modifying core logic:
 - Experiment with strategic bidding
 
 ### New Pricing Models
-- Add new charge types beyond fixed cost and first-price
+- Add new seller types beyond fixed cost and first-price
 - Implement second-price auctions
 - Add marketplace fees or discounts
+- Extend boost factor strategies
 
 ### New Constraints
 - Add multi-dimensional constraints (both impressions AND budget)
@@ -315,23 +417,13 @@ The framework is designed to be extended without modifying core logic:
 
 ## Use Cases
 
-### Academic Research
-- Study auction theory in controlled environments
-- Test hypotheses about marketplace design
-- Compare pricing mechanisms
-- Analyze market efficiency
-
 ### Industry Analysis
 - Model real-world marketplace scenarios
 - Test pricing strategies before deployment
 - Understand supply/demand interactions
 - Optimize marketplace rules
-
-### Algorithm Development
-- Test bidding strategies under optimal conditions
 - Validate pricing mechanisms
 - Develop marketplace optimization techniques
-- Benchmark performance
 
 ---
 
@@ -364,16 +456,6 @@ The framework does not focus on:
 - ❌ Real-time decision making
 - ❌ User behavior modeling
 - ❌ Complex multi-dimensional optimization
-
----
-
-## Conclusion
-
-Marrakesh provides a clean, focused framework for studying marketplace dynamics by assuming optimal pacing and isolating other variables. This design choice enables researchers to investigate pricing mechanisms, bidding strategies, and marketplace design without the confounding effects of sub-optimal pacing.
-
-The convergence mechanism serves as a **calibration tool** rather than a research subject, ensuring campaigns operate at their optimal point before observation begins. This allows the framework to answer questions about marketplace design, pricing, and bidding strategies that are difficult to study when pacing is also a variable.
-
-By making explicit assumptions and focusing on specific research questions, Marrakesh provides a powerful tool for understanding how digital advertising marketplaces work when pacing is solved.
 
 ---
 

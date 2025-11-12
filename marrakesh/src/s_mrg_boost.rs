@@ -71,7 +71,7 @@ fn prepare_simulationconverge(mrg_boost_factor: f64) -> SimulationConverge {
     // Create simulation converge instance (initializes campaign and seller converges internally)
     let mut simulation_converge = SimulationConverge::new(marketplace);
     // Set boost_factor for MRG seller (seller_id 0)
-    let seller_converge = simulation_converge.initial_seller_converges.seller_converges[0].as_any_mut().downcast_mut::<crate::sellers::SellerBoostParam>().unwrap();
+    let seller_converge = simulation_converge.initial_seller_converges.seller_converges[0].as_any_mut().downcast_mut::<crate::sellers::SellerConvergeBoost>().unwrap();
     seller_converge.boost_factor = mrg_boost_factor;
     
     simulation_converge

@@ -104,8 +104,8 @@ impl Impression {
         let mut winning_campaign_id: Option<usize> = None;
 
         // Get seller_boost_factor from seller convergence parameter
-        let seller_boost_param = seller_converge.as_any().downcast_ref::<crate::sellers::SellerBoostParam>().unwrap();
-        let seller_boost_factor = seller_boost_param.boost_factor;
+        let seller_converge_boost = seller_converge.as_any().downcast_ref::<crate::sellers::SellerConvergeBoost>().unwrap();
+        let seller_boost_factor = seller_converge_boost.boost_factor;
 
         for campaign in &campaigns.campaigns {
             let campaign_id = campaign.campaign_id();

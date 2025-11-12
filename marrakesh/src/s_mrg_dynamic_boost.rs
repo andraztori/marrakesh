@@ -46,7 +46,7 @@ fn prepare_variant(dynamic_boost: bool) -> SimulationConverge {
             }
         } else {
             SellerType::FIXED_COST_FIXED_BOOST {
-            fixed_cost_cpm: 10.0,
+                fixed_cost_cpm: 10.0,
             }
         },
         1000,  // num_impressions
