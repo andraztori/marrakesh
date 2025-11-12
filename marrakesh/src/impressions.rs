@@ -90,7 +90,7 @@ pub struct ImpressionCompetition {
 #[derive(Debug, Clone)]
 pub struct Impression {
     pub seller_id: usize,
-    pub competition: ImpressionCompetition,
+    pub competition: Option<ImpressionCompetition>,
     pub floor_cpm: f64,
     pub value_to_campaign_id: [f64; MAX_CAMPAIGNS],
 }
@@ -103,46 +103,55 @@ impl Impression {
         let mut winning_bid_cpm = 0.0;
         let mut winning_campaign_id: Option<usize> = None;
 
+        // Get seller_boost_factor from seller convergence parameter
+        let seller_boost_param = seller_converge.as_any().downcast_ref::<crate::sellers::SellerBoostParam>().unwrap();
+        let seller_boost_factor = seller_boost_param.boost_factor;
+
         for campaign in &campaigns.campaigns {
-            if let Some(campaign_param) = campaign_params.params.get(campaign.campaign_id()) {
-                // Use the trait method for get_bid
-                let bid = campaign.get_bid(self, campaign_param.as_ref());
-                if bid > winning_bid_cpm {
-                    winning_bid_cpm = bid;
-                    winning_campaign_id = Some(campaign.campaign_id());
-                }
+            let campaign_id = campaign.campaign_id();
+            let campaign_param = &campaign_params.params[campaign_id];
+            // Use the trait method for get_bid
+            let bid = campaign.get_bid(self, campaign_param.as_ref(), seller_boost_factor);
+            if bid > winning_bid_cpm {
+                winning_bid_cpm = bid;
+                winning_campaign_id = Some(campaign_id);
             }
         }
 
-        // Get boost_factor from seller convergence parameter
-        let seller_boost_param = seller_converge.as_any().downcast_ref::<crate::sellers::SellerBoostParam>().unwrap();
-        winning_bid_cpm *= seller_boost_param.boost_factor;
-
         // Determine the result based on winning bid
-        let (winner, supply_cost) = if let Some(campaign_id) = winning_campaign_id {
-            if winning_bid_cpm < self.competition.bid_cpm {
-                // Winning bid is below best other bid - other demand wins
-                (Winner::OTHER_DEMAND, seller.get_supply_cost_cpm(0.0) / 1000.0)
-            } else if winning_bid_cpm < self.floor_cpm {
-                // Winning bid is below floor - no winner
-                (Winner::BELOW_FLOOR, seller.get_supply_cost_cpm(0.0) / 1000.0)
-            } else {
-                // Valid winner - set cost values
-                // virtual_cost and buyer_charge are always the winning bid
-                let supply_cost = seller.get_supply_cost_cpm(winning_bid_cpm) / 1000.0;
-                let virtual_cost = winning_bid_cpm / 1000.0;
-                let buyer_charge = winning_bid_cpm / 1000.0;
-                
-                // Convert from CPM to actual cost by dividing by 1000
-                (Winner::Campaign {
-                    campaign_id,
-                    virtual_cost: virtual_cost,
-                    buyer_charge: buyer_charge,
-                }, supply_cost )
-            }
-        } else {
+        // Check all failure conditions first, then create winner in one place
+        let (winner, supply_cost) = 'result: {
             // No campaigns participated
-            (Winner::NO_DEMAND, seller.get_supply_cost_cpm(0.0) / 1000.0)
+            let campaign_id = match winning_campaign_id {
+                Some(id) => id,
+                None => break 'result (Winner::NO_DEMAND, seller.get_supply_cost_cpm(0.0) / 1000.0),
+            };
+            
+            // Winning bid is below floor - no winner
+            if winning_bid_cpm < self.floor_cpm {
+                break 'result (Winner::BELOW_FLOOR, seller.get_supply_cost_cpm(0.0) / 1000.0);
+            }
+            
+            // Check competition if it exists
+            if let Some(competition) = &self.competition {
+                // Winning bid is below best other bid - other demand wins
+                if winning_bid_cpm < competition.bid_cpm {
+                    break 'result (Winner::OTHER_DEMAND, seller.get_supply_cost_cpm(0.0) / 1000.0);
+                }
+            }
+            
+            // Valid winner - bid passes all checks (floor and competition if present)
+            // Set cost values - virtual_cost and buyer_charge are always the winning bid
+            let supply_cost = seller.get_supply_cost_cpm(winning_bid_cpm) / 1000.0;
+            let virtual_cost = winning_bid_cpm / 1000.0;
+            let buyer_charge = winning_bid_cpm / 1000.0;
+            
+            // Convert from CPM to actual cost by dividing by 1000
+            (Winner::Campaign {
+                campaign_id,
+                virtual_cost,
+                buyer_charge,
+            }, supply_cost)
         };
 
         AuctionResult {

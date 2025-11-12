@@ -52,7 +52,7 @@ pub trait SellerTrait {
     /// For first price sellers, returns the buyer_win_cpm
     fn get_supply_cost_cpm(&self, buyer_win_cpm: f64) -> f64;
     
-    /// Generate impression parameters (ImpressionCompetition, floor_cpm) using the provided distributions
+    /// Generate impression parameters (Option<ImpressionCompetition>, floor_cpm) using the provided distributions
     /// 
     /// # Arguments
     /// * `best_other_bid_dist` - Distribution for generating best_other_bid_cpm (used for FIRST_PRICE)
@@ -61,8 +61,8 @@ pub trait SellerTrait {
     /// * `rng` - Random number generator
     /// 
     /// # Returns
-    /// Tuple of (ImpressionCompetition, floor_cpm)
-    fn generate_impression(&self, best_other_bid_dist: &dyn DistributionF64, floor_cpm_dist: &dyn DistributionF64, fixed_cost_floor_cpm: f64, rng: &mut StdRng) -> (ImpressionCompetition, f64);
+    /// Tuple of (Option<ImpressionCompetition>, floor_cpm)
+    fn generate_impression(&self, best_other_bid_dist: &dyn DistributionF64, floor_cpm_dist: &dyn DistributionF64, fixed_cost_floor_cpm: f64, rng: &mut StdRng) -> (Option<ImpressionCompetition>, f64);
     
     /// Get a string representation of the charge type for logging
     fn charge_type_string(&self) -> String;
@@ -103,17 +103,8 @@ impl SellerTrait for SellerFixedCostFixedBoost {
         self.fixed_cost_cpm
     }
     
-    fn generate_impression(&self, _best_other_bid_dist: &dyn DistributionF64, _floor_cpm_dist: &dyn DistributionF64, fixed_cost_floor_cpm: f64, _rng: &mut StdRng) -> (ImpressionCompetition, f64) {
-        (
-            ImpressionCompetition {
-                bid_cpm: 0.0,
-                win_rate_prediction_sigmoid_offset: 0.0,
-                win_rate_prediction_sigmoid_scale: 0.0,
-                win_rate_actual_sigmoid_offset: 0.0,
-                win_rate_actual_sigmoid_scale: 0.0,
-            },
-            fixed_cost_floor_cpm,
-        )
+    fn generate_impression(&self, _best_other_bid_dist: &dyn DistributionF64, _floor_cpm_dist: &dyn DistributionF64, fixed_cost_floor_cpm: f64, _rng: &mut StdRng) -> (Option<ImpressionCompetition>, f64) {
+        (None, fixed_cost_floor_cpm)
     }
     
     fn charge_type_string(&self) -> String {
@@ -153,17 +144,8 @@ impl SellerTrait for SellerFixedCostDynamicBoost {
         self.fixed_cost_cpm
     }
     
-    fn generate_impression(&self, _best_other_bid_dist: &dyn DistributionF64, _floor_cpm_dist: &dyn DistributionF64, fixed_cost_floor_cpm: f64, _rng: &mut StdRng) -> (ImpressionCompetition, f64) {
-        (
-            ImpressionCompetition {
-                bid_cpm: 0.0,
-                win_rate_prediction_sigmoid_offset: 0.0,
-                win_rate_prediction_sigmoid_scale: 0.0,
-                win_rate_actual_sigmoid_offset: 0.0,
-                win_rate_actual_sigmoid_scale: 0.0,
-            },
-            fixed_cost_floor_cpm,
-        )
+    fn generate_impression(&self, _best_other_bid_dist: &dyn DistributionF64, _floor_cpm_dist: &dyn DistributionF64, fixed_cost_floor_cpm: f64, _rng: &mut StdRng) -> (Option<ImpressionCompetition>, f64) {
+        (None, fixed_cost_floor_cpm)
     }
     
     fn charge_type_string(&self) -> String {
@@ -214,15 +196,15 @@ impl SellerTrait for SellerFirstPrice {
         buyer_win_cpm
     }
     
-    fn generate_impression(&self, best_other_bid_dist: &dyn DistributionF64, floor_cpm_dist: &dyn DistributionF64, _fixed_cost_floor_cpm: f64, rng: &mut StdRng) -> (ImpressionCompetition, f64) {
+    fn generate_impression(&self, best_other_bid_dist: &dyn DistributionF64, floor_cpm_dist: &dyn DistributionF64, _fixed_cost_floor_cpm: f64, rng: &mut StdRng) -> (Option<ImpressionCompetition>, f64) {
         (
-            ImpressionCompetition {
+            Some(ImpressionCompetition {
                 bid_cpm: best_other_bid_dist.sample(rng),
                 win_rate_prediction_sigmoid_offset: 0.0,
                 win_rate_prediction_sigmoid_scale: 0.0,
                 win_rate_actual_sigmoid_offset: 0.0,
                 win_rate_actual_sigmoid_scale: 0.0,
-            },
+            }),
             floor_cpm_dist.sample(rng),
         )
     }

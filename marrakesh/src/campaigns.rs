@@ -41,9 +41,9 @@ pub trait CampaignTrait {
     /// Get the campaign name
     fn campaign_name(&self) -> &str;
     
-    /// Calculate the bid for this campaign given an impression and convergence parameter
-    /// Bid = converge_param.pacing() * impression.value_to_campaign_id[campaign_id]
-    fn get_bid(&self, impression: &Impression, converge_param: &dyn CampaignConverge) -> f64;
+    /// Calculate the bid for this campaign given an impression, convergence parameter, and seller boost factor
+    /// Bid = converge_param.pacing() * impression.value_to_campaign_id[campaign_id] * seller_boost_factor
+    fn get_bid(&self, impression: &Impression, converge_param: &dyn CampaignConverge, seller_boost_factor: f64) -> f64;
     
 
     
@@ -100,9 +100,9 @@ impl CampaignTrait for CampaignFixedImpressions {
         &self.campaign_name
     }
     
-    fn get_bid(&self, impression: &Impression, converge_param: &dyn CampaignConverge) -> f64 {
+    fn get_bid(&self, impression: &Impression, converge_param: &dyn CampaignConverge, seller_boost_factor: f64) -> f64 {
         let converge_param = converge_param.as_any().downcast_ref::<CampaignPacingParam>().unwrap();
-        converge_param.pacing * impression.value_to_campaign_id[self.campaign_id]
+        converge_param.pacing * impression.value_to_campaign_id[self.campaign_id] * seller_boost_factor
     }
     
     fn converge_iteration(&self, current_converge: &dyn CampaignConverge, next_converge: &mut dyn CampaignConverge, campaign_stat: &crate::simulationrun::CampaignStat) -> bool {
@@ -126,7 +126,7 @@ impl CampaignTrait for CampaignFixedImpressions {
     
     fn converge_params_string(&self, converge_param: &dyn CampaignConverge) -> String {
         let converge_param = converge_param.as_any().downcast_ref::<CampaignPacingParam>().unwrap();
-        format!("Pacing: {:.4}", converge_param.pacing)
+        format!("Pacing: {:.2}", converge_param.pacing)
     }
     
     fn create_converge_param(&self) -> Box<dyn CampaignConverge> {
@@ -151,9 +151,9 @@ impl CampaignTrait for CampaignFixedBudget {
         &self.campaign_name
     }
     
-    fn get_bid(&self, impression: &Impression, converge_param: &dyn CampaignConverge) -> f64 {
+    fn get_bid(&self, impression: &Impression, converge_param: &dyn CampaignConverge, seller_boost_factor: f64) -> f64 {
         let converge_param = converge_param.as_any().downcast_ref::<CampaignPacingParam>().unwrap();
-        converge_param.pacing * impression.value_to_campaign_id[self.campaign_id]
+        converge_param.pacing * impression.value_to_campaign_id[self.campaign_id] * seller_boost_factor
     }
     
     fn converge_iteration(&self, current_converge: &dyn CampaignConverge, next_converge: &mut dyn CampaignConverge, campaign_stat: &crate::simulationrun::CampaignStat) -> bool {
@@ -177,7 +177,7 @@ impl CampaignTrait for CampaignFixedBudget {
     
     fn converge_params_string(&self, converge_param: &dyn CampaignConverge) -> String {
         let converge_param = converge_param.as_any().downcast_ref::<CampaignPacingParam>().unwrap();
-        format!("Pacing: {:.4}", converge_param.pacing)
+        format!("Pacing: {:.2}", converge_param.pacing)
     }
     
     fn create_converge_param(&self) -> Box<dyn CampaignConverge> {
@@ -258,19 +258,19 @@ mod tests {
 
         let impression = Impression {
             seller_id: 0,
-            competition: crate::impressions::ImpressionCompetition {
+            competition: Some(crate::impressions::ImpressionCompetition {
                 bid_cpm: 0.0,
                 win_rate_prediction_sigmoid_offset: 0.0,
                 win_rate_prediction_sigmoid_scale: 0.0,
                 win_rate_actual_sigmoid_offset: 0.0,
                 win_rate_actual_sigmoid_scale: 0.0,
-            },
+            }),
             floor_cpm: 0.0,
             value_to_campaign_id,
         };
 
-        // Expected bid = 0.5 * 20.0 = 10.0
-        let bid = campaign.get_bid(&impression, campaign_param.as_ref());
+        // Expected bid = 0.5 * 20.0 * 1.0 = 10.0
+        let bid = campaign.get_bid(&impression, campaign_param.as_ref(), 1.0);
         assert_eq!(bid, 10.0);
     }
 
@@ -295,19 +295,19 @@ mod tests {
 
         let impression = Impression {
             seller_id: 1,
-            competition: crate::impressions::ImpressionCompetition {
+            competition: Some(crate::impressions::ImpressionCompetition {
                 bid_cpm: 0.0,
                 win_rate_prediction_sigmoid_offset: 0.0,
                 win_rate_prediction_sigmoid_scale: 0.0,
                 win_rate_actual_sigmoid_offset: 0.0,
                 win_rate_actual_sigmoid_scale: 0.0,
-            },
+            }),
             floor_cpm: 0.0,
             value_to_campaign_id,
         };
 
-        // Expected bid = 1.0 * 15.0 = 15.0
-        let bid = campaign.get_bid(&impression, campaign_param.as_ref());
+        // Expected bid = 1.0 * 15.0 * 1.0 = 15.0
+        let bid = campaign.get_bid(&impression, campaign_param.as_ref(), 1.0);
         assert_eq!(bid, 15.0);
     }
 
@@ -332,19 +332,19 @@ mod tests {
 
         let impression = Impression {
             seller_id: 0,
-            competition: crate::impressions::ImpressionCompetition {
+            competition: Some(crate::impressions::ImpressionCompetition {
                 bid_cpm: 0.0,
                 win_rate_prediction_sigmoid_offset: 0.0,
                 win_rate_prediction_sigmoid_scale: 0.0,
                 win_rate_actual_sigmoid_offset: 0.0,
                 win_rate_actual_sigmoid_scale: 0.0,
-            },
+            }),
             floor_cpm: 0.0,
             value_to_campaign_id,
         };
 
-        // Expected bid = 0.0 * 100.0 = 0.0
-        let bid = campaign.get_bid(&impression, campaign_param.as_ref());
+        // Expected bid = 0.0 * 100.0 * 1.0 = 0.0
+        let bid = campaign.get_bid(&impression, campaign_param.as_ref(), 1.0);
         assert_eq!(bid, 0.0);
     }
 }
