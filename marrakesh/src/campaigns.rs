@@ -258,7 +258,13 @@ mod tests {
 
         let impression = Impression {
             seller_id: 0,
-            best_other_bid_cpm: 0.0,
+            competition: crate::impressions::ImpressionCompetition {
+                bid_cpm: 0.0,
+                win_rate_prediction_sigmoid_offset: 0.0,
+                win_rate_prediction_sigmoid_scale: 0.0,
+                win_rate_actual_sigmoid_offset: 0.0,
+                win_rate_actual_sigmoid_scale: 0.0,
+            },
             floor_cpm: 0.0,
             value_to_campaign_id,
         };
@@ -289,7 +295,13 @@ mod tests {
 
         let impression = Impression {
             seller_id: 1,
-            best_other_bid_cpm: 0.0,
+            competition: crate::impressions::ImpressionCompetition {
+                bid_cpm: 0.0,
+                win_rate_prediction_sigmoid_offset: 0.0,
+                win_rate_prediction_sigmoid_scale: 0.0,
+                win_rate_actual_sigmoid_offset: 0.0,
+                win_rate_actual_sigmoid_scale: 0.0,
+            },
             floor_cpm: 0.0,
             value_to_campaign_id,
         };
@@ -320,7 +332,13 @@ mod tests {
 
         let impression = Impression {
             seller_id: 0,
-            best_other_bid_cpm: 0.0,
+            competition: crate::impressions::ImpressionCompetition {
+                bid_cpm: 0.0,
+                win_rate_prediction_sigmoid_offset: 0.0,
+                win_rate_prediction_sigmoid_scale: 0.0,
+                win_rate_actual_sigmoid_offset: 0.0,
+                win_rate_actual_sigmoid_scale: 0.0,
+            },
             floor_cpm: 0.0,
             value_to_campaign_id,
         };
