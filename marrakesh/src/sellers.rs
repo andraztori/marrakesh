@@ -1,4 +1,5 @@
-use crate::impressions::{ImpressionCompetition, CompetitionGeneratorTrait, FloorGeneratorTrait};
+use crate::competition::{ImpressionCompetition, CompetitionGeneratorTrait};
+use crate::floors::FloorGeneratorTrait;
 use crate::utils::ControllerProportional;
 use rand::rngs::StdRng;
 

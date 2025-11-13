@@ -6,7 +6,9 @@ mod campaigns;
 mod sellers;
 mod scenarios;
 mod logger;
-mod misc;
+mod charts;
+mod floors;
+mod competition;
 
 // Include scenario files so their constructors run
 mod s_one;
@@ -16,7 +18,9 @@ mod s_mrg_dynamic_boost;
 use sellers::{SellerType, Sellers};
 use campaigns::{CampaignType, Campaigns};
 use converge::SimulationConverge;
-use impressions::{Impressions, CompetitionGeneratorParametrizedLogNormal, CompetitionGeneratorNone, FloorGeneratorFixed, FloorGeneratorLogNormal};
+use impressions::Impressions;
+use competition::{CompetitionGeneratorParametrizedLogNormal, CompetitionGeneratorNone};
+use floors::{FloorGeneratorFixed, FloorGeneratorLogNormal};
 use logger::{Logger, LogEvent, ConsoleReceiver, FileReceiver, sanitize_filename};
 use std::path::PathBuf;
 
@@ -25,14 +29,14 @@ use scenarios::get_scenario_catalog;
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     
-    // Check if "bid_histogram" argument is provided
-    if args.len() > 1 && args[1] == "bid_histogram" {
-        match misc::generate_bid_histogram() {
+    // Check if "images" argument is provided
+    if args.len() > 1 && args[1] == "charts" {
+        match charts::generate_all_histograms() {
             Ok(()) => {
-                println!("Histogram generation completed successfully.");
+                println!("All histogram generation completed successfully.");
             }
             Err(e) => {
-                eprintln!("Error generating histogram: {}", e);
+                eprintln!("Error generating histograms: {}", e);
                 std::process::exit(1);
             }
         }

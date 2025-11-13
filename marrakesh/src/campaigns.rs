@@ -258,7 +258,7 @@ mod tests {
 
         let impression = Impression {
             seller_id: 0,
-            competition: Some(crate::impressions::ImpressionCompetition {
+            competition: Some(crate::competition::ImpressionCompetition {
                 bid_cpm: 0.0,
                 win_rate_prediction_sigmoid_offset: 0.0,
                 win_rate_prediction_sigmoid_scale: 0.0,
@@ -295,7 +295,7 @@ mod tests {
 
         let impression = Impression {
             seller_id: 1,
-            competition: Some(crate::impressions::ImpressionCompetition {
+            competition: Some(crate::competition::ImpressionCompetition {
                 bid_cpm: 0.0,
                 win_rate_prediction_sigmoid_offset: 0.0,
                 win_rate_prediction_sigmoid_scale: 0.0,
@@ -332,7 +332,7 @@ mod tests {
 
         let impression = Impression {
             seller_id: 0,
-            competition: Some(crate::impressions::ImpressionCompetition {
+            competition: Some(crate::competition::ImpressionCompetition {
                 bid_cpm: 0.0,
                 win_rate_prediction_sigmoid_offset: 0.0,
                 win_rate_prediction_sigmoid_scale: 0.0,
