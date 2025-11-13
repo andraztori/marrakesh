@@ -1,3 +1,8 @@
+/// This is a simple scenario that uses simple first price bidding on two sources of supply - fixed price (MRG) and regular first price (HB).
+/// 
+/// Its two variants show that if there is scarce HB supply prices are high enough that there is profit on MRG supply. 
+/// And if there is abundant HB supply, demand flows to it and leaves prices below guaranteed prices on MRG.
+
 use crate::simulationrun::Marketplace;
 use crate::sellers::SellerType;
 use crate::sellers::Sellers;
@@ -72,11 +77,6 @@ fn prepare_simulationconverge(hb_impressions: usize) -> SimulationConverge {
     SimulationConverge::new(marketplace)
 }
 
-
-/// This is a simple scenario that uses simple first price bidding on two sources of supply - fixed price (MRG) and regular first price (HB).
-/// 
-/// Its two variants show that if there is scarce HB supply prices are high enough that there is profit on MRG supply. 
-/// And if there is abundant HB supply, demand flows to it and leaves prices below guaranteed prices on MRG.
 pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::error::Error>> {
     // Run variant with 100 HB impressions
     let simulation_converge_a = prepare_simulationconverge(1000);
