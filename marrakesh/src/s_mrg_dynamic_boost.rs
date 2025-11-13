@@ -1,3 +1,9 @@
+/// In this scenario we compare two variants:
+/// 
+/// - One with unprofitable MRG seller due to too much HB supply bringing prices below supply guaranteed prices
+/// 
+/// - Second one is where MRG seller dynamically adjusts boost parameter to exactly balance out the market so supply cost equals demand cost
+
 use crate::simulationrun::Marketplace;
 use crate::sellers::SellerType;
 use crate::sellers::Sellers;
