@@ -73,18 +73,10 @@ fn prepare_simulationconverge(hb_impressions: usize) -> SimulationConverge {
 }
 
 
-/// Scenario of how availability of a lot of HB impressions changes pricing to buyer (downwards) 
-/// and increases bought value. But increasing HB impressions leads to price advertiser pays 
-/// being less than what we need to pay to supply
+/// This is a simple scenario that uses simple first price bidding on two sources of supply - fixed price (MRG) and regular first price (HB).
 /// 
-/// This scenario demonstrates a key marketplace dynamic: when header bidding (HB) inventory is scarce (100 impressions),
-/// buyers pay higher prices due to competition. However, when HB inventory is abundant (1000 impressions),
-/// increased supply drives prices down for buyers, but creates a problem where the cost to acquire inventory
-/// (supply_cost) exceeds what buyers are charged (buyer_charge), making the marketplace unprofitable.
-/// 
-/// Expected behavior:
-/// - With 100 HB impressions: Higher buyer charges, lower total value, but supply_cost < buyer_charge (profitable)
-/// - With 1000 HB impressions: Lower buyer charges, higher total value, but supply_cost > buyer_charge (unprofitable)
+/// It two variants show that if there is scarce HB supply prices are high enough that there is profit on MRG supply. 
+/// And if there is abundant HB supply, demand flows to it and leaves prices below guaranteed prices on MRG.
 pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::error::Error>> {
     // Run variant with 100 HB impressions
     let simulation_converge_a = prepare_simulationconverge(1000);
