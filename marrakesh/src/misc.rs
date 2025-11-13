@@ -40,7 +40,7 @@ pub fn generate_bid_histogram() -> Result<(), Box<dyn std::error::Error>> {
     let max_count = *histogram.iter().max().unwrap_or(&1) as u32;
     
     // Create the plot
-    let root = BitMapBackend::new("bid_istogram.png", (800, 600)).into_drawing_area();
+    let root = BitMapBackend::new("bid_histogram.png", (800, 600)).into_drawing_area();
     root.fill(&WHITE)?;
     
     let mut chart = ChartBuilder::on(&root)

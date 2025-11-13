@@ -41,35 +41,28 @@ impl<D: Distribution<f64>> DistributionF64 for D {
 /// Struct for providing distribution parameters for impression generation
 /// Contains pre-initialized distribution boxes
 pub struct ImpressionsParam {
-    pub best_other_bid_dist: Box<dyn DistributionF64>,
     pub floor_cpm_dist: Box<dyn DistributionF64>,
     pub base_impression_value_dist: Box<dyn DistributionF64>,
     pub value_to_campaign_multiplier_dist: Box<dyn DistributionF64>,
-    pub fixed_cost_floor_cpm: f64,
 }
 
 impl ImpressionsParam {
     /// Create a new ImpressionsParam with Distribution<f64> types
     /// The distributions will be boxed internally
-    pub fn new<D1, D2, D3, D4>(
-        best_other_bid_dist: D1,
-        floor_cpm_dist: D2,
-        base_impression_value_dist: D3,
-        value_to_campaign_multiplier_dist: D4,
-        fixed_cost_floor_cpm: f64,
+    pub fn new<D1, D2, D3>(
+        floor_cpm_dist: D1,
+        base_impression_value_dist: D2,
+        value_to_campaign_multiplier_dist: D3,
     ) -> Self
     where
         D1: Distribution<f64> + 'static,
         D2: Distribution<f64> + 'static,
         D3: Distribution<f64> + 'static,
-        D4: Distribution<f64> + 'static,
     {
         Self {
-            best_other_bid_dist: Box::new(best_other_bid_dist),
             floor_cpm_dist: Box::new(floor_cpm_dist),
             base_impression_value_dist: Box::new(base_impression_value_dist),
             value_to_campaign_multiplier_dist: Box::new(value_to_campaign_multiplier_dist),
-            fixed_cost_floor_cpm,
         }
     }
 }
@@ -258,15 +251,13 @@ impl Impressions {
 
         for seller in &sellers.sellers {
             for _ in 0..seller.num_impressions() {
+                // First calculate base impression value (needed for floor generation)
+                let base_impression_value = params.base_impression_value_dist.sample(&mut rng);
+                
                 let (competition, floor_cpm) = seller.generate_impression(
-                    params.best_other_bid_dist.as_ref(),
-                    params.floor_cpm_dist.as_ref(),
-                    params.fixed_cost_floor_cpm,
+                    base_impression_value,
                     &mut rng,
                 );
-
-                // First calculate base impression value
-                let base_impression_value = params.base_impression_value_dist.sample(&mut rng);
                 //println!("Base impression value: {:.4}", base_impression_value);
                 // Then generate values for each campaign by multiplying base value with campaign-specific multiplier
                 let mut value_to_campaign_id = [0.0; MAX_CAMPAIGNS];

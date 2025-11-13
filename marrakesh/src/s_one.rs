@@ -9,11 +9,10 @@
 ///   prices on MRG
 
 use crate::simulationrun::Marketplace;
-use crate::sellers::SellerType;
-use crate::sellers::Sellers;
+use crate::sellers::{SellerType, Sellers, FixedFloor, FloorLogNormalDistribution};
 use crate::campaigns::{CampaignType, Campaigns};
 use crate::converge::SimulationConverge;
-use crate::impressions::{Impressions, ImpressionsParam};
+use crate::impressions::{Impressions, ImpressionsParam, ImpressionCompetitionGenerator};
 use crate::utils;
 use crate::logger::{Logger, LogEvent};
 use crate::logln;
@@ -53,21 +52,23 @@ fn prepare_simulationconverge(hb_impressions: usize) -> SimulationConverge {
             fixed_cost_cpm: 10.0,
         },  // charge_type
         1000,  // num_impressions
+        None,  // competition_generator
+        FixedFloor::new(0.0),  // floor_generator
     );
 
     sellers.add(
         "HB".to_string(),  // seller_name
         SellerType::FIRST_PRICE,  // seller_type
         hb_impressions,  // num_impressions
+        Some(ImpressionCompetitionGenerator::new(10.0)),  // competition_generator
+        FloorLogNormalDistribution::new(3.0),  // floor_generator
     );
 
     // Create impressions for all sellers using default parameters
     let impressions_params = ImpressionsParam::new(
-        utils::lognormal_dist(10.0, 3.0),  // best_other_bid_dist
         utils::lognormal_dist(10.0, 3.0),  // floor_cpm_dist
         utils::lognormal_dist(10.0, 3.0),  // base_impression_value_dist
         utils::lognormal_dist(1.0, 0.2),   // value_to_campaign_multiplier_dist
-        0.0,   // fixed_cost_floor_cpm
     );
     let impressions = Impressions::new(&sellers, &impressions_params);
 
