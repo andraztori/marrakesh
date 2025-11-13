@@ -3,6 +3,62 @@ use rand_distr::{Distribution, LogNormal, Normal};
 use crate::sellers::{Sellers, SellerTrait, SellerConverge};
 use crate::campaigns::{Campaigns, MAX_CAMPAIGNS};
 use crate::simulationrun::CampaignConverges;
+use crate::utils::lognormal_dist;
+
+/// Trait for generating floor CPM values
+pub trait FloorGeneratorTrait {
+    /// Generate a floor CPM value based on base_impression_ value
+    /// 
+    /// # Arguments
+    /// * `base_impression_value` - Base impression value parameter
+    /// * `rng` - Random number generator
+    /// 
+    /// # Returns
+    /// Generated floor CPM value
+    fn generate_floor(&self, base_impression_value: f64, rng: &mut StdRng) -> f64;
+}
+
+/// Floor generator that always returns a fixed value
+pub struct FloorGeneratorFixed {
+    pub value: f64,
+}
+
+impl FloorGeneratorFixed {
+    /// Create a new FloorGeneratorFixed with the given value
+    pub fn new(value: f64) -> Box<Self> {
+        Box::new(Self { value })
+    }
+}
+
+impl FloorGeneratorTrait for FloorGeneratorFixed {
+    fn generate_floor(&self, _base_impression_value: f64, _rng: &mut StdRng) -> f64 {
+        self.value
+    }
+}
+
+/// Floor generator that uses a lognormal distribution centered around base_value
+pub struct FloorGeneratorLogNormal {
+    relative_to_impression_value: f64,
+    stddev: f64,
+}
+
+impl FloorGeneratorLogNormal {
+    /// Create a new FloorGeneratorLogNormal with the given standard deviation
+    /// The distribution will be centered around base_value when generating floors
+    pub fn new(relative_to_impression_value: f64, stddev: f64) -> Box<Self> {
+        // Validate stddev by creating a distribution (will be recreated in generate_floor with actual base_value)
+        Box::new(Self { relative_to_impression_value, stddev })
+    }
+}
+
+impl FloorGeneratorTrait for FloorGeneratorLogNormal {
+    fn generate_floor(&self, base_impression_value: f64, rng: &mut StdRng) -> f64 {
+        // We get the base of the floor as scaling of base_impression_value
+        // Create a lognormal distribution centered around base_value using the utility function
+        let dist = lognormal_dist(base_impression_value * self.relative_to_impression_value, self.stddev);
+        Distribution::sample(&dist, rng).max(0.0) // Ensure floor is non-negative
+    }
+}
 
 /// Represents the winner of an auction
 #[allow(non_camel_case_types)]
@@ -41,7 +97,6 @@ impl<D: Distribution<f64>> DistributionF64 for D {
 /// Struct for providing distribution parameters for impression generation
 /// Contains pre-initialized distribution boxes
 pub struct ImpressionsParam {
-    pub floor_cpm_dist: Box<dyn DistributionF64>,
     pub base_impression_value_dist: Box<dyn DistributionF64>,
     pub value_to_campaign_multiplier_dist: Box<dyn DistributionF64>,
 }
@@ -49,18 +104,15 @@ pub struct ImpressionsParam {
 impl ImpressionsParam {
     /// Create a new ImpressionsParam with Distribution<f64> types
     /// The distributions will be boxed internally
-    pub fn new<D1, D2, D3>(
-        floor_cpm_dist: D1,
-        base_impression_value_dist: D2,
-        value_to_campaign_multiplier_dist: D3,
+    pub fn new<D1, D2>(
+        base_impression_value_dist: D1,
+        value_to_campaign_multiplier_dist: D2,
     ) -> Self
     where
         D1: Distribution<f64> + 'static,
         D2: Distribution<f64> + 'static,
-        D3: Distribution<f64> + 'static,
     {
         Self {
-            floor_cpm_dist: Box::new(floor_cpm_dist),
             base_impression_value_dist: Box::new(base_impression_value_dist),
             value_to_campaign_multiplier_dist: Box::new(value_to_campaign_multiplier_dist),
         }
@@ -80,13 +132,41 @@ pub struct ImpressionCompetition {
 }
 
 impl ImpressionCompetition {
-    // Empty impl - generation moved to ImpressionCompetitionGenerator
+    // Empty impl - generation moved to CompetitionGeneratorParametrizedLogNormal
 }
 
-/// Generator for impression competition information
+/// Trait for generating impression competition information
+pub trait CompetitionGeneratorTrait {
+    /// Generate competition information for an impression
+    /// 
+    /// # Arguments
+    /// * `rng` - Random number generator
+    /// 
+    /// # Returns
+    /// `Some(ImpressionCompetition)` if competition should be generated, `None` otherwise
+    fn generate_competition(&self, rng: &mut StdRng) -> Option<ImpressionCompetition>;
+}
+
+/// Competition generator that always returns None (no competition)
+pub struct CompetitionGeneratorNone;
+
+impl CompetitionGeneratorNone {
+    /// Create a new CompetitionGeneratorNone generator
+    pub fn new() -> Box<Self> {
+        Box::new(Self)
+    }
+}
+
+impl CompetitionGeneratorTrait for CompetitionGeneratorNone {
+    fn generate_competition(&self, _rng: &mut StdRng) -> Option<ImpressionCompetition> {
+        None
+    }
+}
+
+/// Generator for impression competition information using parametrized lognormal distributions
 /// 
 /// Holds distributions used to generatively build competition that resembles real world.
-pub struct ImpressionCompetitionGenerator {
+pub struct CompetitionGeneratorParametrizedLogNormal {
     /// Distribution for actual sigmoid offset (centered around value_base, stddev=5.0)
     actual_offset_dist: LogNormal<f64>,
     /// Distribution for actual sigmoid scale (mean=2.0, stddev=1.0)
@@ -97,21 +177,23 @@ pub struct ImpressionCompetitionGenerator {
     noise_add_dist: Normal<f64>,
 }
 
-impl ImpressionCompetitionGenerator {
+impl CompetitionGeneratorParametrizedLogNormal {
     /// Create a new generator with distributions initialized
     /// 
     /// # Arguments
     /// * `value_base` - Base value parameter used to center the actual sigmoid offset
-    pub fn new(value_base: f64) -> Self {
-        Self {
+    pub fn new(value_base: f64) -> Box<Self> {
+        Box::new(Self {
             // With current parameters, we end up with 0.3% of impressions at zero bid
             actual_offset_dist: crate::utils::lognormal_dist(value_base, 3.0),
             actual_scale_dist: crate::utils::lognormal_dist(2.0, 1.0),
             noise_mult_dist: Normal::new(1.0, 1.0).unwrap(),
             noise_add_dist: Normal::new(1.0, 1.0).unwrap(),
-        }
+        })
     }
+}
 
+impl CompetitionGeneratorTrait for CompetitionGeneratorParametrizedLogNormal {
     /// Generate competition information for an impression.
     /// 
     /// This function generatively builds competition that resembles real world, based on
@@ -122,7 +204,7 @@ impl ImpressionCompetitionGenerator {
     /// 
     /// # Returns
     /// A new `ImpressionCompetition` instance with generated parameters
-    pub fn generate_competition(&self, rng: &mut StdRng) -> ImpressionCompetition {
+    fn generate_competition(&self, rng: &mut StdRng) -> Option<ImpressionCompetition> {
         // Generate win_rate_actual_sigmoid_offset based on lognormal distribution
         // centered around value_base, with some stddev.
         // TODO: Maybe lognormal is not the right distribution and we might want something
@@ -150,13 +232,13 @@ impl ImpressionCompetitionGenerator {
         let noise_add = Distribution::sample(&self.noise_add_dist, rng);
         let win_rate_prediction_sigmoid_scale = win_rate_actual_sigmoid_scale + noise_add;
         
-        ImpressionCompetition {
+        Some(ImpressionCompetition {
             bid_cpm,
             win_rate_prediction_sigmoid_offset,
             win_rate_prediction_sigmoid_scale,
             win_rate_actual_sigmoid_offset,
             win_rate_actual_sigmoid_scale,
-        }
+        })
     }
 }
 

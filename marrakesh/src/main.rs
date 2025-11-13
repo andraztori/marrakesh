@@ -13,10 +13,10 @@ mod s_one;
 mod s_mrg_boost;
 mod s_mrg_dynamic_boost;
 
-use sellers::{SellerType, Sellers, FixedFloor, FloorLogNormalDistribution};
+use sellers::{SellerType, Sellers};
 use campaigns::{CampaignType, Campaigns};
 use converge::SimulationConverge;
-use impressions::{Impressions, ImpressionCompetitionGenerator};
+use impressions::{Impressions, CompetitionGeneratorParametrizedLogNormal, CompetitionGeneratorNone, FloorGeneratorFixed, FloorGeneratorLogNormal};
 use logger::{Logger, LogEvent, ConsoleReceiver, FileReceiver, sanitize_filename};
 use std::path::PathBuf;
 
@@ -113,21 +113,20 @@ fn main() {
                 fixed_cost_cpm: 10.0,
             },  // charge_type
             1000,  // num_impressions
-            None,  // competition_generator
-            FixedFloor::new(0.0),  // floor_generator
+            CompetitionGeneratorNone::new(),  // competition_generator
+            FloorGeneratorFixed::new(0.0),  // floor_generator
         );
 
         sellers.add(
             "HB".to_string(),  // seller_name
             SellerType::FIRST_PRICE,  // seller_type
             1000,  // num_impressions
-            Some(ImpressionCompetitionGenerator::new(10.0)),  // competition_generator
-            FloorLogNormalDistribution::new(3.0),  // floor_generator
+            CompetitionGeneratorParametrizedLogNormal::new(10.0),  // competition_generator
+            FloorGeneratorLogNormal::new(0.2, 3.0),  // floor_generator
         );
 
         // Create impressions for all sellers using default parameters
         let impressions_params = impressions::ImpressionsParam::new(
-            utils::lognormal_dist(10.0, 3.0),  // floor_cpm_dist
             utils::lognormal_dist(10.0, 3.0),  // base_impression_value_dist
             utils::lognormal_dist(1.0, 0.2),   // value_to_campaign_multiplier_dist
         );

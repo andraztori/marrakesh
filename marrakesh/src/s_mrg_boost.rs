@@ -7,10 +7,10 @@
 ///   gets higher prices and market balances/becomes profitable
 
 use crate::simulationrun::Marketplace;
-use crate::sellers::{SellerType, Sellers, FixedFloor, FloorLogNormalDistribution};
+use crate::sellers::{SellerType, Sellers};
 use crate::campaigns::{CampaignType, Campaigns};
 use crate::converge::SimulationConverge;
-use crate::impressions::{Impressions, ImpressionsParam, ImpressionCompetitionGenerator};
+use crate::impressions::{Impressions, ImpressionsParam, CompetitionGeneratorParametrizedLogNormal, CompetitionGeneratorNone, FloorGeneratorFixed, FloorGeneratorLogNormal};
 use crate::utils;
 use crate::logger::{Logger, LogEvent};
 use crate::logln;
@@ -50,21 +50,20 @@ fn prepare_simulationconverge(mrg_boost_factor: f64) -> SimulationConverge {
             fixed_cost_cpm: 10.0,
         },  // charge_type
         1000,  // num_impressions
-        None,  // competition_generator
-        FixedFloor::new(0.0),  // floor_generator
+        CompetitionGeneratorNone::new(),  // competition_generator
+        FloorGeneratorFixed::new(0.0),  // floor_generator
     );
 
     sellers.add(
         "HB".to_string(),  // seller_name
         SellerType::FIRST_PRICE,  // seller_type
         10000,  // num_impressions
-        Some(ImpressionCompetitionGenerator::new(10.0)),  // competition_generator
-        FloorLogNormalDistribution::new(3.0),  // floor_generator
+        CompetitionGeneratorParametrizedLogNormal::new(10.0),  // competition_generator
+        FloorGeneratorLogNormal::new(0.2, 3.0),  // floor_generator
     );
 
     // Create impressions for all sellers using default parameters
     let impressions_params = ImpressionsParam::new(
-        utils::lognormal_dist(10.0, 3.0),  // floor_cpm_dist
         utils::lognormal_dist(10.0, 3.0),  // base_impression_value_dist
         utils::lognormal_dist(1.0, 0.2),   // value_to_campaign_multiplier_dist
     );

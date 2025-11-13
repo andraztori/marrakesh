@@ -1,15 +1,15 @@
 use rand::{rngs::StdRng, SeedableRng};
-use crate::impressions::ImpressionCompetitionGenerator;
+use crate::impressions::{CompetitionGeneratorParametrizedLogNormal, CompetitionGeneratorTrait};
 use plotters::prelude::*;
 
 /// Generate 10000 impressions and create a histogram of bid_cpm values
 /// 
-/// Initializes ImpressionCompetitionGenerator with value_base of 10.0,
+/// Initializes CompetitionGeneratorParametrizedLogNormal with value_base of 10.0,
 /// generates 10000 impressions, creates a histogram with 100 buckets,
 /// and renders it to an image file using plotters.
 pub fn generate_bid_histogram() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize generator with value_base of 10.0
-    let generator = ImpressionCompetitionGenerator::new(10.0);
+    let generator = CompetitionGeneratorParametrizedLogNormal::new(10.0);
     
     // Create a seeded RNG for reproducibility
     let mut rng = StdRng::seed_from_u64(42);
@@ -17,8 +17,9 @@ pub fn generate_bid_histogram() -> Result<(), Box<dyn std::error::Error>> {
     // Generate 10000 impressions and collect bid_cpm values
     let mut bid_cpms = Vec::with_capacity(10000);
     for _ in 0..10000 {
-        let competition = generator.generate_competition(&mut rng);
-        bid_cpms.push(competition.bid_cpm);
+        if let Some(competition) = generator.generate_competition(&mut rng) {
+            bid_cpms.push(competition.bid_cpm);
+        }
     }
     
     // Find min and max for histogram bounds

@@ -1,61 +1,6 @@
-use crate::impressions::{ImpressionCompetition, ImpressionCompetitionGenerator};
-use crate::utils::{ControllerProportional, lognormal_dist};
+use crate::impressions::{ImpressionCompetition, CompetitionGeneratorTrait, FloorGeneratorTrait};
+use crate::utils::ControllerProportional;
 use rand::rngs::StdRng;
-use rand_distr::Distribution;
-
-/// Trait for generating floor CPM values
-pub trait FloorGeneratorTrait {
-    /// Generate a floor CPM value based on base_value
-    /// 
-    /// # Arguments
-    /// * `base_value` - Base value parameter
-    /// * `rng` - Random number generator
-    /// 
-    /// # Returns
-    /// Generated floor CPM value
-    fn generate_floor(&self, base_value: f64, rng: &mut StdRng) -> f64;
-}
-
-/// Floor generator that always returns a fixed value
-pub struct FixedFloor {
-    pub value: f64,
-}
-
-impl FixedFloor {
-    /// Create a new FixedFloor with the given value
-    pub fn new(value: f64) -> Box<Self> {
-        Box::new(Self { value })
-    }
-}
-
-impl FloorGeneratorTrait for FixedFloor {
-    fn generate_floor(&self, _base_value: f64, _rng: &mut StdRng) -> f64 {
-        self.value
-    }
-}
-
-/// Floor generator that uses a lognormal distribution centered around base_value
-pub struct FloorLogNormalDistribution {
-    stddev: f64,
-}
-
-impl FloorLogNormalDistribution {
-    /// Create a new FloorLogNormalDistribution with the given standard deviation
-    /// The distribution will be centered around base_value when generating floors
-    pub fn new(stddev: f64) -> Box<Self> {
-        // Validate stddev by creating a distribution (will be recreated in generate_floor with actual base_value)
-        let _dist = lognormal_dist(1.0, stddev);
-        Box::new(Self { stddev })
-    }
-}
-
-impl FloorGeneratorTrait for FloorLogNormalDistribution {
-    fn generate_floor(&self, base_value: f64, rng: &mut StdRng) -> f64 {
-        // Create a lognormal distribution centered around base_value using the utility function
-        let dist = lognormal_dist(base_value, self.stddev);
-        Distribution::sample(&dist, rng).max(0.0) // Ensure floor is non-negative
-    }
-}
 
 /// Seller type for different pricing models
 #[allow(non_camel_case_types)]
@@ -145,7 +90,7 @@ pub struct SellerFixedCostFixedBoost {
     pub seller_name: String,
     pub fixed_cost_cpm: f64,
     pub num_impressions: usize,
-    pub competition_generator: Option<ImpressionCompetitionGenerator>,
+    pub competition_generator: Box<dyn CompetitionGeneratorTrait>,
     pub floor_generator: Box<dyn FloorGeneratorTrait>,
 }
 
@@ -159,9 +104,9 @@ impl SellerTrait for SellerFixedCostFixedBoost {
     }
     
     fn generate_impression(&self, base_value: f64, rng: &mut StdRng) -> (Option<ImpressionCompetition>, f64) {
-        assert!(self.competition_generator.is_none(), "Fixed cost sellers should not have a competition_generator");
+        let competition = self.competition_generator.generate_competition(rng);
         let floor_cpm = self.floor_generator.generate_floor(base_value, rng);
-        (None, floor_cpm)
+        (competition, floor_cpm)
     }
     
     fn charge_type_string(&self) -> String {
@@ -190,7 +135,7 @@ pub struct SellerFixedCostDynamicBoost {
     pub fixed_cost_cpm: f64,
     pub num_impressions: usize,
     pub boost_converger: ControllerProportional,
-    pub competition_generator: Option<ImpressionCompetitionGenerator>,
+    pub competition_generator: Box<dyn CompetitionGeneratorTrait>,
     pub floor_generator: Box<dyn FloorGeneratorTrait>,
 }
 
@@ -204,9 +149,9 @@ impl SellerTrait for SellerFixedCostDynamicBoost {
     }
     
     fn generate_impression(&self, base_value: f64, rng: &mut StdRng) -> (Option<ImpressionCompetition>, f64) {
-        assert!(self.competition_generator.is_none(), "Fixed cost sellers should not have a competition_generator");
+        let competition = self.competition_generator.generate_competition(rng);
         let floor_cpm = self.floor_generator.generate_floor(base_value, rng);
-        (None, floor_cpm)
+        (competition, floor_cpm)
     }
     
     fn charge_type_string(&self) -> String {
@@ -246,7 +191,7 @@ pub struct SellerFirstPrice {
     pub seller_id: usize,
     pub seller_name: String,
     pub num_impressions: usize,
-    pub competition_generator: Option<ImpressionCompetitionGenerator>,
+    pub competition_generator: Box<dyn CompetitionGeneratorTrait>,
     pub floor_generator: Box<dyn FloorGeneratorTrait>,
 }
 
@@ -260,11 +205,7 @@ impl SellerTrait for SellerFirstPrice {
     }
     
     fn generate_impression(&self, base_value: f64, rng: &mut StdRng) -> (Option<ImpressionCompetition>, f64) {
-        let competition = if let Some(ref generator) = self.competition_generator {
-            Some(generator.generate_competition(rng))
-        } else {
-            panic!("SellerFirstPrice must have a competition_generator");
-        };
+        let competition = self.competition_generator.generate_competition(rng);
         let floor_cpm = self.floor_generator.generate_floor(base_value, rng);
         (competition, floor_cpm)
     }
@@ -307,9 +248,9 @@ impl Sellers {
     /// * `seller_name` - Name of the seller
     /// * `seller_type` - Seller type (FIXED_COST_FIXED_BOOST, FIXED_COST_DYNAMIC_BOOST, or FIRST_PRICE)
     /// * `num_impressions` - Number of impressions this seller will offer
-    /// * `competition_generator` - Optional generator for impression competition data
+    /// * `competition_generator` - Generator for impression competition data
     /// * `floor_generator` - Generator for floor CPM values
-    pub fn add(&mut self, seller_name: String, seller_type: SellerType, num_impressions: usize, competition_generator: Option<ImpressionCompetitionGenerator>, floor_generator: Box<dyn FloorGeneratorTrait>) {
+    pub fn add(&mut self, seller_name: String, seller_type: SellerType, num_impressions: usize, competition_generator: Box<dyn CompetitionGeneratorTrait>, floor_generator: Box<dyn FloorGeneratorTrait>) {
         let seller_id = self.sellers.len();
         match seller_type {
             SellerType::FIXED_COST_FIXED_BOOST { fixed_cost_cpm } => {
