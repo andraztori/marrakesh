@@ -104,11 +104,13 @@ impl CompetitionGeneratorTrait for CompetitionGeneratorParametrizedLogNormal {
         bid_cpm = bid_cpm.max(0.0);
         
         // Add multiplicative lognormal noise to get win_rate_prediction_sigmoid_offset
-        let noise_offset = Distribution::sample(&self.noise_offset_dist, rng);
+        //let noise_offset = Distribution::sample(&self.noise_offset_dist, rng);
+        let noise_offset = 1.0;
         let win_rate_prediction_sigmoid_offset = win_rate_actual_sigmoid_offset * noise_offset;
         
         // Add multiplicative lognormal noise to get win_rate_prediction_sigmoid_scale
-        let noise_scale = Distribution::sample(&self.noise_scale_dist, rng);
+        //let noise_scale = Distribution::sample(&self.noise_scale_dist, rng);
+        let noise_scale = 1.0;
         let win_rate_prediction_sigmoid_scale = win_rate_actual_sigmoid_scale * noise_scale;
         
         Some(ImpressionCompetition {

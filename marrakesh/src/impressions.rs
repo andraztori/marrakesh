@@ -166,10 +166,12 @@ impl Impressions {
                 //println!("Base impression value: {:.4}", base_impression_value);
                 // Then generate values for each campaign by multiplying base value with campaign-specific multiplier
                 let mut value_to_campaign_id = [0.0; MAX_CAMPAIGNS];
+                //println!("Base impression value: {}", base_impression_value);
                 for i in 0..MAX_CAMPAIGNS {
                     let multiplier = params.value_to_campaign_multiplier_dist.sample(&mut rng);
                 //    println!("Campaign {} multiplier: {:.4}", i, multiplier);
                     value_to_campaign_id[i] = base_impression_value * multiplier;
+                //    println!("     {}", value_to_campaign_id[i])
                 }
 
                 impressions.push(Impression {

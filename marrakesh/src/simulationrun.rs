@@ -110,6 +110,7 @@ pub struct SellerStat {
     pub total_supply_cost: f64,
     pub total_virtual_cost: f64,
     pub total_buyer_charge: f64,
+    pub total_provided_value: f64,
 }
 
 /// Overall statistics for the simulation
@@ -153,6 +154,7 @@ impl SimulationStat {
                 total_supply_cost: 0.0,
                 total_virtual_cost: 0.0,
                 total_buyer_charge: 0.0,
+                total_provided_value: 0.0,
             })
             .collect();
 
@@ -190,6 +192,7 @@ impl SimulationStat {
                     seller_stat.total_supply_cost += result.supply_cost;
                     seller_stat.total_virtual_cost += virtual_cost;
                     seller_stat.total_buyer_charge += buyer_charge;
+                    seller_stat.total_provided_value += impression.value_to_campaign_id[campaign_id] / 1000.0;
 
                     // Update campaign statistics
                     let campaign_stat = &mut campaign_stats[campaign_id];
@@ -247,6 +250,7 @@ impl SimulationStat {
                      seller_stat.total_supply_cost, 
                      seller_stat.total_virtual_cost, 
                      seller_stat.total_buyer_charge);
+            logln!(logger, event, "  Total Provided Value: {:.2}", seller_stat.total_provided_value);
         }
     }
 
