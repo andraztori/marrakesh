@@ -6,6 +6,7 @@ mod campaigns;
 mod sellers;
 mod scenarios;
 mod logger;
+mod misc;
 
 // Include scenario files so their constructors run
 mod s_one;
@@ -24,6 +25,20 @@ use scenarios::get_scenario_catalog;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
+    
+    // Check if "bid_histogram" argument is provided
+    if args.len() > 1 && args[1] == "bid_histogram" {
+        match misc::generate_bid_histogram() {
+            Ok(()) => {
+                println!("Histogram generation completed successfully.");
+            }
+            Err(e) => {
+                eprintln!("Error generating histogram: {}", e);
+                std::process::exit(1);
+            }
+        }
+        return;
+    }
     
     // Check if "all" argument is provided
     if args.len() > 1 && args[1] == "all" {

@@ -1,5 +1,5 @@
 use rand::{rngs::StdRng, SeedableRng};
-use rand_distr::Distribution;
+use rand_distr::{Distribution, LogNormal, Normal};
 use crate::sellers::{Sellers, SellerTrait, SellerConverge};
 use crate::campaigns::{Campaigns, MAX_CAMPAIGNS};
 use crate::simulationrun::CampaignConverges;
@@ -86,6 +86,87 @@ pub struct ImpressionCompetition {
     pub win_rate_actual_sigmoid_scale: f64,
 }
 
+impl ImpressionCompetition {
+    // Empty impl - generation moved to ImpressionCompetitionGenerator
+}
+
+/// Generator for impression competition information
+/// 
+/// Holds distributions used to generatively build competition that resembles real world.
+pub struct ImpressionCompetitionGenerator {
+    /// Distribution for actual sigmoid offset (centered around value_base, stddev=5.0)
+    actual_offset_dist: LogNormal<f64>,
+    /// Distribution for actual sigmoid scale (mean=2.0, stddev=1.0)
+    actual_scale_dist: LogNormal<f64>,
+    /// Distribution for multiplicative gaussian noise (mean=1.0, stddev=1.0)
+    noise_mult_dist: Normal<f64>,
+    /// Distribution for additive gaussian noise (mean=1.0, stddev=1.0)
+    noise_add_dist: Normal<f64>,
+}
+
+impl ImpressionCompetitionGenerator {
+    /// Create a new generator with distributions initialized
+    /// 
+    /// # Arguments
+    /// * `value_base` - Base value parameter used to center the actual sigmoid offset
+    pub fn new(value_base: f64) -> Self {
+        Self {
+            // With current parameters, we end up with 0.3% of impressions at zero bid
+            actual_offset_dist: crate::utils::lognormal_dist(value_base, 3.0),
+            actual_scale_dist: crate::utils::lognormal_dist(2.0, 1.0),
+            noise_mult_dist: Normal::new(1.0, 1.0).unwrap(),
+            noise_add_dist: Normal::new(1.0, 1.0).unwrap(),
+        }
+    }
+
+    /// Generate competition information for an impression.
+    /// 
+    /// This function generatively builds competition that resembles real world, based on
+    /// various distributions.
+    /// 
+    /// # Arguments
+    /// * `rng` - Random number generator
+    /// 
+    /// # Returns
+    /// A new `ImpressionCompetition` instance with generated parameters
+    pub fn generate_competition(&self, rng: &mut StdRng) -> ImpressionCompetition {
+        // Generate win_rate_actual_sigmoid_offset based on lognormal distribution
+        // centered around value_base, with some stddev.
+        // TODO: Maybe lognormal is not the right distribution and we might want something
+        // that is more uniform.
+        let win_rate_actual_sigmoid_offset = Distribution::sample(&self.actual_offset_dist, rng);
+        
+        // Generate win_rate_actual_sigmoid_scale by sampling from lognormal with mean 2 and stddev 1
+        let win_rate_actual_sigmoid_scale = Distribution::sample(&self.actual_scale_dist, rng);
+        
+        // Sample competing bid by sampling from logistic distribution using actual parameters
+        let mut bid_cpm = crate::utils::sample_logistic_bid(
+            win_rate_actual_sigmoid_offset,
+            win_rate_actual_sigmoid_scale,
+            rng,
+        );
+        
+        // Clip the competing bid (bid_cpm) to be above zero
+        bid_cpm = bid_cpm.max(0.0);
+        
+        // Add multiplicative gaussian noise to get win_rate_prediction_sigmoid_offset
+        let noise_mult = Distribution::sample(&self.noise_mult_dist, rng);
+        let win_rate_prediction_sigmoid_offset = win_rate_actual_sigmoid_offset * noise_mult;
+        
+        // Add additive gaussian noise to get win_rate_prediction_sigmoid_scale
+        let noise_add = Distribution::sample(&self.noise_add_dist, rng);
+        let win_rate_prediction_sigmoid_scale = win_rate_actual_sigmoid_scale + noise_add;
+        
+        ImpressionCompetition {
+            bid_cpm,
+            win_rate_prediction_sigmoid_offset,
+            win_rate_prediction_sigmoid_scale,
+            win_rate_actual_sigmoid_offset,
+            win_rate_actual_sigmoid_scale,
+        }
+    }
+}
+
 /// Represents an impression on offer
 #[derive(Debug, Clone)]
 pub struct Impression {
@@ -96,6 +177,7 @@ pub struct Impression {
 }
 
 impl Impression {
+
     /// Run an auction for this impression with the given campaigns, campaign converges, seller, and seller convergence parameters
     /// Returns the auction result
     pub fn run_auction(&self, campaigns: &Campaigns, campaign_converges: &CampaignConverges, seller: &dyn SellerTrait, seller_converge: &dyn SellerConverge) -> AuctionResult {

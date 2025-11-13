@@ -1,9 +1,12 @@
 /// This is a simple scenario that uses simple first price bidding on two sources of supply -
 /// fixed price (MRG) and regular first price (HB).
 ///
-/// Its two variants show that if there is scarce HB supply prices are high enough that there
-/// is profit on MRG supply. And if there is abundant HB supply, demand flows to it and leaves
-/// prices below guaranteed prices on MRG.
+/// Its two variants show:
+///
+/// - If there is scarce HB supply prices are high enough that there is profit on MRG supply
+///
+/// - If there is abundant HB supply, demand flows to it and leaves prices below guaranteed
+///   prices on MRG
 
 use crate::simulationrun::Marketplace;
 use crate::sellers::SellerType;
