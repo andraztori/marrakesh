@@ -1,4 +1,4 @@
-/// In this case we compare two variants:
+/// In this scenario we compare two variants:
 /// 
 /// - One with unprofitable MRG seller due to too much HB supply bringing prices below supply guaranteed prices
 /// 
