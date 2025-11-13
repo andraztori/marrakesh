@@ -1,3 +1,9 @@
+/// In this case we compare two variants:
+/// 
+/// - One with unprofitable MRG seller due to too much HB supply bringing prices below supply guaranteed prices
+/// 
+/// - The second one where MRG seller forces higher valuation of its supply by demand and thus gets higher prices and market balances/becomes profitable
+
 use crate::simulationrun::Marketplace;
 use crate::sellers::SellerType;
 use crate::sellers::Sellers;
