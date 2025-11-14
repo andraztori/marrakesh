@@ -1,17 +1,27 @@
 use crate::impressions::Impression;
 use crate::utils::ControllerProportional;
 pub use crate::converge::{ConvergingSingleVariable, ConvergeAny};
+use crate::sigmoid::Sigmoid;
+use crate::logger::{Logger, LogEvent};
+use crate::warnln;
 
 /// Maximum number of campaigns supported (determines size of value_to_campaign_id array)
 pub const MAX_CAMPAIGNS: usize = 10;
 
-/// Campaign type determining the constraint model
+/// Campaign type determining the bidding strategy
 #[allow(non_camel_case_types)]
 #[derive(Debug, Clone, PartialEq)]
 pub enum CampaignType {
-    FIXED_IMPRESSIONS_MULTIPLICATIVE_PACING { total_impressions_target: i32 },
-    FIXED_BUDGET_MULTIPLICATIVE_PACING { total_budget_target: f64 },
-    FIXED_BUDGET_OPTIMAL_BIDDING { total_budget_target: f64 },
+    MULTIPLICATIVE_PACING,
+    OPTIMAL,
+}
+
+/// Convergence target determining what the campaign converges on
+#[allow(non_camel_case_types)]
+#[derive(Debug, Clone, PartialEq)]
+pub enum ConvergeTarget {
+    TOTAL_BUDGET { target: f64 },
+    TOTAL_IMPRESSIONS { target: i32 },
 }
 
 
@@ -166,6 +176,95 @@ impl CampaignTrait for CampaignMultiplicativePacing {
     }
 }
 
+/// Campaign with fixed budget target using optimal bidding
+pub struct CampaignOptimalBidding {
+    pub campaign_id: usize,
+    pub campaign_name: String,
+    pub converger: Box<dyn ConvergeAny<crate::simulationrun::CampaignStat>>,
+}
+
+impl CampaignTrait for CampaignOptimalBidding {
+    fn campaign_id(&self) -> usize {
+        self.campaign_id
+    }
+    
+    fn campaign_name(&self) -> &str {
+        &self.campaign_name
+    }
+    
+    fn get_bid(&self, impression: &Impression, converge: &dyn crate::converge::ConvergingVariables, seller_boost_factor: f64, logger: &mut Logger) -> Option<f64> {
+        let converge = converge.as_any().downcast_ref::<ConvergingSingleVariable>().unwrap();
+        
+        // Handle zero or very small pacing to avoid division by zero
+        if converge.converging_variable <= 1e-10 {
+            return Some(0.0);
+        }
+        
+        // a) Calculate marginal_utility_of_spend as 1.0 / converge.converging_variable
+        // In pacing converger we assume higher pacing leads to more spend
+        // but marginal utility of spend actually has to decrease to have more spend
+        // so we do this non-linear transform. works well enough, but could probably be improved.
+        let marginal_utility_of_spend = 1.0 / converge.converging_variable;
+        
+        // b) Calculate value as multiplication between seller_boost_factor and impression value to campaign id
+        let value = seller_boost_factor * impression.value_to_campaign_id[self.campaign_id];
+        
+        // Get competition data (required for optimal bidding)
+        let competition = match &impression.competition {
+            Some(comp) => comp,
+            None => {
+                warnln!(logger, LogEvent::Simulation, 
+                    "Optimal bidding is only possible when competition can be modeled. This impression has no competition data.");
+                return None;
+            }
+        };
+        
+        // c) Initialize sigmoid with offset and scale from impression competition predicted offset and scale, and value from value
+        let sigmoid = Sigmoid::new(
+            competition.win_rate_prediction_sigmoid_offset,
+            competition.win_rate_prediction_sigmoid_scale,
+            value,
+        );
+        
+        // d) Calculate the bid using marginal_utility_of_spend_inverse
+        let bid = match sigmoid.marginal_utility_of_spend_inverse(marginal_utility_of_spend) {
+            Some(bid) => bid,
+            None => {
+                warnln!(logger, LogEvent::Simulation,
+                    "Failed to calculate marginal_utility_of_spend_inverse. \
+                    Sigmoid parameters: offset={:.2}, scale={:.2}, value={:.2}. \
+                    Marginal utility of spend={:.2}. \
+                    Competing bid={:.2}. \
+                    Optimal bidding requires this calculation to succeed.",
+                    sigmoid.offset,
+                    sigmoid.scale,
+                    sigmoid.value,
+                    marginal_utility_of_spend,
+                    competition.bid_cpm
+                );
+                return None;
+            }
+        };
+        
+        let _probability = sigmoid.get_probability(bid);
+        //println!("Final bid: {:.4}, offset: {:.4}, scale: {:.4}, value: {:.4}, competing_bid: {:.4}, probability: {:.4}", 
+        //         bid, sigmoid.offset, sigmoid.scale, sigmoid.value, competition.bid_cpm, _probability);
+        Some(bid)
+    }
+    
+    fn converge_iteration(&self, current_converge: &dyn crate::converge::ConvergingVariables, next_converge: &mut dyn crate::converge::ConvergingVariables, campaign_stat: &crate::simulationrun::CampaignStat) -> bool {
+        self.converger.converge_iteration(current_converge, next_converge, campaign_stat)
+    }
+    
+    fn type_and_converge_string(&self, converge: &dyn crate::converge::ConvergingVariables) -> String {
+        format!("Optimal bidding ({})", self.converger.converge_target_string(converge))
+    }
+    
+    fn create_converging_variables(&self) -> Box<dyn crate::converge::ConvergingVariables> {
+        self.converger.create_converging_variables()
+    }
+}
+
 /// Container for campaigns with methods to add campaigns
 /// Uses trait objects to support different campaign types
 pub struct Campaigns {
@@ -183,8 +282,9 @@ impl Campaigns {
     /// 
     /// # Arguments
     /// * `campaign_name` - Name of the campaign
-    /// * `campaign_type` - Type of campaign
-    pub fn add(&mut self, campaign_name: String, campaign_type: CampaignType) {
+    /// * `campaign_type` - Type of campaign (bidding strategy)
+    /// * `converge_target` - Target for convergence
+    pub fn add(&mut self, campaign_name: String, campaign_type: CampaignType, converge_target: ConvergeTarget) {
         if self.campaigns.len() >= MAX_CAMPAIGNS {
             panic!(
                 "Cannot add campaign: maximum number of campaigns ({}) exceeded. Current count: {}",
@@ -193,35 +293,37 @@ impl Campaigns {
             );
         }
         let campaign_id = self.campaigns.len();
+        
+        // Create converger based on converge_target
+        let converger: Box<dyn ConvergeAny<crate::simulationrun::CampaignStat>> = match converge_target {
+            ConvergeTarget::TOTAL_IMPRESSIONS { target } => {
+                Box::new(ConvergeTotalImpressions {
+                    total_impressions_target: target,
+                    controller: ControllerProportional::new(),
+                })
+            }
+            ConvergeTarget::TOTAL_BUDGET { target } => {
+                Box::new(ConvergeTotalBudget {
+                    total_budget_target: target,
+                    controller: ControllerProportional::new(),
+                })
+            }
+        };
+        
+        // Create campaign based on campaign_type
         match campaign_type {
-            CampaignType::FIXED_IMPRESSIONS_MULTIPLICATIVE_PACING { total_impressions_target } => {
+            CampaignType::MULTIPLICATIVE_PACING => {
                 self.campaigns.push(Box::new(CampaignMultiplicativePacing {
                     campaign_id,
                     campaign_name,
-                    converger: Box::new(ConvergeTotalImpressions {
-                        total_impressions_target,
-                        controller: ControllerProportional::new(),
-                    }),
+                    converger,
                 }));
             }
-            CampaignType::FIXED_BUDGET_MULTIPLICATIVE_PACING { total_budget_target } => {
-                self.campaigns.push(Box::new(CampaignMultiplicativePacing {
+            CampaignType::OPTIMAL => {
+                self.campaigns.push(Box::new(CampaignOptimalBidding {
                     campaign_id,
                     campaign_name,
-                    converger: Box::new(ConvergeTotalBudget {
-                        total_budget_target,
-                        controller: ControllerProportional::new(),
-                    }),
-                }));
-            }
-            CampaignType::FIXED_BUDGET_OPTIMAL_BIDDING { total_budget_target } => {
-                self.campaigns.push(Box::new(crate::campaigns_optimal_bidding::CampaignOptimalBidding {
-                    campaign_id,
-                    campaign_name,
-                    converger: Box::new(ConvergeTotalBudget {
-                        total_budget_target,
-                        controller: ControllerProportional::new(),
-                    }),
+                    converger,
                 }));
             }
         }

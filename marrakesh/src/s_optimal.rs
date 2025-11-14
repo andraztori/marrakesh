@@ -10,7 +10,7 @@
 
 use crate::simulationrun::Marketplace;
 use crate::sellers::{SellerType, Sellers};
-use crate::campaigns::{CampaignType, Campaigns};
+use crate::campaigns::{CampaignType, ConvergeTarget, Campaigns};
 use crate::converge::SimulationConverge;
 use crate::impressions::{Impressions, ImpressionsParam};
 use crate::competition::CompetitionGeneratorParametrizedLogNormal;
@@ -35,6 +35,7 @@ fn prepare_simulationconverge(hb_impressions: usize, campaign_type: CampaignType
     campaigns.add(
         "Campaign 0".to_string(),  // campaign_name
         campaign_type,  // campaign_type - either multiplicative pacing or optimal bidding
+        ConvergeTarget::TOTAL_BUDGET { target: 20.0 },  // converge_target
     );
 
     // Add seller (ID is automatically set to match Vec index)
@@ -69,24 +70,20 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
     let num_impressions = 10000;
     let simulation_converge_a = prepare_simulationconverge(
         num_impressions,
-        CampaignType::FIXED_BUDGET_MULTIPLICATIVE_PACING {
-            total_budget_target: 20.0,
-        },
+        CampaignType::MULTIPLICATIVE_PACING,
     );
     let stats_a = simulation_converge_a.run_variant("Running with multiplicative pacing", scenario_name, "multiplicative", 100, logger);
     
     // Run variant B with optimal bidding
     let simulation_converge_b = prepare_simulationconverge(
         num_impressions,
-        CampaignType::FIXED_BUDGET_OPTIMAL_BIDDING {
-            total_budget_target: 20.0,
-        },
+        CampaignType::OPTIMAL,
     );
     let stats_b = simulation_converge_b.run_variant("Running with optimal bidding", scenario_name, "optimal", 100, logger);
     
     // Compare the two variants to verify expected marketplace behavior
-    // Variant A (multiplicative pacing) uses FIXED_BUDGET_MULTIPLICATIVE_PACING
-    // Variant B (optimal bidding) uses FIXED_BUDGET_OPTIMAL_BIDDING
+    // Variant A (multiplicative pacing) uses MULTIPLICATIVE_PACING with TOTAL_BUDGET
+    // Variant B (optimal bidding) uses OPTIMAL with TOTAL_BUDGET
     
     logln!(logger, LogEvent::Scenario, "");
     

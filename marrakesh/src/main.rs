@@ -3,7 +3,6 @@ mod converge;
 mod utils;
 mod impressions;
 mod campaigns;
-mod campaigns_optimal_bidding;
 mod sellers;
 mod scenarios;
 mod logger;
@@ -19,7 +18,7 @@ mod s_mrg_boost;
 mod s_mrg_dynamic_boost;
 
 use sellers::{SellerType, Sellers};
-use campaigns::{CampaignType, Campaigns};
+use campaigns::{CampaignType, ConvergeTarget, Campaigns};
 use converge::SimulationConverge;
 use impressions::Impressions;
 use competition::{CompetitionGeneratorParametrizedLogNormal, CompetitionGeneratorNone};
@@ -115,16 +114,14 @@ fn main() {
         // Add two hardcoded campaigns (IDs are automatically set to match Vec index)
         campaigns.add(
             "Campaign 0".to_string(),  // campaign_name
-            CampaignType::FIXED_IMPRESSIONS_MULTIPLICATIVE_PACING {
-                total_impressions_target: 1000,
-            },  // campaign_type
+            CampaignType::MULTIPLICATIVE_PACING,
+            ConvergeTarget::TOTAL_IMPRESSIONS { target: 1000 },
         );
 
         campaigns.add(
             "Campaign 1".to_string(),  // campaign_name
-            CampaignType::FIXED_BUDGET_MULTIPLICATIVE_PACING {
-                total_budget_target: 20.0,
-            },  // campaign_type
+            CampaignType::MULTIPLICATIVE_PACING,
+            ConvergeTarget::TOTAL_BUDGET { target: 20.0 },
         );
 
         // Add two sellers (IDs are automatically set to match Vec index)
