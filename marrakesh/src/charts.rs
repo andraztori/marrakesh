@@ -269,11 +269,11 @@ fn create_side_by_side_histogram(
     let max_count = max_count1.max(max_count2);
     
     // Create the drawing area
-    let root = BitMapBackend::new(filename, (1200, 600)).into_drawing_area();
+    let root = BitMapBackend::new(filename, (2400, 1200)).into_drawing_area();
     root.fill(&WHITE)?;
     
     // Split into two charts
-    let (left, right) = root.split_horizontally(600);
+    let (left, right) = root.split_horizontally(1200);
     
     // Draw first chart (left)
     {
@@ -429,7 +429,7 @@ fn create_single_histogram(
     let max_count = *bins.iter().max().unwrap_or(&0);
     
     // Create the drawing area
-    let root = BitMapBackend::new(filename, (800, 600)).into_drawing_area();
+    let root = BitMapBackend::new(filename, (1600, 1200)).into_drawing_area();
     root.fill(&WHITE)?;
     
     let mut chart = ChartBuilder::on(&root)
@@ -483,9 +483,9 @@ pub fn generate_sigmoid_charts() -> Result<(), Box<dyn std::error::Error>> {
     
     // Initialize sigmoid with specific parameters that were causing issues
     let sigmoid = crate::sigmoid::Sigmoid::new(
-        18.971227371311485,     // offset
-        3.0,                    // scale
-        71.52711771826877,      // value
+        20.4,     // offset
+        3.73,                    // scale
+        65.0,      // value
     );
     
     // Define the x range for plotting
@@ -510,7 +510,7 @@ pub fn generate_sigmoid_charts() -> Result<(), Box<dyn std::error::Error>> {
     // Chart 1: get_probability()
     {
         let filepath = "charts/sigmoid_probability.png";
-        let root = BitMapBackend::new(&filepath, (800, 600)).into_drawing_area();
+        let root = BitMapBackend::new(&filepath, (1600, 1200)).into_drawing_area();
         root.fill(&WHITE)?;
         
         let mut chart = ChartBuilder::on(&root)
@@ -527,6 +527,14 @@ pub fn generate_sigmoid_charts() -> Result<(), Box<dyn std::error::Error>> {
             &BLUE,
         ))?;
         
+        // Draw vertical line at offset
+        let y_min_prob = probability_values.iter().cloned().fold(f64::INFINITY, f64::min);
+        let y_max_prob = probability_values.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+        chart.draw_series(LineSeries::new(
+            vec![(sigmoid.offset, y_min_prob), (sigmoid.offset, y_max_prob)],
+            &BLACK.mix(0.3),
+        ))?;
+        
         root.present()?;
         println!("Generated: {}", filepath);
     }
@@ -534,7 +542,7 @@ pub fn generate_sigmoid_charts() -> Result<(), Box<dyn std::error::Error>> {
     // Chart 2: m() - Marginal utility of spend
     {
         let filepath = "charts/sigmoid_marginal_utility.png";
-        let root = BitMapBackend::new(&filepath, (800, 600)).into_drawing_area();
+        let root = BitMapBackend::new(&filepath, (1600, 1200)).into_drawing_area();
         root.fill(&WHITE)?;
         
         // Find min and max for y-axis
@@ -568,6 +576,12 @@ pub fn generate_sigmoid_charts() -> Result<(), Box<dyn std::error::Error>> {
         .label("y_target = 1.0")
         .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], &BLACK.mix(0.3)));
         
+        // Draw vertical line at offset
+        chart.draw_series(LineSeries::new(
+            vec![(sigmoid.offset, y_min), (sigmoid.offset, y_max)],
+            &BLACK.mix(0.3),
+        ))?;
+        
         chart.configure_series_labels()
             .background_style(&WHITE.mix(0.8))
             .border_style(&BLACK)
@@ -580,7 +594,7 @@ pub fn generate_sigmoid_charts() -> Result<(), Box<dyn std::error::Error>> {
     // Chart 3: m_prime() - Derivative of marginal utility
     {
         let filepath = "charts/sigmoid_marginal_utility_derivative.png";
-        let root = BitMapBackend::new(&filepath, (800, 600)).into_drawing_area();
+        let root = BitMapBackend::new(&filepath, (1600, 1200)).into_drawing_area();
         root.fill(&WHITE)?;
         
         // Find min and max for y-axis
@@ -612,8 +626,101 @@ pub fn generate_sigmoid_charts() -> Result<(), Box<dyn std::error::Error>> {
             &BLACK.mix(0.3),
         ))?;
         
+        // Draw vertical line at offset
+        chart.draw_series(LineSeries::new(
+            vec![(sigmoid.offset, y_min), (sigmoid.offset, y_max)],
+            &BLACK.mix(0.3),
+        ))?;
+        
         root.present()?;
         println!("Generated: {}", filepath);
+    }
+    
+    // Chart 4: marginal_utility_of_spend_inverse() - Inverse of marginal utility of spend
+    {
+        let filepath = "charts/sigmoid_marginal_utility_inverse.png";
+        let root = BitMapBackend::new(&filepath, (1600, 1200)).into_drawing_area();
+        root.fill(&WHITE)?;
+        
+        // Define the y range (marginal utility of spend) from 0 to 1
+        let y_min = 0.0;
+        let y_max = 1.0;
+        let num_points = 1000;
+        
+        // Generate data points for the inverse function
+        let mut y_values = Vec::new();
+        let mut x_values = Vec::new();
+        let mut error_y_values = Vec::new();  // Track y values where inverse fails
+        
+        for i in 0..num_points {
+            let y = y_min + (y_max - y_min) * (i as f64) / (num_points as f64 - 1.0);
+            y_values.push(y);
+            
+            // Calculate the inverse: x such that M(x) = y
+            if let Some(x) = sigmoid.marginal_utility_of_spend_inverse(y) {
+                x_values.push(x);
+            } else {
+                // If inverse cannot be calculated, track the y value for error line
+                x_values.push(f64::NAN);
+                error_y_values.push(y);
+            }
+        }
+        
+        // Filter out NaN values
+        let valid_points: Vec<(f64, f64)> = y_values.iter()
+            .zip(x_values.iter())
+            .filter_map(|(y, x)| {
+                if x.is_finite() {
+                    Some((*y, *x))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        
+        if valid_points.is_empty() {
+            eprintln!("Warning: No valid points for marginal_utility_of_spend_inverse chart");
+        } else {
+            // Find min and max for x-axis (bid values)
+            let x_min = valid_points.iter().map(|(_, x)| *x).fold(f64::INFINITY, f64::min);
+            let x_max = valid_points.iter().map(|(_, x)| *x).fold(f64::NEG_INFINITY, f64::max);
+            let x_range = if x_max - x_min < 0.1 {
+                x_min - 0.5..x_max + 0.5
+            } else {
+                x_min..x_max
+            };
+            
+            let mut chart = ChartBuilder::on(&root)
+                .caption("Sigmoid: M⁻¹(y) - Inverse of Marginal Utility of Spend", ("sans-serif", 30))
+                .margin(10)
+                .x_label_area_size(50)
+                .y_label_area_size(50)
+                .build_cartesian_2d(y_min..y_max, x_range)?;
+            
+            chart.configure_mesh()
+                .x_desc("Marginal Utility of Spend (y)")
+                .y_desc("Bid (x)")
+                .draw()?;
+            
+            // Draw the main inverse function line
+            chart.draw_series(LineSeries::new(
+                valid_points.iter().map(|(y, x)| (*y, *x)),
+                &RGBColor(128, 0, 128),  // Purple color
+            ))?;
+            
+            // Draw vertical lines at y values where inverse fails
+            if !error_y_values.is_empty() {
+                for error_y in &error_y_values {
+                    chart.draw_series(LineSeries::new(
+                        vec![(*error_y, x_min), (*error_y, x_max)],
+                        &RGBColor(255, 0, 0).mix(0.5),  // Semi-transparent red
+                    ))?;
+                }
+            }
+            
+            root.present()?;
+            println!("Generated: {}", filepath);
+        }
     }
     
     Ok(())
