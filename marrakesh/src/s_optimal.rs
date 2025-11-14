@@ -9,7 +9,7 @@
 /// - Second variant: Abundant supply (10000 HB impressions)
 
 use crate::simulationrun::Marketplace;
-use crate::sellers::{SellerType, Sellers};
+use crate::sellers::{SellerType, SellerConvergeStrategy, Sellers};
 use crate::campaigns::{CampaignType, ConvergeTarget, Campaigns};
 use crate::converge::SimulationConverge;
 use crate::impressions::{Impressions, ImpressionsParam};
@@ -35,14 +35,15 @@ fn prepare_simulationconverge(hb_impressions: usize, campaign_type: CampaignType
     campaigns.add(
         "Campaign 0".to_string(),  // campaign_name
         campaign_type,  // campaign_type - either multiplicative pacing or optimal bidding
-        ConvergeTarget::TOTAL_BUDGET { target: 20.0 },  // converge_target
+        ConvergeTarget::TOTAL_BUDGET { target_total_budget: 20.0 },  // converge_target
     );
 
     // Add seller (ID is automatically set to match Vec index)
     sellers.add(
         "HB".to_string(),  // seller_name
         SellerType::FIRST_PRICE,  // seller_type
-        hb_impressions,  // num_impressions
+        SellerConvergeStrategy::NONE { default_value: 1.0 },  // seller_converge
+        hb_impressions,  // impressions_on_offer
         CompetitionGeneratorParametrizedLogNormal::new(10.0),  // competition_generator
         FloorGeneratorLogNormal::new(0.1, 3.0),  // floor_generator
     );
@@ -67,7 +68,7 @@ fn prepare_simulationconverge(hb_impressions: usize, campaign_type: CampaignType
 
 pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::error::Error>> {
     // Run variant A with multiplicative pacing
-    let num_impressions = 10000;
+    let num_impressions = 1000;
     let simulation_converge_a = prepare_simulationconverge(
         num_impressions,
         CampaignType::MULTIPLICATIVE_PACING,

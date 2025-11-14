@@ -2,15 +2,84 @@ use crate::competition::{ImpressionCompetition, CompetitionGeneratorTrait};
 use crate::floors::FloorGeneratorTrait;
 use crate::utils::ControllerProportional;
 use rand::rngs::StdRng;
-pub use crate::converge::{ConvergingVariables as SellerConverge, ConvergingSingleVariable};
+pub use crate::converge::{ConvergingSingleVariable, ConvergeAny};
 
 /// Seller type for different pricing models
 #[allow(non_camel_case_types)]
 #[derive(Debug, Clone, PartialEq)]
 pub enum SellerType {
-    FIXED_COST_FIXED_BOOST { fixed_cost_cpm: f64 },
-    FIXED_COST_DYNAMIC_BOOST { fixed_cost_cpm: f64 },
     FIRST_PRICE,
+    FIXED_PRICE { fixed_cost_cpm: f64 },
+}
+
+/// Convergence strategy for sellers
+#[allow(non_camel_case_types)]
+#[derive(Debug, Clone, PartialEq)]
+pub enum SellerConvergeStrategy {
+    NONE { default_value: f64 },
+    TOTAL_COST { target_total_cost: f64 },
+}
+
+/// Convergence strategy for sellers that don't converge (no boost adjustment)
+pub struct ConvergeNone {
+    pub default_value: f64,
+}
+
+impl ConvergeAny<crate::simulationrun::SellerStat> for ConvergeNone {
+    fn converge_iteration(&self, _current_converge: &dyn crate::converge::ConvergingVariables, _next_converge: &mut dyn crate::converge::ConvergingVariables, _seller_stat: &crate::simulationrun::SellerStat) -> bool {
+        // No convergence - boost stays the same
+        false
+    }
+    
+    fn get_main_variable(&self, converge: &dyn crate::converge::ConvergingVariables) -> f64 {
+        converge.as_any().downcast_ref::<ConvergingSingleVariable>().unwrap().converging_variable
+    }
+    
+    fn create_converging_variables(&self) -> Box<dyn crate::converge::ConvergingVariables> {
+        Box::new(ConvergingSingleVariable { converging_variable: self.default_value })
+    }
+    
+    fn converge_target_string(&self, converge: &dyn crate::converge::ConvergingVariables) -> String {
+        let boost = converge.as_any().downcast_ref::<ConvergingSingleVariable>().unwrap().converging_variable;
+        format!("No convergence, boost: {:.2}", boost)
+    }
+}
+
+/// Convergence strategy for sellers that converge boost to match target cost
+pub struct ConvergeTotalCost {
+    pub target_cost: f64,
+    pub controller: ControllerProportional,
+}
+
+impl ConvergeAny<crate::simulationrun::SellerStat> for ConvergeTotalCost {
+    fn converge_iteration(&self, current_converge: &dyn crate::converge::ConvergingVariables, next_converge: &mut dyn crate::converge::ConvergingVariables, seller_stat: &crate::simulationrun::SellerStat) -> bool {
+        // Downcast to concrete types at the beginning
+        let current_converge = current_converge.as_any().downcast_ref::<ConvergingSingleVariable>().unwrap();
+        let next_converge = next_converge.as_any_mut().downcast_mut::<ConvergingSingleVariable>().unwrap();
+        
+        let target = self.target_cost;
+        let actual = seller_stat.total_virtual_cost;
+        let current_boost = current_converge.converging_variable;
+        
+        // Use the same controller logic as campaigns, but for boost_factor
+        let (new_boost, changed) = self.controller.pacing_in_next_iteration(target, actual, current_boost);
+        next_converge.converging_variable = new_boost;
+        
+        changed
+    }
+    
+    fn get_main_variable(&self, converge: &dyn crate::converge::ConvergingVariables) -> f64 {
+        converge.as_any().downcast_ref::<ConvergingSingleVariable>().unwrap().converging_variable
+    }
+    
+    fn create_converging_variables(&self) -> Box<dyn crate::converge::ConvergingVariables> {
+        Box::new(ConvergingSingleVariable { converging_variable: 1.0 })
+    }
+    
+    fn converge_target_string(&self, converge: &dyn crate::converge::ConvergingVariables) -> String {
+        let boost = converge.as_any().downcast_ref::<ConvergingSingleVariable>().unwrap().converging_variable;
+        format!("Target cost: {:.2}, boost: {:.2}", self.target_cost, boost)
+    }
 }
 
 /// Trait for sellers participating in auctions
@@ -21,8 +90,8 @@ pub trait SellerTrait {
     /// Get the seller name
     fn seller_name(&self) -> &str;
     
-    /// Get the number of impressions
-    fn num_impressions(&self) -> usize;
+    /// Get the number of impressions on offer
+    fn get_impressions_on_offer(&self) -> usize;
     
     /// Get the supply cost in CPM for a given buyer winning bid CPM
     /// For fixed cost sellers, returns the fixed_cost_cpm
@@ -43,7 +112,7 @@ pub trait SellerTrait {
     fn charge_type_string(&self) -> String;
     
     /// Create a new convergence parameter for this seller type
-    fn create_converge(&self) -> Box<dyn crate::converge::ConvergingVariables>;
+    fn create_converging_variables(&self) -> Box<dyn crate::converge::ConvergingVariables>;
     
     /// Perform one iteration of convergence, updating the next convergence parameter
     /// This method encapsulates the convergence logic for each seller type
@@ -59,105 +128,12 @@ pub trait SellerTrait {
     
 }
 
-/// Seller with fixed cost pricing and fixed boost factor
-pub struct SellerFixedCostFixedBoost {
-    pub seller_id: usize,
-    pub seller_name: String,
-    pub fixed_cost_cpm: f64,
-    pub num_impressions: usize,
-    pub competition_generator: Box<dyn CompetitionGeneratorTrait>,
-    pub floor_generator: Box<dyn FloorGeneratorTrait>,
-}
-
-impl SellerTrait for SellerFixedCostFixedBoost {
-    fn seller_id(&self) -> usize { self.seller_id }
-    fn seller_name(&self) -> &str { &self.seller_name }
-    fn num_impressions(&self) -> usize { self.num_impressions }
-    
-    fn get_supply_cost_cpm(&self, _buyer_win_cpm: f64) -> f64 {
-        self.fixed_cost_cpm
-    }
-    
-    fn generate_impression(&self, base_value: f64, rng: &mut StdRng) -> (Option<ImpressionCompetition>, f64) {
-        let competition = self.competition_generator.generate_competition(base_value, rng);
-        let floor_cpm = self.floor_generator.generate_floor(base_value, rng);
-        (competition, floor_cpm)
-    }
-    
-    fn charge_type_string(&self) -> String {
-        format!("FIXED_COST ({} CPM)", self.fixed_cost_cpm)
-    }
-    
-    fn create_converge(&self) -> Box<dyn crate::converge::ConvergingVariables> {
-        Box::new(ConvergingSingleVariable { converging_variable: 1.0 })
-    }
-    
-    fn converge_iteration(&self, _current_converge: &dyn SellerConverge, _next_converge: &mut dyn SellerConverge, _seller_stat: &crate::simulationrun::SellerStat) -> bool {
-        // Fixed boost - no convergence
-        false
-    }
-    
-}
-
-/// Seller with fixed cost pricing and dynamic boost factor
-pub struct SellerFixedCostDynamicBoost {
-    pub seller_id: usize,
-    pub seller_name: String,
-    pub fixed_cost_cpm: f64,
-    pub num_impressions: usize,
-    pub boost_converger: ControllerProportional,
-    pub competition_generator: Box<dyn CompetitionGeneratorTrait>,
-    pub floor_generator: Box<dyn FloorGeneratorTrait>,
-}
-
-impl SellerTrait for SellerFixedCostDynamicBoost {
-    fn seller_id(&self) -> usize { self.seller_id }
-    fn seller_name(&self) -> &str { &self.seller_name }
-    fn num_impressions(&self) -> usize { self.num_impressions }
-    
-    fn get_supply_cost_cpm(&self, _buyer_win_cpm: f64) -> f64 {
-        self.fixed_cost_cpm
-    }
-    
-    fn generate_impression(&self, base_value: f64, rng: &mut StdRng) -> (Option<ImpressionCompetition>, f64) {
-        let competition = self.competition_generator.generate_competition(base_value, rng);
-        let floor_cpm = self.floor_generator.generate_floor(base_value, rng);
-        (competition, floor_cpm)
-    }
-    
-    fn charge_type_string(&self) -> String {
-        format!("FIXED_COST ({} CPM)", self.fixed_cost_cpm)
-    }
-    
-    fn create_converge(&self) -> Box<dyn crate::converge::ConvergingVariables> {
-        Box::new(ConvergingSingleVariable { converging_variable: 1.0 })
-    }
-    
-    fn converge_iteration(&self, current_converge: &dyn crate::converge::ConvergingVariables, next_converge: &mut dyn crate::converge::ConvergingVariables, seller_stat: &crate::simulationrun::SellerStat) -> bool {
-        // Downcast to concrete types at the beginning
-        let current_converge = current_converge.as_any().downcast_ref::<ConvergingSingleVariable>().unwrap();
-        let next_converge = next_converge.as_any_mut().downcast_mut::<ConvergingSingleVariable>().unwrap();
-        
-        // Converge when cost of impressions (num_impressions * fixed_cost_cpm) matches virtual price
-        // fixed_cost_cpm is in CPM (cost per 1000 impressions), so divide by 1000 to get cost per impression
-        let target = (self.num_impressions as f64) * self.fixed_cost_cpm / 1000.0;
-        let actual = seller_stat.total_virtual_cost;
-        let current_boost = current_converge.converging_variable;
-        
-        // Use the same controller logic as campaigns, but for boost_factor
-        let (new_boost, changed) = self.boost_converger.pacing_in_next_iteration(target, actual, current_boost);
-        next_converge.converging_variable = new_boost;
-        
-        changed
-    }
-    
-}
-
 /// Seller with first price auction
 pub struct SellerFirstPrice {
     pub seller_id: usize,
     pub seller_name: String,
-    pub num_impressions: usize,
+    pub impressions_on_offer: usize,
+    pub converger: Box<dyn ConvergeAny<crate::simulationrun::SellerStat>>,
     pub competition_generator: Box<dyn CompetitionGeneratorTrait>,
     pub floor_generator: Box<dyn FloorGeneratorTrait>,
 }
@@ -165,7 +141,7 @@ pub struct SellerFirstPrice {
 impl SellerTrait for SellerFirstPrice {
     fn seller_id(&self) -> usize { self.seller_id }
     fn seller_name(&self) -> &str { &self.seller_name }
-    fn num_impressions(&self) -> usize { self.num_impressions }
+    fn get_impressions_on_offer(&self) -> usize { self.impressions_on_offer }
     
     fn get_supply_cost_cpm(&self, buyer_win_cpm: f64) -> f64 {
         buyer_win_cpm
@@ -181,15 +157,52 @@ impl SellerTrait for SellerFirstPrice {
         "FIRST_PRICE".to_string()
     }
     
-    fn create_converge(&self) -> Box<dyn crate::converge::ConvergingVariables> {
-        Box::new(ConvergingSingleVariable { converging_variable: 1.0 })
+    fn create_converging_variables(&self) -> Box<dyn crate::converge::ConvergingVariables> {
+        self.converger.create_converging_variables()
     }
     
-    fn converge_iteration(&self, _current_converge: &dyn SellerConverge, _next_converge: &mut dyn SellerConverge, _seller_stat: &crate::simulationrun::SellerStat) -> bool {
-        // First price sellers don't converge boost
-        false
+    fn converge_iteration(&self, current_converge: &dyn crate::converge::ConvergingVariables, next_converge: &mut dyn crate::converge::ConvergingVariables, seller_stat: &crate::simulationrun::SellerStat) -> bool {
+        self.converger.converge_iteration(current_converge, next_converge, seller_stat)
+    }
+}
+
+/// Seller with fixed price (cost per mille)
+pub struct SellerFixedPrice {
+    pub seller_id: usize,
+    pub seller_name: String,
+    pub fixed_cost_cpm: f64,
+    pub impressions_on_offer: usize,
+    pub converger: Box<dyn ConvergeAny<crate::simulationrun::SellerStat>>,
+    pub competition_generator: Box<dyn CompetitionGeneratorTrait>,
+    pub floor_generator: Box<dyn FloorGeneratorTrait>,
+}
+
+impl SellerTrait for SellerFixedPrice {
+    fn seller_id(&self) -> usize { self.seller_id }
+    fn seller_name(&self) -> &str { &self.seller_name }
+    fn get_impressions_on_offer(&self) -> usize { self.impressions_on_offer }
+    
+    fn get_supply_cost_cpm(&self, _buyer_win_cpm: f64) -> f64 {
+        self.fixed_cost_cpm
     }
     
+    fn generate_impression(&self, base_value: f64, rng: &mut StdRng) -> (Option<ImpressionCompetition>, f64) {
+        let competition = self.competition_generator.generate_competition(base_value, rng);
+        let floor_cpm = self.floor_generator.generate_floor(base_value, rng);
+        (competition, floor_cpm)
+    }
+    
+    fn charge_type_string(&self) -> String {
+        format!("FIXED_PRICE ({} CPM)", self.fixed_cost_cpm)
+    }
+    
+    fn create_converging_variables(&self) -> Box<dyn crate::converge::ConvergingVariables> {
+        self.converger.create_converging_variables()
+    }
+    
+    fn converge_iteration(&self, current_converge: &dyn crate::converge::ConvergingVariables, next_converge: &mut dyn crate::converge::ConvergingVariables, seller_stat: &crate::simulationrun::SellerStat) -> bool {
+        self.converger.converge_iteration(current_converge, next_converge, seller_stat)
+    }
 }
 
 /// Container for sellers with methods to add sellers
@@ -209,39 +222,46 @@ impl Sellers {
     /// 
     /// # Arguments
     /// * `seller_name` - Name of the seller
-    /// * `seller_type` - Seller type (FIXED_COST_FIXED_BOOST, FIXED_COST_DYNAMIC_BOOST, or FIRST_PRICE)
-    /// * `num_impressions` - Number of impressions this seller will offer
+    /// * `seller_type` - Seller type (FIRST_PRICE or FIXED_PRICE)
+    /// * `seller_converge` - Convergence strategy (NONE or TOTAL_COST)
+    /// * `impressions_on_offer` - Number of impressions this seller will offer
     /// * `competition_generator` - Generator for impression competition data
     /// * `floor_generator` - Generator for floor CPM values
-    pub fn add(&mut self, seller_name: String, seller_type: SellerType, num_impressions: usize, competition_generator: Box<dyn CompetitionGeneratorTrait>, floor_generator: Box<dyn FloorGeneratorTrait>) {
+    pub fn add(&mut self, seller_name: String, seller_type: SellerType, seller_converge: SellerConvergeStrategy, impressions_on_offer: usize, competition_generator: Box<dyn CompetitionGeneratorTrait>, floor_generator: Box<dyn FloorGeneratorTrait>) {
         let seller_id = self.sellers.len();
+        
+        // Create converger based on seller_converge
+        let converger: Box<dyn ConvergeAny<crate::simulationrun::SellerStat>> = match seller_converge {
+            SellerConvergeStrategy::NONE { default_value } => {
+                Box::new(ConvergeNone { default_value })
+            }
+            SellerConvergeStrategy::TOTAL_COST { target_total_cost } => {
+                Box::new(ConvergeTotalCost {
+                    target_cost: target_total_cost,
+                    controller: ControllerProportional::new(),
+                })
+            }
+        };
+        
+        // Create seller based on seller_type
         match seller_type {
-            SellerType::FIXED_COST_FIXED_BOOST { fixed_cost_cpm } => {
-                self.sellers.push(Box::new(SellerFixedCostFixedBoost {
-                    seller_id,
-                    seller_name,
-                    fixed_cost_cpm,
-                    num_impressions,
-                    competition_generator,
-                    floor_generator,
-                }));
-            }
-            SellerType::FIXED_COST_DYNAMIC_BOOST { fixed_cost_cpm } => {
-                self.sellers.push(Box::new(SellerFixedCostDynamicBoost {
-                    seller_id,
-                    seller_name,
-                    fixed_cost_cpm,
-                    num_impressions,
-                    boost_converger: ControllerProportional::new(),
-                    competition_generator,
-                    floor_generator,
-                }));
-            }
             SellerType::FIRST_PRICE => {
                 self.sellers.push(Box::new(SellerFirstPrice {
                     seller_id,
                     seller_name,
-                    num_impressions,
+                    impressions_on_offer,
+                    converger,
+                    competition_generator,
+                    floor_generator,
+                }));
+            }
+            SellerType::FIXED_PRICE { fixed_cost_cpm } => {
+                self.sellers.push(Box::new(SellerFixedPrice {
+                    seller_id,
+                    seller_name,
+                    fixed_cost_cpm,
+                    impressions_on_offer,
+                    converger,
                     competition_generator,
                     floor_generator,
                 }));

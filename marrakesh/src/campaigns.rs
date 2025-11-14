@@ -20,8 +20,8 @@ pub enum CampaignType {
 #[allow(non_camel_case_types)]
 #[derive(Debug, Clone, PartialEq)]
 pub enum ConvergeTarget {
-    TOTAL_BUDGET { target: f64 },
-    TOTAL_IMPRESSIONS { target: i32 },
+    TOTAL_BUDGET { target_total_budget: f64 },
+    TOTAL_IMPRESSIONS { target_total_impressions: i32 },
 }
 
 
@@ -159,8 +159,8 @@ impl CampaignTrait for CampaignMultiplicativePacing {
     }
     
     fn get_bid(&self, impression: &Impression, converge: &dyn crate::converge::ConvergingVariables, seller_boost_factor: f64, _logger: &mut crate::logger::Logger) -> Option<f64> {
-        let converge = converge.as_any().downcast_ref::<ConvergingSingleVariable>().unwrap();
-        Some(converge.converging_variable * impression.value_to_campaign_id[self.campaign_id] * seller_boost_factor)
+        let pacing = self.converger.get_main_variable(converge);
+        Some(pacing * impression.value_to_campaign_id[self.campaign_id] * seller_boost_factor)
     }
     
     fn converge_iteration(&self, current_converge: &dyn crate::converge::ConvergingVariables, next_converge: &mut dyn crate::converge::ConvergingVariables, campaign_stat: &crate::simulationrun::CampaignStat) -> bool {
@@ -193,18 +193,18 @@ impl CampaignTrait for CampaignOptimalBidding {
     }
     
     fn get_bid(&self, impression: &Impression, converge: &dyn crate::converge::ConvergingVariables, seller_boost_factor: f64, logger: &mut Logger) -> Option<f64> {
-        let converge = converge.as_any().downcast_ref::<ConvergingSingleVariable>().unwrap();
+        let pacing = self.converger.get_main_variable(converge);
         
         // Handle zero or very small pacing to avoid division by zero
-        if converge.converging_variable <= 1e-10 {
+        if pacing <= 1e-10 {
             return Some(0.0);
         }
         
-        // a) Calculate marginal_utility_of_spend as 1.0 / converge.converging_variable
+        // a) Calculate marginal_utility_of_spend as 1.0 / pacing
         // In pacing converger we assume higher pacing leads to more spend
         // but marginal utility of spend actually has to decrease to have more spend
         // so we do this non-linear transform. works well enough, but could probably be improved.
-        let marginal_utility_of_spend = 1.0 / converge.converging_variable;
+        let marginal_utility_of_spend = 1.0 / pacing;
         
         // b) Calculate value as multiplication between seller_boost_factor and impression value to campaign id
         let value = seller_boost_factor * impression.value_to_campaign_id[self.campaign_id];
@@ -296,15 +296,15 @@ impl Campaigns {
         
         // Create converger based on converge_target
         let converger: Box<dyn ConvergeAny<crate::simulationrun::CampaignStat>> = match converge_target {
-            ConvergeTarget::TOTAL_IMPRESSIONS { target } => {
+            ConvergeTarget::TOTAL_IMPRESSIONS { target_total_impressions } => {
                 Box::new(ConvergeTotalImpressions {
-                    total_impressions_target: target,
+                    total_impressions_target: target_total_impressions,
                     controller: ControllerProportional::new(),
                 })
             }
-            ConvergeTarget::TOTAL_BUDGET { target } => {
+            ConvergeTarget::TOTAL_BUDGET { target_total_budget } => {
                 Box::new(ConvergeTotalBudget {
-                    total_budget_target: target,
+                    total_budget_target: target_total_budget,
                     controller: ControllerProportional::new(),
                 })
             }

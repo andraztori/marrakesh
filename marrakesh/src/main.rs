@@ -17,7 +17,7 @@ mod s_optimal;
 mod s_mrg_boost;
 mod s_mrg_dynamic_boost;
 
-use sellers::{SellerType, Sellers};
+use sellers::{SellerType, SellerConvergeStrategy, Sellers};
 use campaigns::{CampaignType, ConvergeTarget, Campaigns};
 use converge::SimulationConverge;
 use impressions::Impressions;
@@ -115,22 +115,23 @@ fn main() {
         campaigns.add(
             "Campaign 0".to_string(),  // campaign_name
             CampaignType::MULTIPLICATIVE_PACING,
-            ConvergeTarget::TOTAL_IMPRESSIONS { target: 1000 },
+            ConvergeTarget::TOTAL_IMPRESSIONS { target_total_impressions: 1000 },
         );
 
         campaigns.add(
             "Campaign 1".to_string(),  // campaign_name
             CampaignType::MULTIPLICATIVE_PACING,
-            ConvergeTarget::TOTAL_BUDGET { target: 20.0 },
+            ConvergeTarget::TOTAL_BUDGET { target_total_budget: 20.0 },
         );
 
         // Add two sellers (IDs are automatically set to match Vec index)
         sellers.add(
             "MRG".to_string(),  // seller_name
-            SellerType::FIXED_COST_FIXED_BOOST {
+            SellerType::FIXED_PRICE {
                 fixed_cost_cpm: 10.0,
-            },  // charge_type
-            1000,  // num_impressions
+            },  // seller_type
+            SellerConvergeStrategy::NONE { default_value: 1.0 },  // seller_converge
+            1000,  // impressions_on_offer
             CompetitionGeneratorNone::new(),  // competition_generator
             FloorGeneratorFixed::new(0.0),  // floor_generator
         );
@@ -138,7 +139,8 @@ fn main() {
         sellers.add(
             "HB".to_string(),  // seller_name
             SellerType::FIRST_PRICE,  // seller_type
-            1000,  // num_impressions
+            SellerConvergeStrategy::NONE { default_value: 1.0 },  // seller_converge
+            1000,  // impressions_on_offer
             CompetitionGeneratorParametrizedLogNormal::new(10.0),  // competition_generator
             FloorGeneratorLogNormal::new(0.2, 3.0),  // floor_generator
         );

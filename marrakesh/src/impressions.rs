@@ -157,7 +157,7 @@ impl Impressions {
         let mut impressions = Vec::new();
 
         for seller in &sellers.sellers {
-            for _ in 0..seller.num_impressions() {
+            for _ in 0..seller.get_impressions_on_offer() {
                 // First calculate base impression value (needed for floor generation)
                 let base_impression_value = params.base_impression_value_dist.sample(&mut rng);
                 

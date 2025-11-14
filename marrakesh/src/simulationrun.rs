@@ -90,7 +90,7 @@ impl SellerConverges {
     pub fn new(sellers: &Sellers) -> Self {
         let mut seller_converges = Vec::with_capacity(sellers.sellers.len());
         for seller in &sellers.sellers {
-            seller_converges.push(seller.create_converge());
+            seller_converges.push(seller.create_converging_variables());
         }
         Self { seller_converges }
     }
@@ -242,7 +242,7 @@ impl SimulationStat {
             
             logln!(logger, event, "\nSeller {} ({}) - {}", 
                      seller.seller_id(), seller.seller_name(), seller.charge_type_string());
-            logln!(logger, event, "  Impressions (sold/on offer): {} / {}", seller_stat.impressions_sold, seller.num_impressions());
+            logln!(logger, event, "  Impressions (sold/on offer): {} / {}", seller_stat.impressions_sold, seller.get_impressions_on_offer());
             logln!(logger, event, "  Total Costs (supply/virtual/buyer): {:.2} / {:.2} / {:.2}", 
                      seller_stat.total_supply_cost, 
                      seller_stat.total_virtual_cost, 
