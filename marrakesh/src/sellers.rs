@@ -2,7 +2,7 @@ use crate::competition::{ImpressionCompetition, CompetitionGeneratorTrait};
 use crate::floors::FloorGeneratorTrait;
 use crate::utils::ControllerProportional;
 use rand::rngs::StdRng;
-pub use crate::converge::{Converge as SellerConverge, ConvergingParam};
+pub use crate::converge::{ConvergingVariables as SellerConverge, ConvergingSingleVariable};
 
 /// Seller type for different pricing models
 #[allow(non_camel_case_types)]
@@ -43,7 +43,7 @@ pub trait SellerTrait {
     fn charge_type_string(&self) -> String;
     
     /// Create a new convergence parameter for this seller type
-    fn create_converge(&self) -> Box<dyn crate::converge::Converge>;
+    fn create_converge(&self) -> Box<dyn crate::converge::ConvergingVariables>;
     
     /// Perform one iteration of convergence, updating the next convergence parameter
     /// This method encapsulates the convergence logic for each seller type
@@ -55,7 +55,7 @@ pub trait SellerTrait {
     /// 
     /// # Returns
     /// `true` if boost_factor was changed, `false` if it remained the same
-    fn converge_iteration(&self, current_converge: &dyn crate::converge::Converge, next_converge: &mut dyn crate::converge::Converge, seller_stat: &crate::simulationrun::SellerStat) -> bool;
+    fn converge_iteration(&self, current_converge: &dyn crate::converge::ConvergingVariables, next_converge: &mut dyn crate::converge::ConvergingVariables, seller_stat: &crate::simulationrun::SellerStat) -> bool;
     
 }
 
@@ -88,8 +88,8 @@ impl SellerTrait for SellerFixedCostFixedBoost {
         format!("FIXED_COST ({} CPM)", self.fixed_cost_cpm)
     }
     
-    fn create_converge(&self) -> Box<dyn crate::converge::Converge> {
-        Box::new(ConvergingParam { converging_param: 1.0 })
+    fn create_converge(&self) -> Box<dyn crate::converge::ConvergingVariables> {
+        Box::new(ConvergingSingleVariable { converging_variable: 1.0 })
     }
     
     fn converge_iteration(&self, _current_converge: &dyn SellerConverge, _next_converge: &mut dyn SellerConverge, _seller_stat: &crate::simulationrun::SellerStat) -> bool {
@@ -129,24 +129,24 @@ impl SellerTrait for SellerFixedCostDynamicBoost {
         format!("FIXED_COST ({} CPM)", self.fixed_cost_cpm)
     }
     
-    fn create_converge(&self) -> Box<dyn crate::converge::Converge> {
-        Box::new(ConvergingParam { converging_param: 1.0 })
+    fn create_converge(&self) -> Box<dyn crate::converge::ConvergingVariables> {
+        Box::new(ConvergingSingleVariable { converging_variable: 1.0 })
     }
     
-    fn converge_iteration(&self, current_converge: &dyn crate::converge::Converge, next_converge: &mut dyn crate::converge::Converge, seller_stat: &crate::simulationrun::SellerStat) -> bool {
+    fn converge_iteration(&self, current_converge: &dyn crate::converge::ConvergingVariables, next_converge: &mut dyn crate::converge::ConvergingVariables, seller_stat: &crate::simulationrun::SellerStat) -> bool {
         // Downcast to concrete types at the beginning
-        let current_converge = current_converge.as_any().downcast_ref::<ConvergingParam>().unwrap();
-        let next_converge = next_converge.as_any_mut().downcast_mut::<ConvergingParam>().unwrap();
+        let current_converge = current_converge.as_any().downcast_ref::<ConvergingSingleVariable>().unwrap();
+        let next_converge = next_converge.as_any_mut().downcast_mut::<ConvergingSingleVariable>().unwrap();
         
         // Converge when cost of impressions (num_impressions * fixed_cost_cpm) matches virtual price
         // fixed_cost_cpm is in CPM (cost per 1000 impressions), so divide by 1000 to get cost per impression
         let target = (self.num_impressions as f64) * self.fixed_cost_cpm / 1000.0;
         let actual = seller_stat.total_virtual_cost;
-        let current_boost = current_converge.converging_param;
+        let current_boost = current_converge.converging_variable;
         
         // Use the same controller logic as campaigns, but for boost_factor
         let (new_boost, changed) = self.boost_converger.pacing_in_next_iteration(target, actual, current_boost);
-        next_converge.converging_param = new_boost;
+        next_converge.converging_variable = new_boost;
         
         changed
     }
@@ -181,8 +181,8 @@ impl SellerTrait for SellerFirstPrice {
         "FIRST_PRICE".to_string()
     }
     
-    fn create_converge(&self) -> Box<dyn crate::converge::Converge> {
-        Box::new(ConvergingParam { converging_param: 1.0 })
+    fn create_converge(&self) -> Box<dyn crate::converge::ConvergingVariables> {
+        Box::new(ConvergingSingleVariable { converging_variable: 1.0 })
     }
     
     fn converge_iteration(&self, _current_converge: &dyn SellerConverge, _next_converge: &mut dyn SellerConverge, _seller_stat: &crate::simulationrun::SellerStat) -> bool {

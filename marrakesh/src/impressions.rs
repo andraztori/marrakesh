@@ -78,14 +78,14 @@ impl Impression {
 
     /// Run an auction for this impression with the given campaigns, campaign converges, seller, and seller convergence parameters
     /// Returns the auction result
-    pub fn run_auction(&self, campaigns: &Campaigns, campaign_converges: &CampaignConverges, seller: &dyn SellerTrait, seller_converge: &dyn crate::converge::Converge, logger: &mut crate::logger::Logger) -> AuctionResult {
+    pub fn run_auction(&self, campaigns: &Campaigns, campaign_converges: &CampaignConverges, seller: &dyn SellerTrait, seller_converge: &dyn crate::converge::ConvergingVariables, logger: &mut crate::logger::Logger) -> AuctionResult {
         // Get bids from all campaigns
         let mut winning_bid_cpm = 0.0;
         let mut winning_campaign_id: Option<usize> = None;
 
         // Get seller_boost_factor from seller convergence parameter
-        let seller_converge_boost = seller_converge.as_any().downcast_ref::<crate::converge::ConvergingParam>().unwrap();
-        let seller_boost_factor = seller_converge_boost.converging_param;
+        let seller_converge_boost = seller_converge.as_any().downcast_ref::<crate::converge::ConvergingSingleVariable>().unwrap();
+        let seller_boost_factor = seller_converge_boost.converging_variable;
 
         for campaign in &campaigns.campaigns {
             let campaign_id = campaign.campaign_id();

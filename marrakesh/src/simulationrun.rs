@@ -48,7 +48,7 @@ impl SimulationRun {
 /// Container for campaign convergence parameters
 /// Uses dynamic dispatch to support different campaign types
 pub struct CampaignConverges {
-    pub campaign_converges: Vec<Box<dyn crate::converge::Converge>>,
+    pub campaign_converges: Vec<Box<dyn crate::converge::ConvergingVariables>>,
 }
 
 impl Clone for CampaignConverges {
@@ -64,7 +64,7 @@ impl CampaignConverges {
     pub fn new(campaigns: &Campaigns) -> Self {
         let mut campaign_converges = Vec::with_capacity(campaigns.campaigns.len());
         for campaign in &campaigns.campaigns {
-            campaign_converges.push(campaign.create_converge());
+            campaign_converges.push(campaign.create_converging_variables());
         }
         Self { campaign_converges }
     }
@@ -73,7 +73,7 @@ impl CampaignConverges {
 /// Container for seller convergence parameters
 /// Uses dynamic dispatch to support different seller types
 pub struct SellerConverges {
-    pub seller_converges: Vec<Box<dyn crate::converge::Converge>>,
+    pub seller_converges: Vec<Box<dyn crate::converge::ConvergingVariables>>,
 }
 
 

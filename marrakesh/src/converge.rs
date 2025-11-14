@@ -6,9 +6,9 @@ use std::path::PathBuf;
 
 /// Unified trait for convergence parameters
 /// Used for both campaigns and sellers
-pub trait Converge: std::any::Any {
+pub trait ConvergingVariables: std::any::Any {
     /// Clone the convergence parameter
-    fn clone_box(&self) -> Box<dyn Converge>;
+    fn clone_box(&self) -> Box<dyn ConvergingVariables>;
     
     /// Get a reference to Any for downcasting
     fn as_any(&self) -> &dyn std::any::Any;
@@ -19,14 +19,43 @@ pub trait Converge: std::any::Any {
 
 /// Unified convergence parameter for both campaigns and sellers
 #[derive(Clone)]
-pub struct ConvergingParam {
-    pub converging_param: f64,
+pub struct ConvergingSingleVariable {
+    pub converging_variable: f64,
 }
 
-impl Converge for ConvergingParam {
-    fn clone_box(&self) -> Box<dyn Converge> { Box::new(self.clone()) }
+impl ConvergingVariables for ConvergingSingleVariable {
+    fn clone_box(&self) -> Box<dyn ConvergingVariables> { Box::new(self.clone()) }
     fn as_any(&self) -> &dyn std::any::Any { self }
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
+}
+
+/// Trait for campaign convergence strategies
+pub trait ConvergeAny<T> {
+    /// Perform one iteration of convergence, updating the next convergence parameter
+    /// 
+    /// # Arguments
+    /// * `current_converge` - Current convergence parameter
+    /// * `next_converge` - Next convergence parameter to be updated (mutable)
+    /// * `campaign_stat` - Statistics from the current simulation run
+    /// 
+    /// # Returns
+    /// `true` if pacing was changed, `false` if it remained the same
+    fn converge_iteration(&self, current_converge: &dyn ConvergingVariables, next_converge: &mut dyn ConvergingVariables, campaign_stat: &T) -> bool;
+    
+    /// Get the converging parameter (pacing value)
+    /// 
+    /// # Arguments
+    /// * `converge` - Convergence parameter to extract the pacing value from
+    fn get_main_variable(&self, converge: &dyn ConvergingVariables) -> f64;
+    
+    /// Create initial converging variables
+    fn create_converging_variables(&self) -> Box<dyn ConvergingVariables>;
+    
+    /// Get a string representation of the convergence target and pacing
+    /// 
+    /// # Arguments
+    /// * `converge` - Convergence parameter to include pacing information
+    fn converge_target_string(&self, converge: &dyn ConvergingVariables) -> String;
 }
 
 /// Object for running simulation convergence with pacing adjustments

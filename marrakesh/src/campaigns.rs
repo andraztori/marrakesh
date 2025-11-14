@@ -1,6 +1,6 @@
 use crate::impressions::Impression;
 use crate::utils::ControllerProportional;
-pub use crate::converge::ConvergingParam;
+pub use crate::converge::{ConvergingSingleVariable, ConvergeAny};
 
 /// Maximum number of campaigns supported (determines size of value_to_campaign_id array)
 pub const MAX_CAMPAIGNS: usize = 10;
@@ -18,107 +18,78 @@ pub enum CampaignType {
 /// Architecture explanation:
 /// CampaignTrait is used to describe a campaign
 /// Each campaign can use a convergence mechanism that needs to store data locally (for example pacing parameter)
-/// These can be anything a trait implementation wants it to be, so they need to be dnyamically created by create_converge
+/// These can be anything a trait implementation wants it to be, so they need to be dnyamically created by create_converging_variables
 /// Simulation then creates such converge parameters for each campaign and uses them to be able to call converge_iteration() 
-
-/// Trait for campaign convergence strategies
-pub trait CampaignConverge: std::any::Any {
-    /// Perform one iteration of convergence, updating the next convergence parameter
-    /// 
-    /// # Arguments
-    /// * `current_converge` - Current convergence parameter
-    /// * `next_converge` - Next convergence parameter to be updated (mutable)
-    /// * `campaign_stat` - Statistics from the current simulation run
-    /// 
-    /// # Returns
-    /// `true` if pacing was changed, `false` if it remained the same
-    fn converge_iteration(&self, current_converge: &dyn crate::converge::Converge, next_converge: &mut dyn crate::converge::Converge, campaign_stat: &crate::simulationrun::CampaignStat) -> bool;
-    
-    /// Get the converging parameter (pacing value)
-    /// 
-    /// # Arguments
-    /// * `converge` - Convergence parameter to extract the pacing value from
-    fn get_parameter(&self, converge: &dyn crate::converge::Converge) -> f64;
-    
-    /// Get a string representation of the convergence target and pacing
-    /// 
-    /// # Arguments
-    /// * `converge` - Convergence parameter to include pacing information
-    fn converge_target_string(&self, converge: &dyn crate::converge::Converge) -> String;
-    
-    /// Get a reference to Any for downcasting
-    fn as_any(&self) -> &dyn std::any::Any;
-}
 
 /// Convergence strategy for total impressions target
 pub struct ConvergeTotalImpressions {
     pub total_impressions_target: i32,
-    pub pacing_converger: ControllerProportional,
+    pub controller: ControllerProportional,
 }
 
-impl CampaignConverge for ConvergeTotalImpressions {
-    fn converge_iteration(&self, current_converge: &dyn crate::converge::Converge, next_converge: &mut dyn crate::converge::Converge, campaign_stat: &crate::simulationrun::CampaignStat) -> bool {
+impl ConvergeAny<crate::simulationrun::CampaignStat> for ConvergeTotalImpressions {
+    fn converge_iteration(&self, current_converge: &dyn crate::converge::ConvergingVariables, next_converge: &mut dyn crate::converge::ConvergingVariables, campaign_stat: &crate::simulationrun::CampaignStat) -> bool {
         // Downcast to concrete types at the beginning
-        let current_converge = current_converge.as_any().downcast_ref::<ConvergingParam>().unwrap();
-        let next_converge = next_converge.as_any_mut().downcast_mut::<ConvergingParam>().unwrap();
+        let current_converge = current_converge.as_any().downcast_ref::<ConvergingSingleVariable>().unwrap();
+        let next_converge = next_converge.as_any_mut().downcast_mut::<ConvergingSingleVariable>().unwrap();
         
         let target = self.total_impressions_target as f64;
         let actual = campaign_stat.impressions_obtained as f64;
-        let current_pacing = current_converge.converging_param;
+        let current_pacing = current_converge.converging_variable;
         
-        let (new_pacing, changed) = self.pacing_converger.pacing_in_next_iteration(target, actual, current_pacing);
-        next_converge.converging_param = new_pacing;
+        let (new_pacing, changed) = self.controller.pacing_in_next_iteration(target, actual, current_pacing);
+        next_converge.converging_variable = new_pacing;
         
         changed
     }
     
-    fn get_parameter(&self, converge: &dyn crate::converge::Converge) -> f64 {
-        converge.as_any().downcast_ref::<ConvergingParam>().unwrap().converging_param
+    fn get_main_variable(&self, converge: &dyn crate::converge::ConvergingVariables) -> f64 {
+        converge.as_any().downcast_ref::<ConvergingSingleVariable>().unwrap().converging_variable
     }
     
-    fn converge_target_string(&self, converge: &dyn crate::converge::Converge) -> String {
-        let pacing = converge.as_any().downcast_ref::<ConvergingParam>().unwrap().converging_param;
+    fn create_converging_variables(&self) -> Box<dyn crate::converge::ConvergingVariables> {
+        Box::new(ConvergingSingleVariable { converging_variable: 1.0 })
+    }
+    
+    fn converge_target_string(&self, converge: &dyn crate::converge::ConvergingVariables) -> String {
+        let pacing = converge.as_any().downcast_ref::<ConvergingSingleVariable>().unwrap().converging_variable;
         format!("Fixed impressions ({}), pacing: {:.2}", self.total_impressions_target, pacing)
-    }
-    
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
     }
 }
 
 /// Convergence strategy for total budget target
 pub struct ConvergeTotalBudget {
     pub total_budget_target: f64,
-    pub pacing_converger: ControllerProportional,
+    pub controller: ControllerProportional,
 }
 
-impl CampaignConverge for ConvergeTotalBudget {
-    fn converge_iteration(&self, current_converge: &dyn crate::converge::Converge, next_converge: &mut dyn crate::converge::Converge, campaign_stat: &crate::simulationrun::CampaignStat) -> bool {
+impl ConvergeAny<crate::simulationrun::CampaignStat> for ConvergeTotalBudget {
+    fn converge_iteration(&self, current_converge: &dyn crate::converge::ConvergingVariables, next_converge: &mut dyn crate::converge::ConvergingVariables, campaign_stat: &crate::simulationrun::CampaignStat) -> bool {
         // Downcast to concrete types at the beginning
-        let current_converge = current_converge.as_any().downcast_ref::<ConvergingParam>().unwrap();
-        let next_converge = next_converge.as_any_mut().downcast_mut::<ConvergingParam>().unwrap();
+        let current_converge = current_converge.as_any().downcast_ref::<ConvergingSingleVariable>().unwrap();
+        let next_converge = next_converge.as_any_mut().downcast_mut::<ConvergingSingleVariable>().unwrap();
         
         let target = self.total_budget_target;
         let actual = campaign_stat.total_buyer_charge;
-        let current_pacing = current_converge.converging_param;
+        let current_pacing = current_converge.converging_variable;
         
-        let (new_pacing, changed) = self.pacing_converger.pacing_in_next_iteration(target, actual, current_pacing);
-        next_converge.converging_param = new_pacing;
+        let (new_pacing, changed) = self.controller.pacing_in_next_iteration(target, actual, current_pacing);
+        next_converge.converging_variable = new_pacing;
         
         changed
     }
     
-    fn get_parameter(&self, converge: &dyn crate::converge::Converge) -> f64 {
-        converge.as_any().downcast_ref::<ConvergingParam>().unwrap().converging_param
+    fn get_main_variable(&self, converge: &dyn crate::converge::ConvergingVariables) -> f64 {
+        converge.as_any().downcast_ref::<ConvergingSingleVariable>().unwrap().converging_variable
     }
     
-    fn converge_target_string(&self, converge: &dyn crate::converge::Converge) -> String {
-        let pacing = converge.as_any().downcast_ref::<ConvergingParam>().unwrap().converging_param;
+    fn create_converging_variables(&self) -> Box<dyn crate::converge::ConvergingVariables> {
+        Box::new(ConvergingSingleVariable { converging_variable: 1.0 })
+    }
+    
+    fn converge_target_string(&self, converge: &dyn crate::converge::ConvergingVariables) -> String {
+        let pacing = converge.as_any().downcast_ref::<ConvergingSingleVariable>().unwrap().converging_variable;
         format!("Fixed budget ({:.2}), pacing: {:.2}", self.total_budget_target, pacing)
-    }
-    
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
     }
 }
 
@@ -133,13 +104,13 @@ pub trait CampaignTrait {
     /// Calculate the bid for this campaign given an impression, convergence parameter, and seller boost factor
     /// Bid = converge.pacing() * impression.value_to_campaign_id[campaign_id] * seller_boost_factor
     /// Returns None if bid cannot be calculated (logs warning via logger)
-    fn get_bid(&self, impression: &Impression, converge: &dyn crate::converge::Converge, seller_boost_factor: f64, logger: &mut crate::logger::Logger) -> Option<f64>;
+    fn get_bid(&self, impression: &Impression, converge: &dyn crate::converge::ConvergingVariables, seller_boost_factor: f64, logger: &mut crate::logger::Logger) -> Option<f64>;
     
 
     
     
     /// Create a new convergence parameter for this campaign type
-    fn create_converge(&self) -> Box<dyn crate::converge::Converge>;
+    fn create_converging_variables(&self) -> Box<dyn crate::converge::ConvergingVariables>;
 
     /// Perform one iteration of convergence, updating the next convergence parameter
     /// This method encapsulates the convergence logic for each campaign type
@@ -151,13 +122,13 @@ pub trait CampaignTrait {
     /// 
     /// # Returns
     /// `true` if pacing was changed, `false` if it remained the same
-    fn converge_iteration(&self, current_converge: &dyn crate::converge::Converge, next_converge: &mut dyn crate::converge::Converge, campaign_stat: &crate::simulationrun::CampaignStat) -> bool;
+    fn converge_iteration(&self, current_converge: &dyn crate::converge::ConvergingVariables, next_converge: &mut dyn crate::converge::ConvergingVariables, campaign_stat: &crate::simulationrun::CampaignStat) -> bool;
 
     /// Get a string representation of the campaign type and convergence strategy
     /// 
     /// # Arguments
     /// * `converge` - Convergence parameter to include pacing information
-    fn type_and_converge_string(&self, converge: &dyn crate::converge::Converge) -> String;
+    fn type_and_converge_string(&self, converge: &dyn crate::converge::ConvergingVariables) -> String;
 
 }
 
@@ -165,8 +136,7 @@ pub trait CampaignTrait {
 pub struct CampaignMultiplicativePacing {
     pub campaign_id: usize,
     pub campaign_name: String,
-    pub pacing_converger: ControllerProportional,
-    pub converge_strategy: Box<dyn CampaignConverge>,
+    pub converger: Box<dyn ConvergeAny<crate::simulationrun::CampaignStat>>,
 }
 
 impl CampaignTrait for CampaignMultiplicativePacing {
@@ -178,21 +148,21 @@ impl CampaignTrait for CampaignMultiplicativePacing {
         &self.campaign_name
     }
     
-    fn get_bid(&self, impression: &Impression, converge: &dyn crate::converge::Converge, seller_boost_factor: f64, _logger: &mut crate::logger::Logger) -> Option<f64> {
-        let converge = converge.as_any().downcast_ref::<ConvergingParam>().unwrap();
-        Some(converge.converging_param * impression.value_to_campaign_id[self.campaign_id] * seller_boost_factor)
+    fn get_bid(&self, impression: &Impression, converge: &dyn crate::converge::ConvergingVariables, seller_boost_factor: f64, _logger: &mut crate::logger::Logger) -> Option<f64> {
+        let converge = converge.as_any().downcast_ref::<ConvergingSingleVariable>().unwrap();
+        Some(converge.converging_variable * impression.value_to_campaign_id[self.campaign_id] * seller_boost_factor)
     }
     
-    fn converge_iteration(&self, current_converge: &dyn crate::converge::Converge, next_converge: &mut dyn crate::converge::Converge, campaign_stat: &crate::simulationrun::CampaignStat) -> bool {
-        self.converge_strategy.converge_iteration(current_converge, next_converge, campaign_stat)
+    fn converge_iteration(&self, current_converge: &dyn crate::converge::ConvergingVariables, next_converge: &mut dyn crate::converge::ConvergingVariables, campaign_stat: &crate::simulationrun::CampaignStat) -> bool {
+        self.converger.converge_iteration(current_converge, next_converge, campaign_stat)
     }
     
-    fn type_and_converge_string(&self, converge: &dyn crate::converge::Converge) -> String {
-        format!("Multiplicative pacing ({})", self.converge_strategy.converge_target_string(converge))
+    fn type_and_converge_string(&self, converge: &dyn crate::converge::ConvergingVariables) -> String {
+        format!("Multiplicative pacing ({})", self.converger.converge_target_string(converge))
     }
     
-    fn create_converge(&self) -> Box<dyn crate::converge::Converge> {
-        Box::new(ConvergingParam { converging_param: 1.0 })
+    fn create_converging_variables(&self) -> Box<dyn crate::converge::ConvergingVariables> {
+        self.converger.create_converging_variables()
     }
 }
 
@@ -228,10 +198,9 @@ impl Campaigns {
                 self.campaigns.push(Box::new(CampaignMultiplicativePacing {
                     campaign_id,
                     campaign_name,
-                    pacing_converger: ControllerProportional::new(),
-                    converge_strategy: Box::new(ConvergeTotalImpressions {
+                    converger: Box::new(ConvergeTotalImpressions {
                         total_impressions_target,
-                        pacing_converger: ControllerProportional::new(),
+                        controller: ControllerProportional::new(),
                     }),
                 }));
             }
@@ -239,20 +208,19 @@ impl Campaigns {
                 self.campaigns.push(Box::new(CampaignMultiplicativePacing {
                     campaign_id,
                     campaign_name,
-                    pacing_converger: ControllerProportional::new(),
-                    converge_strategy: Box::new(ConvergeTotalBudget {
+                    converger: Box::new(ConvergeTotalBudget {
                         total_budget_target,
-                        pacing_converger: ControllerProportional::new(),
+                        controller: ControllerProportional::new(),
                     }),
                 }));
             }
             CampaignType::FIXED_BUDGET_OPTIMAL_BIDDING { total_budget_target } => {
-                self.campaigns.push(Box::new(crate::campaigns_optimal_bidding::CampaignFixedBudgetOptimalBidding {
+                self.campaigns.push(Box::new(crate::campaigns_optimal_bidding::CampaignOptimalBidding {
                     campaign_id,
                     campaign_name,
-                    converge_strategy: Box::new(ConvergeTotalBudget {
+                    converger: Box::new(ConvergeTotalBudget {
                         total_budget_target,
-                        pacing_converger: ControllerProportional::new(),
+                        controller: ControllerProportional::new(),
                     }),
                 }));
             }
@@ -270,16 +238,15 @@ mod tests {
         let campaign = CampaignMultiplicativePacing {
             campaign_id: 2,
             campaign_name: "Test Campaign".to_string(),
-            pacing_converger: ControllerProportional::new(),
-            converge_strategy: Box::new(ConvergeTotalImpressions {
+            converger: Box::new(ConvergeTotalImpressions {
                 total_impressions_target: 1000,
-                pacing_converger: ControllerProportional::new(),
+                controller: ControllerProportional::new(),
             }),
         };
 
         // Create a campaign converge with pacing = 0.5
-        let campaign_converge: Box<dyn crate::converge::Converge> = Box::new(ConvergingParam {
-            converging_param: 0.5,
+        let campaign_converge: Box<dyn crate::converge::ConvergingVariables> = Box::new(ConvergingSingleVariable {
+            converging_variable: 0.5,
         });
 
         // Create an impression with value_to_campaign_id[2] = 20.0
@@ -311,16 +278,15 @@ mod tests {
         let campaign = CampaignMultiplicativePacing {
             campaign_id: 0,
             campaign_name: "Test Campaign".to_string(),
-            pacing_converger: ControllerProportional::new(),
-            converge_strategy: Box::new(ConvergeTotalBudget {
+            converger: Box::new(ConvergeTotalBudget {
                 total_budget_target: 5000.0,
-                pacing_converger: ControllerProportional::new(),
+                controller: ControllerProportional::new(),
             }),
         };
 
         // Create a campaign converge with pacing = 1.0
-        let campaign_converge: Box<dyn crate::converge::Converge> = Box::new(ConvergingParam {
-            converging_param: 1.0,
+        let campaign_converge: Box<dyn crate::converge::ConvergingVariables> = Box::new(ConvergingSingleVariable {
+            converging_variable: 1.0,
         });
 
         // Create an impression with value_to_campaign_id[0] = 15.0
@@ -352,16 +318,15 @@ mod tests {
         let campaign = CampaignMultiplicativePacing {
             campaign_id: 1,
             campaign_name: "Test Campaign".to_string(),
-            pacing_converger: ControllerProportional::new(),
-            converge_strategy: Box::new(ConvergeTotalImpressions {
+            converger: Box::new(ConvergeTotalImpressions {
                 total_impressions_target: 1000,
-                pacing_converger: ControllerProportional::new(),
+                controller: ControllerProportional::new(),
             }),
         };
 
         // Create a campaign converge with pacing = 0.0
-        let campaign_converge: Box<dyn crate::converge::Converge> = Box::new(ConvergingParam {
-            converging_param: 0.0,
+        let campaign_converge: Box<dyn crate::converge::ConvergingVariables> = Box::new(ConvergingSingleVariable {
+            converging_variable: 0.0,
         });
 
         // Create an impression with value_to_campaign_id[1] = 100.0
