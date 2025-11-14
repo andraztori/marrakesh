@@ -104,7 +104,7 @@ impl CompetitionGeneratorTrait for CompetitionGeneratorParametrizedLogNormal {
             let prob_at_zero = temp_sigmoid.get_probability(0.0);
             
             // Accept if probability at 0.0 is <= 0.01
-            if prob_at_zero <= 0.05 {
+            if prob_at_zero <= 0.1 {
                 break (offset, scale);
             }
             // Otherwise, reject and resample

@@ -1,14 +1,15 @@
 use crate::impressions::Impression;
-use crate::utils::ControllerProportional;
-use crate::campaigns::{CampaignTrait, CampaignConverge, CampaignConvergePacing};
+use crate::campaigns::{CampaignTrait, CampaignConverge};
+use crate::converge::ConvergingParam;
 use crate::sigmoid::Sigmoid;
+use crate::logger::{Logger, LogEvent};
+use crate::warnln;
 
 /// Campaign with fixed budget target using optimal bidding
 pub struct CampaignFixedBudgetOptimalBidding {
     pub campaign_id: usize,
     pub campaign_name: String,
-    pub total_budget_target: f64,
-    pub pacing_converger: ControllerProportional,
+    pub converge_strategy: Box<dyn CampaignConverge>,
 }
 
 impl CampaignTrait for CampaignFixedBudgetOptimalBidding {
@@ -20,16 +21,19 @@ impl CampaignTrait for CampaignFixedBudgetOptimalBidding {
         &self.campaign_name
     }
     
-    fn get_bid(&self, impression: &Impression, converge: &dyn CampaignConverge, seller_boost_factor: f64) -> f64 {
-        let converge = converge.as_any().downcast_ref::<CampaignConvergePacing>().unwrap();
+    fn get_bid(&self, impression: &Impression, converge: &dyn crate::converge::Converge, seller_boost_factor: f64, logger: &mut Logger) -> Option<f64> {
+        let converge = converge.as_any().downcast_ref::<ConvergingParam>().unwrap();
         
         // Handle zero or very small pacing to avoid division by zero
-        if converge.pacing <= 1e-10 {
-            return 0.0;
+        if converge.converging_param <= 1e-10 {
+            return Some(0.0);
         }
         
-        // a) Calculate marginal_utility_of_spend as 1.0 / converge.pacing
-        let marginal_utility_of_spend = 1.0 / converge.pacing;
+        // a) Calculate marginal_utility_of_spend as 1.0 / converge.converging_param
+        // In pacing converger we assume higher pacing leads to more spend
+        // but marginal utility of spend actually has to decrease to have more spend
+        // so we do this non-linear transform. works well enough, but could probably be improved.
+        let marginal_utility_of_spend = 1.0 / converge.converging_param;
         
         // b) Calculate value as multiplication between seller_boost_factor and impression value to campaign id
         let value = seller_boost_factor * impression.value_to_campaign_id[self.campaign_id];
@@ -38,7 +42,9 @@ impl CampaignTrait for CampaignFixedBudgetOptimalBidding {
         let competition = match &impression.competition {
             Some(comp) => comp,
             None => {
-                panic!("Optimal bidding is only possible when competition can be modeled. This impression has no competition data.");
+                warnln!(logger, LogEvent::Simulation, 
+                    "Optimal bidding is only possible when competition can be modeled. This impression has no competition data.");
+                return None;
             }
         };
         
@@ -53,51 +59,38 @@ impl CampaignTrait for CampaignFixedBudgetOptimalBidding {
         let bid = match sigmoid.marginal_utility_of_spend_inverse(marginal_utility_of_spend) {
             Some(bid) => bid,
             None => {
-                panic!(
+                warnln!(logger, LogEvent::Simulation,
                     "Failed to calculate marginal_utility_of_spend_inverse. \
-                    Sigmoid parameters: scale={}, offset={}, value={}. \
-                    Marginal utility of spend={}. \
-                    Competing bid={}. \
+                    Sigmoid parameters: offset={:.2}, scale={:.2}, value={:.2}. \
+                    Marginal utility of spend={:.2}. \
+                    Competing bid={:.2}. \
                     Optimal bidding requires this calculation to succeed.",
-                    sigmoid.scale,
                     sigmoid.offset,
+                    sigmoid.scale,
                     sigmoid.value,
                     marginal_utility_of_spend,
                     competition.bid_cpm
                 );
+                return None;
             }
         };
         
-        println!("Final bid: {:.6}, offset: {:.6}, scale: {:.6}, value: {:.6}, competing_bid: {:.6}", bid, sigmoid.offset, sigmoid.scale, sigmoid.value, competition.bid_cpm);
-        bid
+        let _probability = sigmoid.get_probability(bid);
+        //println!("Final bid: {:.4}, offset: {:.4}, scale: {:.4}, value: {:.4}, competing_bid: {:.4}, probability: {:.4}", 
+        //         bid, sigmoid.offset, sigmoid.scale, sigmoid.value, competition.bid_cpm, _probability);
+        Some(bid)
     }
     
-    fn converge_iteration(&self, current_converge: &dyn CampaignConverge, next_converge: &mut dyn CampaignConverge, campaign_stat: &crate::simulationrun::CampaignStat) -> bool {
-        // Downcast to concrete types at the beginning
-        let current_converge = current_converge.as_any().downcast_ref::<CampaignConvergePacing>().unwrap();
-        let next_converge = next_converge.as_any_mut().downcast_mut::<CampaignConvergePacing>().unwrap();
-        
-        let target = self.total_budget_target;
-        let actual = campaign_stat.total_buyer_charge;
-        let current_pacing = current_converge.pacing;
-        
-        let (new_pacing, changed) = self.pacing_converger.pacing_in_next_iteration(target, actual, current_pacing);
-        next_converge.pacing = new_pacing;
-        
-        changed
+    fn converge_iteration(&self, current_converge: &dyn crate::converge::Converge, next_converge: &mut dyn crate::converge::Converge, campaign_stat: &crate::simulationrun::CampaignStat) -> bool {
+        self.converge_strategy.converge_iteration(current_converge, next_converge, campaign_stat)
     }
     
-    fn type_and_target_string(&self) -> String {
-        format!("FIXED_BUDGET_OPTIMAL_BIDDING (target: {:.2})", self.total_budget_target)
+    fn type_and_converge_string(&self, converge: &dyn crate::converge::Converge) -> String {
+        format!("Optimal bidding ({})", self.converge_strategy.converge_target_string(converge))
     }
     
-    fn converge_string(&self, converge: &dyn CampaignConverge) -> String {
-        let converge = converge.as_any().downcast_ref::<CampaignConvergePacing>().unwrap();
-        format!("Pacing: {:.2}", converge.pacing)
-    }
-    
-    fn create_converge(&self) -> Box<dyn CampaignConverge> {
-        Box::new(CampaignConvergePacing { pacing: 1.0 })
+    fn create_converge(&self) -> Box<dyn crate::converge::Converge> {
+        Box::new(ConvergingParam { converging_param: 1.0 })
     }
 }
 

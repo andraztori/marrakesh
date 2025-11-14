@@ -4,6 +4,31 @@ use crate::logln;
 use crate::warnln;
 use std::path::PathBuf;
 
+/// Unified trait for convergence parameters
+/// Used for both campaigns and sellers
+pub trait Converge: std::any::Any {
+    /// Clone the convergence parameter
+    fn clone_box(&self) -> Box<dyn Converge>;
+    
+    /// Get a reference to Any for downcasting
+    fn as_any(&self) -> &dyn std::any::Any;
+    
+    /// Get a mutable reference to Any for downcasting
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any;
+}
+
+/// Unified convergence parameter for both campaigns and sellers
+#[derive(Clone)]
+pub struct ConvergingParam {
+    pub converging_param: f64,
+}
+
+impl Converge for ConvergingParam {
+    fn clone_box(&self) -> Box<dyn Converge> { Box::new(self.clone()) }
+    fn as_any(&self) -> &dyn std::any::Any { self }
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
+}
+
 /// Object for running simulation convergence with pacing adjustments
 pub struct SimulationConverge {
     pub marketplace: Marketplace,
@@ -60,7 +85,7 @@ impl SimulationConverge {
             logln!(logger, LogEvent::Simulation, "\n=== {} - Iteration {} ===", variant_name, iteration + 1);
             
             // Run auctions for all impressions
-            let simulation_run = SimulationRun::new(&self.marketplace, &current_campaign_converges, &current_seller_converges);
+            let simulation_run = SimulationRun::new(&self.marketplace, &current_campaign_converges, &current_seller_converges, logger);
 
             // Generate statistics
             let stats = SimulationStat::new(&self.marketplace, &simulation_run);

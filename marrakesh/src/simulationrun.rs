@@ -30,14 +30,14 @@ pub struct SimulationRun {
 
 impl SimulationRun {
     /// Create a new SimulationRun container and run auctions for all impressions
-    pub fn new(marketplace: &Marketplace, campaign_converges: &CampaignConverges, seller_converges: &SellerConverges) -> Self {
+    pub fn new(marketplace: &Marketplace, campaign_converges: &CampaignConverges, seller_converges: &SellerConverges, logger: &mut Logger) -> Self {
         let mut results = Vec::with_capacity(marketplace.impressions.impressions.len());
         
         for impression in &marketplace.impressions.impressions {
             // Get the seller and seller_converge for this impression
             let seller = marketplace.sellers.sellers[impression.seller_id].as_ref();
             let seller_converge = seller_converges.seller_converges[seller.seller_id()].as_ref();
-            let result = impression.run_auction(&marketplace.campaigns, campaign_converges, seller, seller_converge);
+            let result = impression.run_auction(&marketplace.campaigns, campaign_converges, seller, seller_converge, logger);
             results.push(result);
         }
         
@@ -48,7 +48,7 @@ impl SimulationRun {
 /// Container for campaign convergence parameters
 /// Uses dynamic dispatch to support different campaign types
 pub struct CampaignConverges {
-    pub campaign_converges: Vec<Box<dyn crate::campaigns::CampaignConverge>>,
+    pub campaign_converges: Vec<Box<dyn crate::converge::Converge>>,
 }
 
 impl Clone for CampaignConverges {
@@ -73,7 +73,7 @@ impl CampaignConverges {
 /// Container for seller convergence parameters
 /// Uses dynamic dispatch to support different seller types
 pub struct SellerConverges {
-    pub seller_converges: Vec<Box<dyn crate::sellers::SellerConverge>>,
+    pub seller_converges: Vec<Box<dyn crate::converge::Converge>>,
 }
 
 
@@ -220,12 +220,11 @@ impl SimulationStat {
             let campaign = &campaigns.campaigns[index];
             let converge = campaign_converges.campaign_converges[index].as_ref();
             
-            // Use the trait method to get type and target string
-            let type_and_target = campaign.type_and_target_string();
-            let formatted_converge = campaign.converge_string(converge);
+            // Use the trait method to get type and convergence string
+            let type_and_target = campaign.type_and_converge_string(converge);
             
-            logln!(logger, event, "\nCampaign {} ({}) - {} - {}", 
-                     campaign.campaign_id(), campaign.campaign_name(), type_and_target, formatted_converge);
+            logln!(logger, event, "\nCampaign {} ({}) - {}", 
+                     campaign.campaign_id(), campaign.campaign_name(), type_and_target);
             logln!(logger, event, "  Impressions Obtained: {}", campaign_stat.impressions_obtained);
             logln!(logger, event, "  Costs (supply/virtual/buyer): {:.2} / {:.2} / {:.2}", 
                      campaign_stat.total_supply_cost, 
@@ -236,16 +235,13 @@ impl SimulationStat {
     }
 
     /// Output seller statistics (without header, for compact iteration output)
-    pub fn printout_sellers(&self, sellers: &Sellers, seller_converges: &SellerConverges, logger: &mut Logger, event: LogEvent) {
+    pub fn printout_sellers(&self, sellers: &Sellers, _seller_converges: &SellerConverges, logger: &mut Logger, event: LogEvent) {
         
         for (index, seller_stat) in self.seller_stats.iter().enumerate() {
             let seller = &sellers.sellers[index];
-            let converge = seller_converges.seller_converges[index].as_ref();
             
-            let formatted_converge = seller.converge_string(converge);
-            
-            logln!(logger, event, "\nSeller {} ({}) - {} - {}", 
-                     seller.seller_id(), seller.seller_name(), seller.charge_type_string(), formatted_converge);
+            logln!(logger, event, "\nSeller {} ({}) - {}", 
+                     seller.seller_id(), seller.seller_name(), seller.charge_type_string());
             logln!(logger, event, "  Impressions (sold/on offer): {} / {}", seller_stat.impressions_sold, seller.num_impressions());
             logln!(logger, event, "  Total Costs (supply/virtual/buyer): {:.2} / {:.2} / {:.2}", 
                      seller_stat.total_supply_cost, 

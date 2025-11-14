@@ -49,7 +49,7 @@ fn prepare_simulationconverge(hb_impressions: usize, campaign_type: CampaignType
     // Create impressions for all sellers using default parameters
     let impressions_params = ImpressionsParam::new(
         utils::lognormal_dist(10.0, 3.0),  // base_impression_value_dist
-        utils::lognormal_dist(1.0, 0.6),   // value_to_campaign_multiplier_dist
+        utils::lognormal_dist(1.0, 0.7),   // value_to_campaign_multiplier_dist
     );
     let impressions = Impressions::new(&sellers, &impressions_params);
 
@@ -77,7 +77,7 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
     
     // Run variant B with optimal bidding
     let simulation_converge_b = prepare_simulationconverge(
-        10000,
+        num_impressions,
         CampaignType::FIXED_BUDGET_OPTIMAL_BIDDING {
             total_budget_target: 20.0,
         },

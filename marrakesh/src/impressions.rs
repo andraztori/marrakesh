@@ -1,6 +1,6 @@
 use rand::{rngs::StdRng, SeedableRng};
 use rand_distr::Distribution;
-use crate::sellers::{Sellers, SellerTrait, SellerConverge};
+use crate::sellers::{Sellers, SellerTrait};
 use crate::campaigns::{Campaigns, MAX_CAMPAIGNS};
 use crate::simulationrun::CampaignConverges;
 use crate::competition::ImpressionCompetition;
@@ -78,24 +78,26 @@ impl Impression {
 
     /// Run an auction for this impression with the given campaigns, campaign converges, seller, and seller convergence parameters
     /// Returns the auction result
-    pub fn run_auction(&self, campaigns: &Campaigns, campaign_converges: &CampaignConverges, seller: &dyn SellerTrait, seller_converge: &dyn SellerConverge) -> AuctionResult {
+    pub fn run_auction(&self, campaigns: &Campaigns, campaign_converges: &CampaignConverges, seller: &dyn SellerTrait, seller_converge: &dyn crate::converge::Converge, logger: &mut crate::logger::Logger) -> AuctionResult {
         // Get bids from all campaigns
         let mut winning_bid_cpm = 0.0;
         let mut winning_campaign_id: Option<usize> = None;
 
         // Get seller_boost_factor from seller convergence parameter
-        let seller_converge_boost = seller_converge.as_any().downcast_ref::<crate::sellers::SellerConvergeBoost>().unwrap();
-        let seller_boost_factor = seller_converge_boost.boost_factor;
+        let seller_converge_boost = seller_converge.as_any().downcast_ref::<crate::converge::ConvergingParam>().unwrap();
+        let seller_boost_factor = seller_converge_boost.converging_param;
 
         for campaign in &campaigns.campaigns {
             let campaign_id = campaign.campaign_id();
             let campaign_converge = &campaign_converges.campaign_converges[campaign_id];
             // Use the trait method for get_bid
-            let bid = campaign.get_bid(self, campaign_converge.as_ref(), seller_boost_factor);
-            if bid > winning_bid_cpm {
-                winning_bid_cpm = bid;
-                winning_campaign_id = Some(campaign_id);
+            if let Some(bid) = campaign.get_bid(self, campaign_converge.as_ref(), seller_boost_factor, logger) {
+                if bid > winning_bid_cpm {
+                    winning_bid_cpm = bid;
+                    winning_campaign_id = Some(campaign_id);
+                }
             }
+            // If get_bid returns None, skip this campaign (warning already logged)
         }
 
         // Determine the result based on winning bid
