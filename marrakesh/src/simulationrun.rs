@@ -76,6 +76,7 @@ pub struct SellerConverges {
     pub seller_converges: Vec<Box<dyn crate::sellers::SellerConverge>>,
 }
 
+
 impl Clone for SellerConverges {
     fn clone(&self) -> Self {
         Self {

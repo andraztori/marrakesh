@@ -8,8 +8,9 @@ pub const MAX_CAMPAIGNS: usize = 10;
 #[allow(non_camel_case_types)]
 #[derive(Debug, Clone, PartialEq)]
 pub enum CampaignType {
-    FIXED_IMPRESSIONS { total_impressions_target: i32 },
-    FIXED_BUDGET { total_budget_target: f64 },
+    FIXED_IMPRESSIONS_MULTIPLICATIVE_PACING { total_impressions_target: i32 },
+    FIXED_BUDGET_MULTIPLICATIVE_PACING { total_budget_target: f64 },
+    FIXED_BUDGET_OPTIMAL_BIDDING { total_budget_target: f64 },
 }
 
 
@@ -84,14 +85,14 @@ impl CampaignConverge for CampaignConvergePacing {
 }
 
 /// Campaign with fixed impressions target
-pub struct CampaignFixedImpressions {
+pub struct CampaignFixedImpressionsMultiplicativePacing {
     pub campaign_id: usize,
     pub campaign_name: String,
     pub total_impressions_target: i32,
     pub pacing_converger: ControllerProportional,
 }
 
-impl CampaignTrait for CampaignFixedImpressions {
+impl CampaignTrait for CampaignFixedImpressionsMultiplicativePacing {
     fn campaign_id(&self) -> usize {
         self.campaign_id
     }
@@ -121,7 +122,7 @@ impl CampaignTrait for CampaignFixedImpressions {
     }
     
     fn type_and_target_string(&self) -> String {
-        format!("FIXED_IMPRESSIONS (target: {})", self.total_impressions_target)
+        format!("FIXED_IMPRESSIONS_MULTIPLICATIVE_PACING (target: {})", self.total_impressions_target)
     }
     
     fn converge_string(&self, converge: &dyn CampaignConverge) -> String {
@@ -135,14 +136,14 @@ impl CampaignTrait for CampaignFixedImpressions {
 }
 
 /// Campaign with fixed budget target
-pub struct CampaignFixedBudget {
+pub struct CampaignFixedBudgetMutiplicativePacing {
     pub campaign_id: usize,
     pub campaign_name: String,
     pub total_budget_target: f64,
     pub pacing_converger: ControllerProportional,
 }
 
-impl CampaignTrait for CampaignFixedBudget {
+impl CampaignTrait for CampaignFixedBudgetMutiplicativePacing {
     fn campaign_id(&self) -> usize {
         self.campaign_id
     }
@@ -172,7 +173,7 @@ impl CampaignTrait for CampaignFixedBudget {
     }
     
     fn type_and_target_string(&self) -> String {
-        format!("FIXED_BUDGET (target: {:.2})", self.total_budget_target)
+        format!("FIXED_BUDGET_MULTIPLICATIVE_PACING (target: {:.2})", self.total_budget_target)
     }
     
     fn converge_string(&self, converge: &dyn CampaignConverge) -> String {
@@ -202,7 +203,7 @@ impl Campaigns {
     /// 
     /// # Arguments
     /// * `campaign_name` - Name of the campaign
-    /// * `campaign_type` - Type of campaign (FIXED_IMPRESSIONS or FIXED_BUDGET)
+    /// * `campaign_type` - Type of campaign
     pub fn add(&mut self, campaign_name: String, campaign_type: CampaignType) {
         if self.campaigns.len() >= MAX_CAMPAIGNS {
             panic!(
@@ -213,16 +214,24 @@ impl Campaigns {
         }
         let campaign_id = self.campaigns.len();
         match campaign_type {
-            CampaignType::FIXED_IMPRESSIONS { total_impressions_target } => {
-                self.campaigns.push(Box::new(CampaignFixedImpressions {
+            CampaignType::FIXED_IMPRESSIONS_MULTIPLICATIVE_PACING { total_impressions_target } => {
+                self.campaigns.push(Box::new(CampaignFixedImpressionsMultiplicativePacing {
                     campaign_id,
                     campaign_name,
                     total_impressions_target,
                     pacing_converger: ControllerProportional::new(),
                 }));
             }
-            CampaignType::FIXED_BUDGET { total_budget_target } => {
-                self.campaigns.push(Box::new(CampaignFixedBudget {
+            CampaignType::FIXED_BUDGET_MULTIPLICATIVE_PACING { total_budget_target } => {
+                self.campaigns.push(Box::new(CampaignFixedBudgetMutiplicativePacing {
+                    campaign_id,
+                    campaign_name,
+                    total_budget_target,
+                    pacing_converger: ControllerProportional::new(),
+                }));
+            }
+            CampaignType::FIXED_BUDGET_OPTIMAL_BIDDING { total_budget_target } => {
+                self.campaigns.push(Box::new(crate::campaigns_optimal_bidding::CampaignFixedBudgetOptimalBidding {
                     campaign_id,
                     campaign_name,
                     total_budget_target,
@@ -240,7 +249,7 @@ mod tests {
     #[test]
     fn test_get_bid() {
         // Create a campaign with campaign_id = 2
-        let campaign = CampaignFixedImpressions {
+        let campaign = CampaignFixedImpressionsMultiplicativePacing {
             campaign_id: 2,
             campaign_name: "Test Campaign".to_string(),
             total_impressions_target: 1000,
@@ -277,7 +286,7 @@ mod tests {
     #[test]
     fn test_get_bid_with_different_campaign_id() {
         // Create a campaign with campaign_id = 0
-        let campaign = CampaignFixedBudget {
+        let campaign = CampaignFixedBudgetMutiplicativePacing {
             campaign_id: 0,
             campaign_name: "Test Campaign".to_string(),
             total_budget_target: 5000.0,
@@ -314,7 +323,7 @@ mod tests {
     #[test]
     fn test_get_bid_with_zero_pacing() {
         // Create a campaign with campaign_id = 1
-        let campaign = CampaignFixedImpressions {
+        let campaign = CampaignFixedImpressionsMultiplicativePacing {
             campaign_id: 1,
             campaign_name: "Test Campaign".to_string(),
             total_impressions_target: 1000,

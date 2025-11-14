@@ -33,14 +33,14 @@ fn prepare_simulationconverge(mrg_boost_factor: f64) -> SimulationConverge {
     // Add two hardcoded campaigns (IDs are automatically set to match Vec index)
     campaigns.add(
         "Campaign 0".to_string(),  // campaign_name
-        CampaignType::FIXED_IMPRESSIONS {
+        CampaignType::FIXED_IMPRESSIONS_MULTIPLICATIVE_PACING {
             total_impressions_target: 1000,
         },  // campaign_type
     );
 
     campaigns.add(
         "Campaign 1".to_string(),  // campaign_name
-        CampaignType::FIXED_BUDGET {
+        CampaignType::FIXED_BUDGET_MULTIPLICATIVE_PACING {
             total_budget_target: 20.0,
         },  // campaign_type
     );

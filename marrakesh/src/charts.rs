@@ -29,7 +29,7 @@ fn generate_all_impressions() -> Vec<Impression> {
         let base_impression_value = Distribution::sample(&base_impression_value_dist, &mut rng);
         
         // Generate competition
-        let competition = competition_generator.generate_competition(&mut rng);
+        let competition = competition_generator.generate_competition(base_impression_value, &mut rng);
         
         // Generate floor
         let floor_cpm = floor_generator.generate_floor(base_impression_value, &mut rng);
@@ -52,144 +52,417 @@ fn generate_all_impressions() -> Vec<Impression> {
     impressions
 }
 
-/// Generate all histograms from pre-generated impressions
+/// Main function to generate all histograms
 pub fn generate_all_histograms() -> Result<(), Box<dyn std::error::Error>> {
-    println!("Generating all impressions...");
+    // Create charts directory if it doesn't exist
+    fs::create_dir_all("charts")?;
+    
+    // Generate all impression data once
     let impressions = generate_all_impressions();
     
-    println!("Creating histograms...");
+    // Generate all histograms from the same data
+    generate_bid_histogram(&impressions)?;
+    generate_floor_histogram(&impressions)?;
+    generate_base_impression_value_histogram(&impressions)?;
+    generate_win_rate_probability_histograms(&impressions)?;
+    generate_floors_and_competing_bid_histogram(&impressions)?;
     
-    generate_floor_and_bid_combined_histogram_from_impressions(&impressions)?;
-    generate_base_impression_value_histogram_from_impressions(&impressions)?;
-    generate_win_rate_sigmoid_combined_histogram_from_impressions(&impressions)?;
-    
-    println!("All histograms generated successfully!");
     Ok(())
 }
 
-/// Generate combined histogram of floor_cpm and competing bid_cpm on a single chart
-fn generate_floor_and_bid_combined_histogram_from_impressions(impressions: &[Impression]) -> Result<(), Box<dyn std::error::Error>> {
-    let bid_cpms: Vec<f64> = impressions.iter()
-        .filter_map(|imp| imp.competition.as_ref().map(|c| c.bid_cpm))
-        .collect();
-    let floor_cpms: Vec<f64> = impressions.iter().map(|imp| imp.floor_cpm).collect();
+/// Generate histogram for competing bids
+fn generate_bid_histogram(impressions: &[Impression]) -> Result<(), Box<dyn std::error::Error>> {
+    let mut bids = Vec::new();
+    for impression in impressions {
+        if let Some(ref competition) = impression.competition {
+            bids.push(competition.bid_cpm);
+        }
+    }
     
-    create_dual_histogram_combined(
-        &floor_cpms,
-        &bid_cpms,
-        "floor_and_bid_combined_histogram.png",
-        "Floor CPM and Competing Bid CPM",
-        "CPM",
+    if bids.is_empty() {
+        return Err("No competing bids found in impressions".into());
+    }
+    
+    create_single_histogram(
+        &bids,
+        "Competing Bid Distribution",
+        "charts/competing_bid_histogram.png",
+        "Competing Bid (CPM)",
+        &BLUE,
+    )?;
+    
+    Ok(())
+}
+
+/// Generate histogram for floor CPM values
+fn generate_floor_histogram(impressions: &[Impression]) -> Result<(), Box<dyn std::error::Error>> {
+    let floors: Vec<f64> = impressions.iter().map(|imp| imp.floor_cpm).collect();
+    
+    create_single_histogram(
+        &floors,
+        "Floor CPM Distribution",
+        "charts/floor_cpm_histogram.png",
+        "Floor CPM",
+        &RED,
+    )?;
+    
+    Ok(())
+}
+
+/// Generate histogram for base impression values
+fn generate_base_impression_value_histogram(impressions: &[Impression]) -> Result<(), Box<dyn std::error::Error>> {
+    let values: Vec<f64> = impressions.iter()
+        .map(|imp| imp.value_to_campaign_id[0])
+        .collect();
+    
+    create_single_histogram(
+        &values,
+        "Base Impression Value Distribution",
+        "charts/base_impression_value_histogram.png",
+        "Base Impression Value",
+        &GREEN,
+    )?;
+    
+    Ok(())
+}
+
+/// Generate side-by-side histograms for win rate probability offset and scale
+fn generate_win_rate_probability_histograms(impressions: &[Impression]) -> Result<(), Box<dyn std::error::Error>> {
+    let mut prediction_offsets = Vec::new();
+    let mut actual_offsets = Vec::new();
+    let mut prediction_scales = Vec::new();
+    let mut actual_scales = Vec::new();
+    
+    for impression in impressions {
+        if let Some(ref competition) = impression.competition {
+            prediction_offsets.push(competition.win_rate_prediction_sigmoid_offset);
+            actual_offsets.push(competition.win_rate_actual_sigmoid_offset);
+            prediction_scales.push(competition.win_rate_prediction_sigmoid_scale);
+            actual_scales.push(competition.win_rate_actual_sigmoid_scale);
+        }
+    }
+    
+    // Create side-by-side histograms for offset
+    create_side_by_side_histogram(
+        &actual_offsets,
+        &prediction_offsets,
+        "Actual",
+        "Prediction",
+        "Win Rate Probability Offset",
+        "charts/win_rate_offset_histogram.png",
+        "Sigmoid Offset",
+        DrawingStyle::Bars,
+        DrawingStyle::Line,
+        &BLUE,
+        &RED,
+    )?;
+    
+    // Create side-by-side histograms for scale
+    create_side_by_side_histogram(
+        &actual_scales,
+        &prediction_scales,
+        "Actual",
+        "Prediction",
+        "Win Rate Probability Scale",
+        "charts/win_rate_scale_histogram.png",
+        "Sigmoid Scale",
+        DrawingStyle::Bars,
+        DrawingStyle::Line,
+        &BLUE,
+        &RED,
+    )?;
+    
+    Ok(())
+}
+
+/// Generate combined histogram for floors and competing bids
+fn generate_floors_and_competing_bid_histogram(impressions: &[Impression]) -> Result<(), Box<dyn std::error::Error>> {
+    let mut floors = Vec::new();
+    let mut bids = Vec::new();
+    
+    for impression in impressions {
+        floors.push(impression.floor_cpm);
+        if let Some(ref competition) = impression.competition {
+            bids.push(competition.bid_cpm);
+        }
+    }
+    
+    create_side_by_side_histogram(
+        &floors,
+        &bids,
         "Floor",
         "Competing Bid",
-        RGBColor(50, 200, 50),    // Green for floor
-        RGBColor(50, 100, 200),   // Blue for competing bid
-    )
+        "Floor and Competing Bid Distribution",
+        "charts/floor_and_competing_bid_histogram.png",
+        "CPM",
+        DrawingStyle::Bars,
+        DrawingStyle::Line,
+        &GREEN,
+        &BLUE,
+    )?;
+    
+    Ok(())
 }
 
-/// Helper function to create a histogram with two series on the same chart
-/// This is a special case of create_side_by_side_histogram with empty right side
-fn create_dual_histogram_combined(
+#[derive(Clone, Copy)]
+enum DrawingStyle {
+    Bars,
+    Line,
+}
+
+/// Helper function to create a side-by-side histogram with two datasets
+/// Can render each dataset as either bars or lines
+fn create_side_by_side_histogram(
     values1: &[f64],
     values2: &[f64],
-    filename: &str,
-    caption: &str,
-    x_label: &str,
     label1: &str,
     label2: &str,
-    color1: RGBColor,
-    color2: RGBColor,
+    title: &str,
+    filename: &str,
+    x_label: &str,
+    style1: DrawingStyle,
+    style2: DrawingStyle,
+    color1: &RGBColor,
+    color2: &RGBColor,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // Call create_side_by_side_histogram with empty right side arrays
-    create_side_by_side_histogram(
-        values1,
-        values2,
-        &[],  // Empty right side
-        &[],  // Empty right side
-        filename,
-        caption,
-        caption,  // Right caption (unused when right side is empty)
-        x_label,
-        x_label,  // Right x_label (unused when right side is empty)
-        label1,
-        label2,
-        color1,
-        color2,
-        color1,  // Right colors (unused when right side is empty)
-        color2,
-    )
+    if values1.is_empty() || values2.is_empty() {
+        return Err(format!("Cannot create histogram: one or both datasets are empty").into());
+    }
+    
+    // Calculate statistics for both datasets
+    let min1 = values1.iter().cloned().fold(f64::INFINITY, f64::min);
+    let max1 = values1.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    let mean1 = values1.iter().sum::<f64>() / values1.len() as f64;
+    
+    let min2 = values2.iter().cloned().fold(f64::INFINITY, f64::min);
+    let max2 = values2.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    let mean2 = values2.iter().sum::<f64>() / values2.len() as f64;
+    
+    // Use the overall min and max for bin range
+    let overall_min = min1.min(min2);
+    let overall_max = max1.max(max2);
+    
+    // Create bins
+    const NUM_BINS: usize = 50;
+    let bin_width = (overall_max - overall_min) / NUM_BINS as f64;
+    
+    let mut bins1 = vec![0u32; NUM_BINS];
+    let mut bins2 = vec![0u32; NUM_BINS];
+    
+    // Fill bins for dataset 1
+    for &value in values1 {
+        let bin_idx = ((value - overall_min) / bin_width).floor() as usize;
+        let bin_idx = bin_idx.min(NUM_BINS - 1);
+        bins1[bin_idx] += 1;
+    }
+    
+    // Fill bins for dataset 2
+    for &value in values2 {
+        let bin_idx = ((value - overall_min) / bin_width).floor() as usize;
+        let bin_idx = bin_idx.min(NUM_BINS - 1);
+        bins2[bin_idx] += 1;
+    }
+    
+    // Find max count for y-axis
+    let max_count1 = *bins1.iter().max().unwrap_or(&0);
+    let max_count2 = *bins2.iter().max().unwrap_or(&0);
+    let max_count = max_count1.max(max_count2);
+    
+    // Create the drawing area
+    let root = BitMapBackend::new(filename, (1200, 600)).into_drawing_area();
+    root.fill(&WHITE)?;
+    
+    // Split into two charts
+    let (left, right) = root.split_horizontally(600);
+    
+    // Draw first chart (left)
+    {
+        let mut chart = ChartBuilder::on(&left)
+            .caption(format!("{} - {}", title, label1), ("sans-serif", 25))
+            .margin(10)
+            .x_label_area_size(40)
+            .y_label_area_size(50)
+            .build_cartesian_2d(overall_min..overall_max, 0u32..max_count + max_count / 10)?;
+        
+        chart.configure_mesh()
+            .x_desc(x_label)
+            .y_desc("Count")
+            .draw()?;
+        
+        match style1 {
+            DrawingStyle::Bars => {
+                // Draw as bars
+                chart.draw_series(
+                    bins1.iter().enumerate().map(|(i, &count)| {
+                        let x0 = overall_min + i as f64 * bin_width;
+                        let x1 = x0 + bin_width;
+                        Rectangle::new([(x0, 0), (x1, count)], color1.filled())
+                    })
+                )?
+                .label(label1)
+                .legend(|(x, y)| Rectangle::new([(x, y - 5), (x + 10, y + 5)], color1.filled()));
+            },
+            DrawingStyle::Line => {
+                // Draw as line
+                let line_data: Vec<(f64, u32)> = bins1.iter().enumerate()
+                    .map(|(i, &count)| {
+                        let x = overall_min + (i as f64 + 0.5) * bin_width;
+                        (x, count)
+                    })
+                    .collect();
+                
+                chart.draw_series(LineSeries::new(line_data, color1))?
+                    .label(label1)
+                    .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], color1));
+            }
+        }
+        
+        // Draw mean line
+        chart.draw_series(std::iter::once(PathElement::new(
+            vec![(mean1, 0), (mean1, max_count)],
+            &BLACK,
+        )))?
+        .label(format!("Mean: {:.2}", mean1))
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], &BLACK));
+        
+        chart.configure_series_labels()
+            .background_style(&WHITE.mix(0.8))
+            .border_style(&BLACK)
+            .draw()?;
+    }
+    
+    // Draw second chart (right)
+    {
+        let mut chart = ChartBuilder::on(&right)
+            .caption(format!("{} - {}", title, label2), ("sans-serif", 25))
+            .margin(10)
+            .x_label_area_size(40)
+            .y_label_area_size(50)
+            .build_cartesian_2d(overall_min..overall_max, 0u32..max_count + max_count / 10)?;
+        
+        chart.configure_mesh()
+            .x_desc(x_label)
+            .y_desc("Count")
+            .draw()?;
+        
+        match style2 {
+            DrawingStyle::Bars => {
+                // Draw as bars
+                chart.draw_series(
+                    bins2.iter().enumerate().map(|(i, &count)| {
+                        let x0 = overall_min + i as f64 * bin_width;
+                        let x1 = x0 + bin_width;
+                        Rectangle::new([(x0, 0), (x1, count)], color2.filled())
+                    })
+                )?
+                .label(label2)
+                .legend(|(x, y)| Rectangle::new([(x, y - 5), (x + 10, y + 5)], color2.filled()));
+            },
+            DrawingStyle::Line => {
+                // Draw as line
+                let line_data: Vec<(f64, u32)> = bins2.iter().enumerate()
+                    .map(|(i, &count)| {
+                        let x = overall_min + (i as f64 + 0.5) * bin_width;
+                        (x, count)
+                    })
+                    .collect();
+                
+                chart.draw_series(LineSeries::new(line_data, color2))?
+                    .label(label2)
+                    .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], color2));
+            }
+        }
+        
+        // Draw mean line
+        chart.draw_series(std::iter::once(PathElement::new(
+            vec![(mean2, 0), (mean2, max_count)],
+            &BLACK,
+        )))?
+        .label(format!("Mean: {:.2}", mean2))
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], &BLACK));
+        
+        chart.configure_series_labels()
+            .background_style(&WHITE.mix(0.8))
+            .border_style(&BLACK)
+            .draw()?;
+    }
+    
+    root.present()?;
+    
+    println!("Histogram saved to {}", filename);
+    println!("Left ({}) - Min: {:.2}, Max: {:.2}, Mean: {:.2}", label1, min1, max1, mean1);
+    println!("Right ({}) - Min: {:.2}, Max: {:.2}, Mean: {:.2}", label2, min2, max2, mean2);
+    
+    Ok(())
 }
 
-/// Helper function to create and save a histogram from a vector of values
-fn create_histogram(
+/// Helper function to create a single histogram
+fn create_single_histogram(
     values: &[f64],
+    title: &str,
     filename: &str,
-    caption: &str,
     x_label: &str,
-    color: RGBColor,
+    color: &RGBColor,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if values.is_empty() {
-        return Err("No values to create histogram".into());
+        return Err("Cannot create histogram: dataset is empty".into());
     }
     
-    // Find min and max for histogram bounds
-    let min_val = values.iter().fold(f64::INFINITY, |a, &b| a.min(b));
-    let max_val = values.iter().fold(f64::NEG_INFINITY, |a, &b| a.max(b));
+    // Calculate statistics
+    let min_val = values.iter().cloned().fold(f64::INFINITY, f64::min);
+    let max_val = values.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    let mean_val = values.iter().sum::<f64>() / values.len() as f64;
     
-    // Create histogram data
-    let num_buckets = 100;
-    let bucket_width = (max_val - min_val) / num_buckets as f64;
-    let mut histogram = vec![0u32; num_buckets];
+    // Create bins
+    const NUM_BINS: usize = 50;
+    let bin_width = (max_val - min_val) / NUM_BINS as f64;
     
+    let mut bins = vec![0u32; NUM_BINS];
+    
+    // Fill bins
     for &value in values {
-        let bucket_index = ((value - min_val) / bucket_width) as usize;
-        let bucket_index = bucket_index.min(num_buckets - 1); // Clamp to valid range
-        histogram[bucket_index] += 1;
+        let bin_idx = ((value - min_val) / bin_width).floor() as usize;
+        let bin_idx = bin_idx.min(NUM_BINS - 1);
+        bins[bin_idx] += 1;
     }
     
-    // Find max count for Y-axis scaling
-    let max_count = *histogram.iter().max().unwrap_or(&1) as u32;
+    let max_count = *bins.iter().max().unwrap_or(&0);
     
-    // Ensure charts directory exists
-    fs::create_dir_all("charts")?;
-    
-    // Create the plot
-    let filepath = format!("charts/{}", filename);
-    let root = BitMapBackend::new(&filepath, (800, 600)).into_drawing_area();
+    // Create the drawing area
+    let root = BitMapBackend::new(filename, (800, 600)).into_drawing_area();
     root.fill(&WHITE)?;
     
     let mut chart = ChartBuilder::on(&root)
-        .caption(caption, ("sans-serif", 20).into_font())
+        .caption(title, ("sans-serif", 30))
+        .margin(10)
         .x_label_area_size(40)
-        .y_label_area_size(60)
-        .build_cartesian_2d(min_val..max_val, 0u32..max_count)?;
+        .y_label_area_size(50)
+        .build_cartesian_2d(min_val..max_val, 0u32..max_count + max_count / 10)?;
     
     chart.configure_mesh()
         .x_desc(x_label)
-        .y_desc("Frequency")
+        .y_desc("Count")
         .draw()?;
     
-    // Draw histogram bars as rectangles with a label for the legend
-    let rectangles: Vec<_> = histogram.iter().enumerate()
-        .filter_map(|(i, &count)| {
-            if count > 0 {
-                let bucket_start = min_val + (i as f64 * bucket_width);
-                let bucket_end = min_val + ((i + 1) as f64 * bucket_width);
-                Some(Rectangle::new(
-                    [(bucket_start, 0), (bucket_end, count)],
-                    color.filled(),
-                ))
-            } else {
-                None
-            }
+    // Draw bars
+    chart.draw_series(
+        bins.iter().enumerate().map(|(i, &count)| {
+            let x0 = min_val + i as f64 * bin_width;
+            let x1 = x0 + bin_width;
+            Rectangle::new([(x0, 0), (x1, count)], color.filled())
         })
-        .collect();
+    )?
+    .label(format!("Values (n={})", values.len()))
+    .legend(|(x, y)| Rectangle::new([(x, y - 5), (x + 10, y + 5)], color.filled()));
     
-    chart.draw_series(rectangles.into_iter())?
-        .label("Data")
-        .legend(move |(x, y)| Rectangle::new([(x - 5, y - 5), (x + 5, y + 5)], color.filled()));
+    // Draw mean line
+    chart.draw_series(std::iter::once(PathElement::new(
+        vec![(mean_val, 0), (mean_val, max_count)],
+        &BLACK,
+    )))?
+    .label(format!("Mean: {:.2}", mean_val))
+    .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], &BLACK));
     
-    // Add legend
     chart.configure_series_labels()
         .background_style(&WHITE.mix(0.8))
         .border_style(&BLACK)
@@ -197,231 +470,103 @@ fn create_histogram(
     
     root.present()?;
     
-    println!("Histogram saved to charts/{}", filename);
-    println!("Min {}: {:.2}, Max {}: {:.2}", x_label, min_val, x_label, max_val);
-    println!("Total values: {}", values.len());
+    println!("Histogram saved to {}", filename);
+    println!("Min: {:.2}, Max: {:.2}, Mean: {:.2}", min_val, max_val, mean_val);
     
     Ok(())
 }
 
-/// Generate histogram of base_impression_value from pre-generated impressions
-/// Uses the first campaign value which is base_impression_value * multiplier
-/// Since multiplier has mean 1.0, this approximates the base_impression_value distribution
-fn generate_base_impression_value_histogram_from_impressions(impressions: &[Impression]) -> Result<(), Box<dyn std::error::Error>> {
-    // value_to_campaign_id[0] = base_impression_value * multiplier
-    // Since multiplier has mean 1.0, this closely approximates base_impression_value
-    let base_values: Vec<f64> = impressions.iter()
-        .map(|imp| imp.value_to_campaign_id[0])
-        .collect();
-    create_histogram(
-        &base_values,
-        "base_impression_value_histogram.png",
-        "Base Impression Value",
-        "Base Impression Value",
-        RED,
-    )
-}
-
-/// Generate combined histogram of win_rate sigmoid offset and scale (prediction and actual) side-by-side
-fn generate_win_rate_sigmoid_combined_histogram_from_impressions(impressions: &[Impression]) -> Result<(), Box<dyn std::error::Error>> {
-    let prediction_offset_values: Vec<f64> = impressions.iter()
-        .filter_map(|imp| imp.competition.as_ref().map(|c| c.win_rate_prediction_sigmoid_offset))
-        .collect();
-    let actual_offset_values: Vec<f64> = impressions.iter()
-        .filter_map(|imp| imp.competition.as_ref().map(|c| c.win_rate_actual_sigmoid_offset))
-        .collect();
-    let prediction_scale_values: Vec<f64> = impressions.iter()
-        .filter_map(|imp| imp.competition.as_ref().map(|c| c.win_rate_prediction_sigmoid_scale))
-        .collect();
-    let actual_scale_values: Vec<f64> = impressions.iter()
-        .filter_map(|imp| imp.competition.as_ref().map(|c| c.win_rate_actual_sigmoid_scale))
-        .collect();
-    
-    create_side_by_side_histogram(
-        &actual_offset_values,      // Left: first series (actual) - will be bars
-        &prediction_offset_values,  // Left: second series (prediction) - will be lines
-        &actual_scale_values,       // Right: first series (actual) - will be bars
-        &prediction_scale_values,   // Right: second series (prediction) - will be lines
-        "win_rate_sigmoid_combined_histogram.png",
-        "Win Rate Probability Offset",
-        "Win Rate Probability Scale",
-        "Offset",
-        "Scale",
-        "Actual",
-        "Prediction",
-        RGBColor(200, 50, 50),    // Red for actual
-        RGBColor(0, 100, 200),    // Blue for prediction
-        RGBColor(200, 50, 50),    // Red for actual
-        RGBColor(0, 100, 200),    // Blue for prediction
-    )
-}
-
-/// Helper function to create side-by-side histograms
-/// If right side arrays are empty, creates a single chart instead
-fn create_side_by_side_histogram(
-    values1_left: &[f64],
-    values2_left: &[f64],
-    values1_right: &[f64],
-    values2_right: &[f64],
-    filename: &str,
-    caption_left: &str,
-    caption_right: &str,
-    x_label_left: &str,
-    x_label_right: &str,
-    label1: &str,
-    label2: &str,
-    color1: RGBColor,
-    color2: RGBColor,
-    color3: RGBColor,
-    color4: RGBColor,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let is_single_chart = values1_right.is_empty() && values2_right.is_empty();
-    
-    if values1_left.is_empty() && values2_left.is_empty() {
-        return Err("No values to create histogram".into());
-    }
-    
-    if !is_single_chart && values1_right.is_empty() && values2_right.is_empty() {
-        return Err("No values to create histogram".into());
-    }
-    
-    // Find min and max for left histogram (offset)
-    let min_left = values1_left.iter().chain(values2_left.iter()).fold(f64::INFINITY, |a, &b| a.min(b));
-    let max_left = values1_left.iter().chain(values2_left.iter()).fold(f64::NEG_INFINITY, |a, &b| a.max(b));
-    
-    // Find min and max for right histogram (scale)
-    let min_right = values1_right.iter().chain(values2_right.iter()).fold(f64::INFINITY, |a, &b| a.min(b));
-    let max_right = values1_right.iter().chain(values2_right.iter()).fold(f64::NEG_INFINITY, |a, &b| a.max(b));
-    
-    // Create histogram data for left (offset)
-    let num_buckets = 100;
-    let bucket_width_left = (max_left - min_left) / num_buckets as f64;
-    let mut histogram1_left = vec![0u32; num_buckets];
-    let mut histogram2_left = vec![0u32; num_buckets];
-    
-    for &value in values1_left {
-        let bucket_index = ((value - min_left) / bucket_width_left) as usize;
-        let bucket_index = bucket_index.min(num_buckets - 1);
-        histogram1_left[bucket_index] += 1;
-    }
-    
-    for &value in values2_left {
-        let bucket_index = ((value - min_left) / bucket_width_left) as usize;
-        let bucket_index = bucket_index.min(num_buckets - 1);
-        histogram2_left[bucket_index] += 1;
-    }
-    
-    // Create histogram data for right (scale)
-    let bucket_width_right = (max_right - min_right) / num_buckets as f64;
-    let mut histogram1_right = vec![0u32; num_buckets];
-    let mut histogram2_right = vec![0u32; num_buckets];
-    
-    for &value in values1_right {
-        let bucket_index = ((value - min_right) / bucket_width_right) as usize;
-        let bucket_index = bucket_index.min(num_buckets - 1);
-        histogram1_right[bucket_index] += 1;
-    }
-    
-    for &value in values2_right {
-        let bucket_index = ((value - min_right) / bucket_width_right) as usize;
-        let bucket_index = bucket_index.min(num_buckets - 1);
-        histogram2_right[bucket_index] += 1;
-    }
-    
-    // Calculate means for vertical lines
-    let mean1_left = if !values1_left.is_empty() {
-        values1_left.iter().sum::<f64>() / values1_left.len() as f64
-    } else {
-        0.0
-    };
-    let mean2_left = if !values2_left.is_empty() {
-        values2_left.iter().sum::<f64>() / values2_left.len() as f64
-    } else {
-        0.0
-    };
-    let mean1_right = if !values1_right.is_empty() {
-        values1_right.iter().sum::<f64>() / values1_right.len() as f64
-    } else {
-        0.0
-    };
-    let mean2_right = if !values2_right.is_empty() {
-        values2_right.iter().sum::<f64>() / values2_right.len() as f64
-    } else {
-        0.0
-    };
-    
-    // Find max count for Y-axis scaling
-    let max_count_left = histogram1_left.iter().chain(histogram2_left.iter()).max().copied().unwrap_or(1) as u32;
-    let max_count_right = histogram1_right.iter().chain(histogram2_right.iter()).max().copied().unwrap_or(1) as u32;
-    let max_count = max_count_left.max(max_count_right);
-    
-    // Ensure charts directory exists
+/// Generate sigmoid function charts for debugging
+pub fn generate_sigmoid_charts() -> Result<(), Box<dyn std::error::Error>> {
+    // Create charts directory if it doesn't exist
     fs::create_dir_all("charts")?;
     
-    // Create the plot - single chart or side-by-side layout
-    let filepath = format!("charts/{}", filename);
+    // Initialize sigmoid with specific parameters that were causing issues
+    let sigmoid = crate::sigmoid::Sigmoid::new(
+        18.971227371311485,     // offset
+        3.0,                    // scale
+        71.52711771826877,      // value
+    );
     
-    if is_single_chart {
-        // Single chart mode
+    // Define the x range for plotting
+    let x_min = 0.0;
+    let x_max = 40.0;
+    let num_points = 1000;
+    
+    // Generate data points
+    let mut x_values = Vec::new();
+    let mut probability_values = Vec::new();
+    let mut m_values = Vec::new();
+    let mut m_prime_values = Vec::new();
+    
+    for i in 0..num_points {
+        let x = x_min + (x_max - x_min) * (i as f64) / (num_points as f64 - 1.0);
+        x_values.push(x);
+        probability_values.push(sigmoid.get_probability(x));
+        m_values.push(sigmoid.m(x));
+        m_prime_values.push(sigmoid.m_prime(x));
+    }
+    
+    // Chart 1: get_probability()
+    {
+        let filepath = "charts/sigmoid_probability.png";
         let root = BitMapBackend::new(&filepath, (800, 600)).into_drawing_area();
         root.fill(&WHITE)?;
         
         let mut chart = ChartBuilder::on(&root)
-            .caption(caption_left, ("sans-serif", 20).into_font())
+            .caption("Sigmoid: get_probability(x)", ("sans-serif", 30))
+            .margin(10)
             .x_label_area_size(40)
-            .y_label_area_size(60)
-            .build_cartesian_2d(min_left..max_left, 0u32..max_count)?;
+            .y_label_area_size(50)
+            .build_cartesian_2d(x_min..x_max, 0.0..1.0)?;
         
-        chart.configure_mesh()
-            .x_desc(x_label_left)
-            .y_desc("Frequency")
-            .draw()?;
-        
-        // Draw first dataset as bars
-        let rectangles1: Vec<_> = histogram1_left.iter().enumerate()
-            .filter_map(|(i, &count)| {
-                if count > 0 {
-                    let bucket_start = min_left + (i as f64 * bucket_width_left);
-                    let bucket_end = min_left + ((i + 1) as f64 * bucket_width_left);
-                    Some(Rectangle::new(
-                        [(bucket_start, 0), (bucket_end, count)],
-                        color1.filled(),
-                    ))
-                } else {
-                    None
-                }
-            })
-            .collect();
-        
-        chart.draw_series(rectangles1.into_iter())?
-            .label(label1)
-            .legend(move |(x, y)| Rectangle::new([(x - 5, y - 5), (x + 5, y + 5)], color1.filled()));
-        
-        // Convert second dataset to line graph points
-        let line_points2: Vec<(f64, u32)> = histogram2_left.iter().enumerate()
-            .map(|(i, &count)| {
-                let bucket_center = min_left + (i as f64 + 0.5) * bucket_width_left;
-                (bucket_center, count)
-            })
-            .collect();
+        chart.configure_mesh().draw()?;
         
         chart.draw_series(LineSeries::new(
-            line_points2.iter().map(|&(x, y)| (x, y)),
-            color2.stroke_width(2),
+            x_values.iter().zip(probability_values.iter()).map(|(x, y)| (*x, *y)),
+            &BLUE,
+        ))?;
+        
+        root.present()?;
+        println!("Generated: {}", filepath);
+    }
+    
+    // Chart 2: m() - Marginal utility of spend
+    {
+        let filepath = "charts/sigmoid_marginal_utility.png";
+        let root = BitMapBackend::new(&filepath, (800, 600)).into_drawing_area();
+        root.fill(&WHITE)?;
+        
+        // Find min and max for y-axis
+        let y_min = m_values.iter().cloned().fold(f64::INFINITY, f64::min);
+        let y_max = m_values.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+        let y_range = if y_max - y_min < 0.1 {
+            y_min - 0.5..y_max + 0.5
+        } else {
+            y_min..y_max
+        };
+        
+        let mut chart = ChartBuilder::on(&root)
+            .caption("Sigmoid: M(x) - Marginal Utility of Spend", ("sans-serif", 30))
+            .margin(10)
+            .x_label_area_size(40)
+            .y_label_area_size(50)
+            .build_cartesian_2d(x_min..x_max, y_range)?;
+        
+        chart.configure_mesh().draw()?;
+        
+        chart.draw_series(LineSeries::new(
+            x_values.iter().zip(m_values.iter()).map(|(x, y)| (*x, *y)),
+            &RED,
+        ))?;
+        
+        // Draw horizontal line at y=1 (the target value that was failing)
+        chart.draw_series(LineSeries::new(
+            vec![(x_min, 1.0), (x_max, 1.0)],
+            &BLACK.mix(0.3),
         ))?
-            .label(label2)
-            .legend(move |(x, y)| PathElement::new(vec![(x - 5, y), (x + 5, y)], color2.stroke_width(2)));
-        
-        // Draw vertical mean lines in black
-        chart.draw_series(std::iter::once(PathElement::new(
-            vec![(mean1_left, 0), (mean1_left, max_count)],
-            BLACK.stroke_width(2),
-        )))?;
-        
-        chart.draw_series(std::iter::once(PathElement::new(
-            vec![(mean2_left, 0), (mean2_left, max_count)],
-            BLACK.stroke_width(2),
-        )))?;
+        .label("y_target = 1.0")
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], &BLACK.mix(0.3)));
         
         chart.configure_series_labels()
             .background_style(&WHITE.mix(0.8))
@@ -429,154 +574,47 @@ fn create_side_by_side_histogram(
             .draw()?;
         
         root.present()?;
-        
-        println!("Histogram saved to charts/{}", filename);
-        println!("Min {}: {:.2}, Max {}: {:.2}", x_label_left, min_left, x_label_left, max_left);
-        println!("Total values - {}: {}, {}: {}", label1, values1_left.len(), label2, values2_left.len());
-        println!("Means - {}: {:.2}, {}: {:.2}", label1, mean1_left, label2, mean2_left);
-        
-        return Ok(());
+        println!("Generated: {}", filepath);
     }
     
-    // Side-by-side mode
-    let root = BitMapBackend::new(&filepath, (1600, 600)).into_drawing_area();
-    root.fill(&WHITE)?;
-    let (left_area, right_area) = root.split_horizontally(800);
-    
-    // Draw left chart
-    let mut chart_left = ChartBuilder::on(&left_area)
-        .caption(caption_left, ("sans-serif", 20).into_font())
-        .x_label_area_size(40)
-        .y_label_area_size(60)
-        .build_cartesian_2d(min_left..max_left, 0u32..max_count)?;
-    
-    chart_left.configure_mesh()
-        .x_desc(x_label_left)
-        .y_desc("Frequency")
-        .draw()?;
-    
-    // Draw left chart: first dataset (actual) as bars, second dataset (prediction) as lines
-    let rectangles1_left: Vec<_> = histogram1_left.iter().enumerate()
-        .filter_map(|(i, &count)| {
-            if count > 0 {
-                let bucket_start = min_left + (i as f64 * bucket_width_left);
-                let bucket_end = min_left + ((i + 1) as f64 * bucket_width_left);
-                Some(Rectangle::new(
-                    [(bucket_start, 0), (bucket_end, count)],
-                    color1.filled(),
-                ))
-            } else {
-                None
-            }
-        })
-        .collect();
-    
-    chart_left.draw_series(rectangles1_left.into_iter())?
-        .label(label1)  // Actual (first in legend)
-        .legend(move |(x, y)| Rectangle::new([(x - 5, y - 5), (x + 5, y + 5)], color1.filled()));
-    
-    // Convert second dataset (prediction) to line graph points
-    let line_points2_left: Vec<(f64, u32)> = histogram2_left.iter().enumerate()
-        .map(|(i, &count)| {
-            let bucket_center = min_left + (i as f64 + 0.5) * bucket_width_left;
-            (bucket_center, count)
-        })
-        .collect();
-    
-    chart_left.draw_series(LineSeries::new(
-        line_points2_left.iter().map(|&(x, y)| (x, y)),
-        color2.stroke_width(2),
-    ))?
-        .label(label2)  // Prediction (second in legend)
-        .legend(move |(x, y)| PathElement::new(vec![(x - 5, y), (x + 5, y)], color2.stroke_width(2)));
-    
-    // Draw vertical mean lines for left chart in black
-    chart_left.draw_series(std::iter::once(PathElement::new(
-        vec![(mean1_left, 0), (mean1_left, max_count)],
-        BLACK.stroke_width(2),
-    )))?;
-    
-    chart_left.draw_series(std::iter::once(PathElement::new(
-        vec![(mean2_left, 0), (mean2_left, max_count)],
-        BLACK.stroke_width(2),
-    )))?;
-    
-    chart_left.configure_series_labels()
-        .background_style(&WHITE.mix(0.8))
-        .border_style(&BLACK)
-        .draw()?;
-    
-    // Draw right chart
-    let mut chart_right = ChartBuilder::on(&right_area)
-            .caption(caption_right, ("sans-serif", 20).into_font())
+    // Chart 3: m_prime() - Derivative of marginal utility
+    {
+        let filepath = "charts/sigmoid_marginal_utility_derivative.png";
+        let root = BitMapBackend::new(&filepath, (800, 600)).into_drawing_area();
+        root.fill(&WHITE)?;
+        
+        // Find min and max for y-axis
+        let y_min = m_prime_values.iter().cloned().fold(f64::INFINITY, f64::min);
+        let y_max = m_prime_values.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+        let y_range = if y_max - y_min < 0.1 {
+            y_min - 0.5..y_max + 0.5
+        } else {
+            y_min..y_max
+        };
+        
+        let mut chart = ChartBuilder::on(&root)
+            .caption("Sigmoid: M'(x) - Derivative of Marginal Utility", ("sans-serif", 30))
+            .margin(10)
             .x_label_area_size(40)
-            .y_label_area_size(60)
-            .build_cartesian_2d(min_right..max_right, 0u32..max_count)?;
+            .y_label_area_size(50)
+            .build_cartesian_2d(x_min..x_max, y_range)?;
         
-        chart_right.configure_mesh()
-            .x_desc(x_label_right)
-            .y_desc("Frequency")
-            .draw()?;
+        chart.configure_mesh().draw()?;
         
-        // Draw right chart: first dataset (actual) as bars, second dataset (prediction) as lines
-        let rectangles1_right: Vec<_> = histogram1_right.iter().enumerate()
-            .filter_map(|(i, &count)| {
-                if count > 0 {
-                    let bucket_start = min_right + (i as f64 * bucket_width_right);
-                    let bucket_end = min_right + ((i + 1) as f64 * bucket_width_right);
-                    Some(Rectangle::new(
-                        [(bucket_start, 0), (bucket_end, count)],
-                        color3.filled(),
-                    ))
-                } else {
-                    None
-                }
-            })
-            .collect();
+        chart.draw_series(LineSeries::new(
+            x_values.iter().zip(m_prime_values.iter()).map(|(x, y)| (*x, *y)),
+            &GREEN,
+        ))?;
         
-        chart_right.draw_series(rectangles1_right.into_iter())?
-            .label(label1)  // Actual (first in legend)
-            .legend(move |(x, y)| Rectangle::new([(x - 5, y - 5), (x + 5, y + 5)], color3.filled()));
+        // Draw horizontal line at y=0
+        chart.draw_series(LineSeries::new(
+            vec![(x_min, 0.0), (x_max, 0.0)],
+            &BLACK.mix(0.3),
+        ))?;
         
-        // Convert second dataset (prediction) to line graph points
-        let line_points2_right: Vec<(f64, u32)> = histogram2_right.iter().enumerate()
-            .map(|(i, &count)| {
-                let bucket_center = min_right + (i as f64 + 0.5) * bucket_width_right;
-                (bucket_center, count)
-            })
-            .collect();
-        
-        chart_right.draw_series(LineSeries::new(
-            line_points2_right.iter().map(|&(x, y)| (x, y)),
-            color4.stroke_width(2),
-        ))?
-            .label(label2)  // Prediction (second in legend)
-            .legend(move |(x, y)| PathElement::new(vec![(x - 5, y), (x + 5, y)], color4.stroke_width(2)));
-        
-        // Draw vertical mean lines for right chart in black
-        chart_right.draw_series(std::iter::once(PathElement::new(
-            vec![(mean1_right, 0), (mean1_right, max_count)],
-            BLACK.stroke_width(2),
-        )))?;
-        
-        chart_right.draw_series(std::iter::once(PathElement::new(
-            vec![(mean2_right, 0), (mean2_right, max_count)],
-            BLACK.stroke_width(2),
-        )))?;
-        
-    chart_right.configure_series_labels()
-        .background_style(&WHITE.mix(0.8))
-        .border_style(&BLACK)
-        .draw()?;
-    
-    root.present()?;
-    
-    println!("Histogram saved to charts/{}", filename);
-    println!("Left - Min: {:.2}, Max: {:.2}", min_left, max_left);
-    println!("Right - Min: {:.2}, Max: {:.2}", min_right, max_right);
-    println!("Total values - {} (left): {}, {} (left): {}, {} (right): {}, {} (right): {}", 
-             label1, values1_left.len(), label2, values2_left.len(), label1, values1_right.len(), label2, values2_right.len());
+        root.present()?;
+        println!("Generated: {}", filepath);
+    }
     
     Ok(())
 }
-

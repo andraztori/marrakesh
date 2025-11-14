@@ -2,6 +2,10 @@ use rand::rngs::StdRng;
 use rand_distr::Distribution;
 use crate::utils::lognormal_dist;
 
+// Generating realistic competition parameters is a complex problem.
+// Using simple sampling of logistic parameters leads to a lot of impressions high value of win probability at near-zero bid, which is not realistic
+// Therefore we use a rejection sampling to avoid that
+
 /// Represents competition information for an impression
 #[derive(Debug, Clone)]
 pub struct ImpressionCompetition {
@@ -19,11 +23,12 @@ pub trait CompetitionGeneratorTrait {
     /// Generate competition information for an impression
     /// 
     /// # Arguments
+    /// * `base_impression_value` - The base value of the impression
     /// * `rng` - Random number generator
     /// 
     /// # Returns
     /// `Some(ImpressionCompetition)` if competition should be generated, `None` otherwise
-    fn generate_competition(&self, rng: &mut StdRng) -> Option<ImpressionCompetition>;
+    fn generate_competition(&self, base_impression_value: f64, rng: &mut StdRng) -> Option<ImpressionCompetition>;
 }
 
 /// Competition generator that always returns None (no competition)
@@ -37,7 +42,7 @@ impl CompetitionGeneratorNone {
 }
 
 impl CompetitionGeneratorTrait for CompetitionGeneratorNone {
-    fn generate_competition(&self, _rng: &mut StdRng) -> Option<ImpressionCompetition> {
+    fn generate_competition(&self, _base_impression_value: f64, _rng: &mut StdRng) -> Option<ImpressionCompetition> {
         None
     }
 }
@@ -65,7 +70,7 @@ impl CompetitionGeneratorParametrizedLogNormal {
         Box::new(Self {
             // With current parameters, we end up with 0.3% of impressions at zero bid
             actual_offset_dist: lognormal_dist(value_base, 3.0),
-            actual_scale_dist: lognormal_dist(2.0, 1.0),
+            actual_scale_dist: lognormal_dist(1.5, 1.0),
             noise_offset_dist: lognormal_dist(1.0, 0.3),
             noise_scale_dist: lognormal_dist(1.0, 0.3),
         })
@@ -79,19 +84,31 @@ impl CompetitionGeneratorTrait for CompetitionGeneratorParametrizedLogNormal {
     /// various distributions.
     /// 
     /// # Arguments
+    /// * `base_impression_value` - The base value of the impression
     /// * `rng` - Random number generator
     /// 
     /// # Returns
     /// A new `ImpressionCompetition` instance with generated parameters
-    fn generate_competition(&self, rng: &mut StdRng) -> Option<ImpressionCompetition> {
-        // Generate win_rate_actual_sigmoid_offset based on lognormal distribution
-        // centered around value_base, with some stddev.
-        // TODO: Maybe lognormal is not the right distribution and we might want something
-        // that is more uniform.
-        let win_rate_actual_sigmoid_offset = Distribution::sample(&self.actual_offset_dist, rng);
-        
-        // Generate win_rate_actual_sigmoid_scale by sampling from lognormal with mean 2 and stddev 1
-        let win_rate_actual_sigmoid_scale = Distribution::sample(&self.actual_scale_dist, rng);
+    fn generate_competition(&self, base_impression_value: f64, rng: &mut StdRng) -> Option<ImpressionCompetition> {
+        // Rejection sampling for win_rate_actual_sigmoid_offset and win_rate_actual_sigmoid_scale
+        // Reject if sigmoid.get_probability(0.0) > 0.01
+        let (win_rate_actual_sigmoid_offset, win_rate_actual_sigmoid_scale) = loop {
+            // Generate win_rate_actual_sigmoid_offset based on lognormal distribution
+            // centered around value_base, with some stddev.
+            //let offset = Distribution::sample(&self.actual_offset_dist, rng);
+            let offset = base_impression_value;
+            let scale = Distribution::sample(&self.actual_scale_dist, rng).min(4.0);
+            
+            // Create a temporary sigmoid to evaluate the rejection criterion
+            let temp_sigmoid = crate::sigmoid::Sigmoid::new(offset, scale, 1.0);
+            let prob_at_zero = temp_sigmoid.get_probability(0.0);
+            
+            // Accept if probability at 0.0 is <= 0.01
+            if prob_at_zero <= 0.05 {
+                break (offset, scale);
+            }
+            // Otherwise, reject and resample
+        };
         
         // Sample competing bid by sampling from logistic distribution using actual parameters
         let mut bid_cpm = crate::utils::sample_logistic_bid(

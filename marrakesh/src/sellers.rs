@@ -105,7 +105,7 @@ impl SellerTrait for SellerFixedCostFixedBoost {
     }
     
     fn generate_impression(&self, base_value: f64, rng: &mut StdRng) -> (Option<ImpressionCompetition>, f64) {
-        let competition = self.competition_generator.generate_competition(rng);
+        let competition = self.competition_generator.generate_competition(base_value, rng);
         let floor_cpm = self.floor_generator.generate_floor(base_value, rng);
         (competition, floor_cpm)
     }
@@ -150,7 +150,7 @@ impl SellerTrait for SellerFixedCostDynamicBoost {
     }
     
     fn generate_impression(&self, base_value: f64, rng: &mut StdRng) -> (Option<ImpressionCompetition>, f64) {
-        let competition = self.competition_generator.generate_competition(rng);
+        let competition = self.competition_generator.generate_competition(base_value, rng);
         let floor_cpm = self.floor_generator.generate_floor(base_value, rng);
         (competition, floor_cpm)
     }
@@ -206,7 +206,7 @@ impl SellerTrait for SellerFirstPrice {
     }
     
     fn generate_impression(&self, base_value: f64, rng: &mut StdRng) -> (Option<ImpressionCompetition>, f64) {
-        let competition = self.competition_generator.generate_competition(rng);
+        let competition = self.competition_generator.generate_competition(base_value, rng);
         let floor_cpm = self.floor_generator.generate_floor(base_value, rng);
         (competition, floor_cpm)
     }

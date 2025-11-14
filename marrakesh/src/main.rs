@@ -3,15 +3,18 @@ mod converge;
 mod utils;
 mod impressions;
 mod campaigns;
+mod campaigns_optimal_bidding;
 mod sellers;
 mod scenarios;
 mod logger;
 mod charts;
 mod floors;
 mod competition;
+mod sigmoid;
 
 // Include scenario files so their constructors run
 mod s_one;
+mod s_optimal;
 mod s_mrg_boost;
 mod s_mrg_dynamic_boost;
 
@@ -29,7 +32,7 @@ use scenarios::get_scenario_catalog;
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     
-    // Check if "images" argument is provided
+    // Check if "charts" argument is provided
     if args.len() > 1 && args[1] == "charts" {
         match charts::generate_all_histograms() {
             Ok(()) => {
@@ -37,6 +40,20 @@ fn main() {
             }
             Err(e) => {
                 eprintln!("Error generating histograms: {}", e);
+                std::process::exit(1);
+            }
+        }
+        return;
+    }
+    
+    // Check if "sigmoid" argument is provided
+    if args.len() > 1 && args[1] == "sigmoid" {
+        match charts::generate_sigmoid_charts() {
+            Ok(()) => {
+                println!("Sigmoid charts generation completed successfully.");
+            }
+            Err(e) => {
+                eprintln!("Error generating sigmoid charts: {}", e);
                 std::process::exit(1);
             }
         }
@@ -98,14 +115,14 @@ fn main() {
         // Add two hardcoded campaigns (IDs are automatically set to match Vec index)
         campaigns.add(
             "Campaign 0".to_string(),  // campaign_name
-            CampaignType::FIXED_IMPRESSIONS {
+            CampaignType::FIXED_IMPRESSIONS_MULTIPLICATIVE_PACING {
                 total_impressions_target: 1000,
             },  // campaign_type
         );
 
         campaigns.add(
             "Campaign 1".to_string(),  // campaign_name
-            CampaignType::FIXED_BUDGET {
+            CampaignType::FIXED_BUDGET_MULTIPLICATIVE_PACING {
                 total_budget_target: 20.0,
             },  // campaign_type
         );
