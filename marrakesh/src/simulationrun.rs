@@ -1,6 +1,7 @@
 use crate::impressions::{AuctionResult, Winner};
 use crate::sellers::Sellers;
 use crate::campaigns::Campaigns;
+use crate::converge::{CampaignConverges, SellerConverges};
 use crate::logger::{Logger, LogEvent};
 use crate::logln;
 
@@ -42,57 +43,6 @@ impl SimulationRun {
         }
         
         Self { results }
-    }
-}
-
-/// Container for campaign convergence parameters
-/// Uses dynamic dispatch to support different campaign types
-pub struct CampaignConverges {
-    pub campaign_converges: Vec<Box<dyn crate::converge::ConvergingVariables>>,
-}
-
-impl Clone for CampaignConverges {
-    fn clone(&self) -> Self {
-        Self {
-            campaign_converges: self.campaign_converges.iter().map(|p| p.clone_box()).collect(),
-        }
-    }
-}
-
-impl CampaignConverges {
-    /// Create campaign converges from campaigns
-    pub fn new(campaigns: &Campaigns) -> Self {
-        let mut campaign_converges = Vec::with_capacity(campaigns.campaigns.len());
-        for campaign in &campaigns.campaigns {
-            campaign_converges.push(campaign.create_converging_variables());
-        }
-        Self { campaign_converges }
-    }
-}
-
-/// Container for seller convergence parameters
-/// Uses dynamic dispatch to support different seller types
-pub struct SellerConverges {
-    pub seller_converges: Vec<Box<dyn crate::converge::ConvergingVariables>>,
-}
-
-
-impl Clone for SellerConverges {
-    fn clone(&self) -> Self {
-        Self {
-            seller_converges: self.seller_converges.iter().map(|p| p.clone_box()).collect(),
-        }
-    }
-}
-
-impl SellerConverges {
-    /// Create seller converges from sellers
-    pub fn new(sellers: &Sellers) -> Self {
-        let mut seller_converges = Vec::with_capacity(sellers.sellers.len());
-        for seller in &sellers.sellers {
-            seller_converges.push(seller.create_converging_variables());
-        }
-        Self { seller_converges }
     }
 }
 

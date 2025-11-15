@@ -304,13 +304,13 @@ impl CampaignTrait for CampaignOptimalBidding {
 }
 
 /// Campaign with fixed budget target using cheater bidding
-pub struct CampaignCheaterSecondPrice {
+pub struct CampaignCheaterLastLook {
     pub campaign_id: usize,
     pub campaign_name: String,
     pub converger: Box<dyn ConvergeAny<crate::simulationrun::CampaignStat>>,
 }
 
-impl CampaignTrait for CampaignCheaterSecondPrice {
+impl CampaignTrait for CampaignCheaterLastLook {
     fn campaign_id(&self) -> usize {
         self.campaign_id
     }
@@ -323,16 +323,22 @@ impl CampaignTrait for CampaignCheaterSecondPrice {
         let pacing = self.converger.get_main_variable(converge);
         
         // Calculate value as multiplication between seller_boost_factor and impression value to campaign id
-        let mut bid = pacing * seller_boost_factor * impression.value_to_campaign_id[self.campaign_id];
+        let max_affordable_bid = pacing * seller_boost_factor * impression.value_to_campaign_id[self.campaign_id];
         
-        // If we have competition data and our bid is higher than competition, reduce it to just above competition
+        // Calculate minimum winning bid as minimum of floor and competing bid, plus 0.00001
+        let mut minimum_winning_bid = impression.floor_cpm;
         if let Some(competition) = &impression.competition {
-            if bid > competition.bid_cpm {
-                bid = competition.bid_cpm + 0.00001;
-            }
+            minimum_winning_bid = minimum_winning_bid.max(competition.bid_cpm);
+        }
+//        println!("minimum_winning_bid: {:.4}", minimum_winning_bid);
+        minimum_winning_bid += 0.00001;
+        
+        // Check if we can afford the minimum winning bid
+        if max_affordable_bid < minimum_winning_bid {
+            return None;
         }
         
-        Some(bid)
+        Some(minimum_winning_bid)
     }
     
     fn converge_iteration(&self, current_converge: &dyn crate::converge::ConvergingVariables, next_converge: &mut dyn crate::converge::ConvergingVariables, campaign_stat: &crate::simulationrun::CampaignStat) -> bool {
@@ -340,7 +346,7 @@ impl CampaignTrait for CampaignCheaterSecondPrice {
     }
     
     fn type_and_converge_string(&self, converge: &dyn crate::converge::ConvergingVariables) -> String {
-        format!("Cheater ({})", self.converger.converge_target_string(converge))
+        format!("Cheater - last look/2nd price ({})", self.converger.converge_target_string(converge))
     }
     
     fn create_converging_variables(&self) -> Box<dyn crate::converge::ConvergingVariables> {
@@ -416,7 +422,7 @@ impl Campaigns {
                 }));
             }
             CampaignType::CHEATER => {
-                self.campaigns.push(Box::new(CampaignCheaterSecondPrice {
+                self.campaigns.push(Box::new(CampaignCheaterLastLook {
                     campaign_id,
                     campaign_name,
                     converger,

@@ -2,8 +2,10 @@ use rand::{rngs::StdRng, SeedableRng};
 use rand_distr::Distribution;
 use crate::sellers::{Sellers, SellerTrait};
 use crate::campaigns::{Campaigns, MAX_CAMPAIGNS};
-use crate::simulationrun::CampaignConverges;
+use crate::converge::CampaignConverges;
 use crate::competition::ImpressionCompetition;
+use crate::logger::LogEvent;
+use crate::errln;
 
 /// Represents the winner of an auction
 #[allow(non_camel_case_types)]
@@ -92,9 +94,15 @@ impl Impression {
             let campaign_converge = &campaign_converges.campaign_converges[campaign_id];
             // Use the trait method for get_bid
             if let Some(bid) = campaign.get_bid(self, campaign_converge.as_ref(), seller_boost_factor, logger) {
+                // Check if bid is below zero
+                if bid < 0.0 {
+                    errln!(logger, LogEvent::Simulation, "Bid below zero: {:.4} from campaign_id: {}", bid, campaign_id);
+                    panic!("Bid below zero: {:.4} from campaign_id: {}", bid, campaign_id);
+                }
                 if bid > winning_bid_cpm {
                     winning_bid_cpm = bid;
                     winning_campaign_id = Some(campaign_id);
+                    //println!("Winning bid: {:.4}, campaign_id: {}", bid, campaign_id);
                 }
             }
             // If get_bid returns None, skip this campaign (warning already logged)
