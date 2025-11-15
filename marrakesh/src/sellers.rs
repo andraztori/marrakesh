@@ -1,6 +1,6 @@
 use crate::competition::{ImpressionCompetition, CompetitionGeneratorTrait};
 use crate::floors::FloorGeneratorTrait;
-use crate::utils::ControllerProportional;
+use crate::converge::ControllerProportional;
 use rand::rngs::StdRng;
 pub use crate::converge::{ConvergingSingleVariable, ConvergeAny};
 
@@ -31,17 +31,17 @@ impl ConvergeAny<crate::simulationrun::SellerStat> for ConvergeNone {
         false
     }
     
-    fn get_main_variable(&self, converge: &dyn crate::converge::ConvergingVariables) -> f64 {
-        converge.as_any().downcast_ref::<ConvergingSingleVariable>().unwrap().converging_variable
+    fn get_converging_variable(&self, _converge: &dyn crate::converge::ConvergingVariables) -> f64 {
+        self.default_value
     }
     
     fn create_converging_variables(&self) -> Box<dyn crate::converge::ConvergingVariables> {
+        // Ideally we could simply not allocate anything... but simpler to keep something
         Box::new(ConvergingSingleVariable { converging_variable: self.default_value })
     }
     
     fn converge_target_string(&self, converge: &dyn crate::converge::ConvergingVariables) -> String {
-        let boost = converge.as_any().downcast_ref::<ConvergingSingleVariable>().unwrap().converging_variable;
-        format!("No convergence, boost: {:.2}", boost)
+        format!("No convergence, boost: {:.2}", self.get_converging_variable(converge))
     }
 }
 
@@ -53,27 +53,19 @@ pub struct ConvergeTotalCost {
 
 impl ConvergeAny<crate::simulationrun::SellerStat> for ConvergeTotalCost {
     fn converge_iteration(&self, current_converge: &dyn crate::converge::ConvergingVariables, next_converge: &mut dyn crate::converge::ConvergingVariables, seller_stat: &crate::simulationrun::SellerStat) -> bool {
-        // Downcast to concrete types at the beginning
-        let current_converge = current_converge.as_any().downcast_ref::<ConvergingSingleVariable>().unwrap();
-        let next_converge = next_converge.as_any_mut().downcast_mut::<ConvergingSingleVariable>().unwrap();
-        
         let target = self.target_cost;
         let actual = seller_stat.total_virtual_cost;
-        let current_boost = current_converge.converging_variable;
         
         // Use the same controller logic as campaigns, but for boost_factor
-        let (new_boost, changed) = self.controller.pacing_in_next_iteration(target, actual, current_boost);
-        next_converge.converging_variable = new_boost;
-        
-        changed
+        self.controller.converge_next_iteration(target, actual, current_converge, next_converge)
     }
     
-    fn get_main_variable(&self, converge: &dyn crate::converge::ConvergingVariables) -> f64 {
-        converge.as_any().downcast_ref::<ConvergingSingleVariable>().unwrap().converging_variable
+    fn get_converging_variable(&self, converge: &dyn crate::converge::ConvergingVariables) -> f64 {
+        self.controller.get_converging_variable(converge)
     }
     
     fn create_converging_variables(&self) -> Box<dyn crate::converge::ConvergingVariables> {
-        Box::new(ConvergingSingleVariable { converging_variable: 1.0 })
+        self.controller.create_converging_variables()
     }
     
     fn converge_target_string(&self, converge: &dyn crate::converge::ConvergingVariables) -> String {

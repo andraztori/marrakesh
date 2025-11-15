@@ -6,6 +6,70 @@ use crate::logln;
 use crate::warnln;
 use std::path::PathBuf;
 
+/// Proportional controller for adjusting campaign pacing based on target vs actual performance
+pub struct ControllerProportional {
+    tolerance_fraction: f64,      // Tolerance as a fraction of target (e.g., 0.005 = 0.5%)
+    max_adjustment_factor: f64,   // Maximum adjustment factor (e.g., 0.2 = 20%)
+    proportional_gain: f64,       // Proportional gain (e.g., 0.2 = 20% of error)
+}
+
+impl ControllerProportional {
+    /// Create a new proportional controller with default parameters
+    pub fn new() -> Self {
+        Self {
+            tolerance_fraction: 0.005,  // 0.5% tolerance
+            max_adjustment_factor: 0.2,  // Max 20% adjustment
+            proportional_gain: 0.1,      // 20% of error
+        }
+    }
+
+    /// Create initial converging variables
+    pub fn create_converging_variables(&self) -> Box<dyn ConvergingVariables> {
+        Box::new(ConvergingSingleVariable { converging_variable: 1.0 })
+    }
+
+    pub fn get_converging_variable(&self, converge: &dyn ConvergingVariables) -> f64 {
+        converge.as_any().downcast_ref::<ConvergingSingleVariable>().unwrap().converging_variable
+    }
+
+    /// Calculate pacing for next iteration based on target and actual values
+    /// 
+    /// # Arguments
+    /// * `target` - Target value to achieve
+    /// * `actual` - Actual value achieved
+    /// * `current_converge` - Current convergence parameter
+    /// * `next_converge` - Next convergence parameter to be updated (mutable)
+    /// 
+    /// # Returns
+    /// `true` if pacing was changed, `false` if it remained the same
+    pub fn converge_next_iteration(&self, target: f64, actual: f64, current_converge: &dyn ConvergingVariables, next_converge: &mut dyn ConvergingVariables) -> bool {
+        let current_pacing = current_converge.as_any().downcast_ref::<ConvergingSingleVariable>().unwrap().converging_variable;
+        let next_converge_mut = next_converge.as_any_mut().downcast_mut::<ConvergingSingleVariable>().unwrap();
+        
+        let tolerance = target * self.tolerance_fraction;
+        
+        if actual < target - tolerance {
+            // Below target - increase pacing
+            let error_ratio = (target - actual) / target;
+            let adjustment_factor = (error_ratio * self.proportional_gain).min(self.max_adjustment_factor);
+            let new_pacing = current_pacing * (1.0 + adjustment_factor);
+            next_converge_mut.converging_variable = new_pacing;
+            true
+        } else if actual > target + tolerance {
+            // Above target - decrease pacing
+            let error_ratio = (actual - target) / target;
+            let adjustment_factor = (error_ratio * self.proportional_gain).min(self.max_adjustment_factor);
+            let new_pacing = current_pacing * (1.0 - adjustment_factor);
+            next_converge_mut.converging_variable = new_pacing;
+            true
+        } else {
+            // Within tolerance - keep constant
+            next_converge_mut.converging_variable = current_pacing;
+            false
+        }
+    }
+}
+
 /// Unified trait for convergence parameters
 /// Used for both campaigns and sellers
 pub trait ConvergingVariables: std::any::Any {
@@ -48,7 +112,7 @@ pub trait ConvergeAny<T> {
     /// 
     /// # Arguments
     /// * `converge` - Convergence parameter to extract the pacing value from
-    fn get_main_variable(&self, converge: &dyn ConvergingVariables) -> f64;
+    fn get_converging_variable(&self, converge: &dyn ConvergingVariables) -> f64;
     
     /// Create initial converging variables
     fn create_converging_variables(&self) -> Box<dyn ConvergingVariables>;

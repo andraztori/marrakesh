@@ -1,6 +1,6 @@
 use crate::impressions::Impression;
-use crate::utils::ControllerProportional;
-pub use crate::converge::{ConvergingSingleVariable, ConvergeAny};
+use crate::converge::{ControllerProportional, ConvergingSingleVariable};
+pub use crate::converge::ConvergeAny;
 use crate::sigmoid::Sigmoid;
 use crate::logger::{Logger, LogEvent};
 use crate::warnln;
@@ -40,31 +40,22 @@ pub struct ConvergeTotalImpressions {
 
 impl ConvergeAny<crate::simulationrun::CampaignStat> for ConvergeTotalImpressions {
     fn converge_iteration(&self, current_converge: &dyn crate::converge::ConvergingVariables, next_converge: &mut dyn crate::converge::ConvergingVariables, campaign_stat: &crate::simulationrun::CampaignStat) -> bool {
-        // Downcast to concrete types at the beginning
-        let current_converge = current_converge.as_any().downcast_ref::<ConvergingSingleVariable>().unwrap();
-        let next_converge = next_converge.as_any_mut().downcast_mut::<ConvergingSingleVariable>().unwrap();
-        
         let target = self.total_impressions_target as f64;
         let actual = campaign_stat.impressions_obtained as f64;
-        let current_pacing = current_converge.converging_variable;
         
-        let (new_pacing, changed) = self.controller.pacing_in_next_iteration(target, actual, current_pacing);
-        next_converge.converging_variable = new_pacing;
-        
-        changed
+        self.controller.converge_next_iteration(target, actual, current_converge, next_converge)
     }
     
-    fn get_main_variable(&self, converge: &dyn crate::converge::ConvergingVariables) -> f64 {
-        converge.as_any().downcast_ref::<ConvergingSingleVariable>().unwrap().converging_variable
+    fn get_converging_variable(&self, converge: &dyn crate::converge::ConvergingVariables) -> f64 {
+        self.controller.get_converging_variable(converge)
     }
     
     fn create_converging_variables(&self) -> Box<dyn crate::converge::ConvergingVariables> {
-        Box::new(ConvergingSingleVariable { converging_variable: 1.0 })
+        self.controller.create_converging_variables()
     }
     
     fn converge_target_string(&self, converge: &dyn crate::converge::ConvergingVariables) -> String {
-        let pacing = converge.as_any().downcast_ref::<ConvergingSingleVariable>().unwrap().converging_variable;
-        format!("Fixed impressions ({}), pacing: {:.2}", self.total_impressions_target, pacing)
+        format!("Fixed impressions ({}), pacing: {:.2}", self.total_impressions_target, self.get_converging_variable(converge))
     }
 }
 
@@ -76,31 +67,22 @@ pub struct ConvergeTotalBudget {
 
 impl ConvergeAny<crate::simulationrun::CampaignStat> for ConvergeTotalBudget {
     fn converge_iteration(&self, current_converge: &dyn crate::converge::ConvergingVariables, next_converge: &mut dyn crate::converge::ConvergingVariables, campaign_stat: &crate::simulationrun::CampaignStat) -> bool {
-        // Downcast to concrete types at the beginning
-        let current_converge = current_converge.as_any().downcast_ref::<ConvergingSingleVariable>().unwrap();
-        let next_converge = next_converge.as_any_mut().downcast_mut::<ConvergingSingleVariable>().unwrap();
-        
         let target = self.total_budget_target;
         let actual = campaign_stat.total_buyer_charge;
-        let current_pacing = current_converge.converging_variable;
         
-        let (new_pacing, changed) = self.controller.pacing_in_next_iteration(target, actual, current_pacing);
-        next_converge.converging_variable = new_pacing;
-        
-        changed
+        self.controller.converge_next_iteration(target, actual, current_converge, next_converge)
     }
     
-    fn get_main_variable(&self, converge: &dyn crate::converge::ConvergingVariables) -> f64 {
-        converge.as_any().downcast_ref::<ConvergingSingleVariable>().unwrap().converging_variable
+    fn get_converging_variable(&self, converge: &dyn crate::converge::ConvergingVariables) -> f64 {
+        self.controller.get_converging_variable(converge)
     }
     
     fn create_converging_variables(&self) -> Box<dyn crate::converge::ConvergingVariables> {
-        Box::new(ConvergingSingleVariable { converging_variable: 1.0 })
+        self.controller.create_converging_variables()
     }
     
     fn converge_target_string(&self, converge: &dyn crate::converge::ConvergingVariables) -> String {
-        let pacing = converge.as_any().downcast_ref::<ConvergingSingleVariable>().unwrap().converging_variable;
-        format!("Fixed budget ({:.2}), pacing: {:.2}", self.total_budget_target, pacing)
+        format!("Fixed budget ({:.2}), pacing: {:.2}", self.total_budget_target, self.get_converging_variable(converge))
     }
 }
 
@@ -160,7 +142,7 @@ impl CampaignTrait for CampaignMultiplicativePacing {
     }
     
     fn get_bid(&self, impression: &Impression, converge: &dyn crate::converge::ConvergingVariables, seller_boost_factor: f64, _logger: &mut crate::logger::Logger) -> Option<f64> {
-        let pacing = self.converger.get_main_variable(converge);
+        let pacing = self.converger.get_converging_variable(converge);
         Some(pacing * impression.value_to_campaign_id[self.campaign_id] * seller_boost_factor)
     }
     
@@ -178,6 +160,14 @@ impl CampaignTrait for CampaignMultiplicativePacing {
 }
 
 /// Campaign with fixed budget target using optimal bidding
+/// Optimal bidding means that all bids are made at the same marginal utility of spend
+/// That gives an optimal total expected value for the total expected budget
+/// This is achieved by using a sigmoid function to model the win probability and then using the Newton-Raphson method to find the bid that maximizes the marginal utility of spend
+/// The sigmoid function is initialized with the competition parameters and the value of the impression
+/// The Newton-Raphson method is used to find the bid that keeps the marginal utility of spend constant 
+/// The quantity of the marginal utility of spend is what needs to converge (for example based on target impressions or budget)
+/// 
+
 pub struct CampaignOptimalBidding {
     pub campaign_id: usize,
     pub campaign_name: String,
@@ -194,7 +184,7 @@ impl CampaignTrait for CampaignOptimalBidding {
     }
     
     fn get_bid(&self, impression: &Impression, converge: &dyn crate::converge::ConvergingVariables, seller_boost_factor: f64, logger: &mut Logger) -> Option<f64> {
-        let pacing = self.converger.get_main_variable(converge);
+        let pacing = self.converger.get_converging_variable(converge);
         
         // Handle zero or very small pacing to avoid division by zero
         if pacing <= 1e-10 {
@@ -283,7 +273,7 @@ impl CampaignTrait for CampaignCheaterLastLook {
     }
     
     fn get_bid(&self, impression: &Impression, converge: &dyn crate::converge::ConvergingVariables, seller_boost_factor: f64, _logger: &mut Logger) -> Option<f64> {
-        let pacing = self.converger.get_main_variable(converge);
+        let pacing = self.converger.get_converging_variable(converge);
         
         // Calculate value as multiplication between seller_boost_factor and impression value to campaign id
         let max_affordable_bid = pacing * seller_boost_factor * impression.value_to_campaign_id[self.campaign_id];

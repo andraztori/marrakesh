@@ -170,7 +170,6 @@ impl Sigmoid {
                 } else {
                     return Some(self.inverse(0.999));
                 }
-                return Some(self.inverse(0.999));
             }
 
             // Newton-Raphson update step

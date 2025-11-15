@@ -160,25 +160,27 @@ impl Impressions {
     /// Create a new Impressions container and populate it from sellers
     pub fn new(sellers: &Sellers, params: &ImpressionsParam) -> Self {
         // Use deterministic seed for reproducible results
-        let mut rng = StdRng::seed_from_u64(999);
+        let mut rng_floors = StdRng::seed_from_u64(1991);
+        let mut rng_generate_impression = StdRng::seed_from_u64(2992);
+        let mut rng_campaigns_multiplier = StdRng::seed_from_u64(3992);
 
         let mut impressions = Vec::new();
 
         for seller in &sellers.sellers {
             for _ in 0..seller.get_impressions_on_offer() {
                 // First calculate base impression value (needed for floor generation)
-                let base_impression_value = params.base_impression_value_dist.sample(&mut rng);
+                let base_impression_value = params.base_impression_value_dist.sample(&mut rng_floors);
                 
                 let (competition, floor_cpm) = seller.generate_impression(
                     base_impression_value,
-                    &mut rng,
+                    &mut rng_generate_impression,
                 );
                 //println!("Base impression value: {:.4}", base_impression_value);
                 // Then generate values for each campaign by multiplying base value with campaign-specific multiplier
                 let mut value_to_campaign_id = [0.0; MAX_CAMPAIGNS];
                 //println!("Base impression value: {}", base_impression_value);
                 for i in 0..MAX_CAMPAIGNS {
-                    let multiplier = params.value_to_campaign_multiplier_dist.sample(&mut rng);
+                    let multiplier = params.value_to_campaign_multiplier_dist.sample(&mut rng_campaigns_multiplier);
                 //    println!("Campaign {} multiplier: {:.4}", i, multiplier);
                     value_to_campaign_id[i] = base_impression_value * multiplier;
                 //    println!("     {}", value_to_campaign_id[i])

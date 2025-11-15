@@ -54,6 +54,8 @@ impl FloorGeneratorTrait for FloorGeneratorLogNormal {
         // Create a lognormal distribution centered around base_value using the utility function
         let dist = lognormal_dist(base_impression_value * self.relative_to_impression_value, self.stddev);
         Distribution::sample(&dist, rng).max(0.0) // Ensure floor is non-negative
+    
+        //base_impression_value
     }
 }
 
