@@ -4,7 +4,7 @@
 /// parameter that is used to calculate the marginal utility of spend.
 /// It provides methods for calculating win probabilities, marginal utilities, and their inverses.
 
-//const EPSILON: f64 = 0.0001;
+const EPSILON: f64 = 0.0001;
 
 pub struct Sigmoid {
     pub offset: f64,
@@ -51,7 +51,7 @@ impl Sigmoid {
             }
         }
         (min_x + max_x) / 2.0
-    }
+    }*/
     /// Inverse of the sigmoid function
     /// Returns x such that get_probability(x) = y
     pub fn inverse(&self, y: f64) -> f64 {
@@ -64,7 +64,7 @@ impl Sigmoid {
         }
         (y_clamped.ln() - (1.0 - y_clamped).ln()) / self.scale + self.offset
     }
-
+/*
     /// Numerical derivative of get_probability at x
     pub fn numeric_derivative(&self, x: f64) -> f64 {
         let e = 0.00001;
@@ -155,12 +155,22 @@ impl Sigmoid {
 
             // Avoid division by zero if the derivative is flat
             if m_prime_val.abs() < 1e-15 {
-                eprintln!(
+                /*eprintln!(
                     "Warning: Derivative is close to zero at x={:.2}. Method cannot proceed. \
                     y_target={:.2}, m_val={:.2}, m_prime_val={:.2}, Sigmoid parameters: scale={:.2}, offset={:.2}, value={:.2}",
                     x, y_target, m_val, m_prime_val, self.scale, self.offset, self.value
-                );
-                return None;
+                );*/
+
+                // We handle the extreme case by simply assuming this happen with large scales &  values on the extreme sides
+                // What we do is we check what our marginal utility is at offset - if values are on extreme, we 
+                // generally want to either bid to win or bid to lose
+                //return None;
+                if self.m(self.offset) < y_target {
+                    return Some(self.inverse(0.001));
+                } else {
+                    return Some(self.inverse(0.999));
+                }
+                return Some(self.inverse(0.999));
             }
 
             // Newton-Raphson update step

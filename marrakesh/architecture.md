@@ -12,6 +12,8 @@ The framework enables investigation of:
 - How marketplace rules and constraints shape supply and demand interactions
 - How value is distributed between sellers, buyers, and the marketplace itself
 - How different campaign objectives (impression targets vs. budget constraints) interact
+- How optimal bidding strategies compare to simple multiplicative pacing
+- How strategic bidding (cheating) affects marketplace outcomes
 
 ---
 
@@ -50,12 +52,14 @@ Marrakesh models a marketplace with three distinct parties, each with different 
    - May use fixed pricing or auction-based pricing
    - Have finite inventory
    - Seek to maximize revenue
+   - Can apply boost factors to influence bid values
 
 2. **Campaigns** (Demand Side)
    - Have specific objectives (impression targets or budget constraints)
    - Value impressions differently based on context
    - Compete for impressions through bidding
    - Operate under optimal pacing (assumed)
+   - Use different bidding strategies (multiplicative pacing, optimal bidding, strategic cheating)
 
 3. **Marketplace** (Platform)
    - Facilitates transactions
@@ -86,14 +90,7 @@ Each impression has a **value array**—one value per campaign—representing ho
 
 ### Bidding Process
 
-Campaigns bid based on:
-- Their valuation of the impression
-- Their current pacing multiplier (optimized to meet targets)
-- The seller boost factor (applied by sellers to adjust bid values)
-
-The bid formula currently is: `bid = pacing × value × seller_boost_factor`. This will evolve as simluation gets more sophisticated.
-
-The seller boost factor allows for experimentation of what happens when seller can influence how buyer is valuing certain impression. This mainly can happen when we control both sides of the market and want to satisfy sellers to which we have promissed certain revenues. The other option of seller influencing the buyer is by setting the floors.
+Campaigns bid based on their bidding strategy. See the "Campaign Types and Bidding Strategies" section below for detailed descriptions of each strategy.
 
 ### Winner Determination
 
@@ -122,38 +119,54 @@ Impressions may include optional `ImpressionCompetition` data that models extern
 
 Sellers that use first-price auctions generate competition data; fixed-cost sellers do not.
 
+**Competition Generation**:
+- Uses `CompetitionGeneratorTrait` for extensible competition modeling
+- `CompetitionGeneratorNone`: No competition (for fixed-price sellers)
+- `CompetitionGeneratorParametrizedLogNormal`: Generates realistic competition using lognormal distributions
+- Implements rejection sampling to ensure realistic sigmoid parameters (win probability at zero bid < 5%)
+- Uses `base_impression_value` as the sigmoid offset for realistic modeling
+
 ---
 
 ## Seller Pricing Models
 
-### Three Seller Types
+### Two Seller Types
 
-Sellers operate under one of three pricing models:
+Sellers operate under one of two pricing models:
 
-1. **Fixed Cost with Fixed Boost** (`FIXED_COST_FIXED_BOOST`): 
-   - Charges a fixed CPM regardless of winning bid
-   - Uses a fixed boost factor (typically 1.0, but can be set)
-   - Boost factor does not converge
-   - Simple, predictable pricing model
-
-2. **Fixed Cost with Dynamic Boost** (`FIXED_COST_DYNAMIC_BOOST`):
-   - Charges a fixed CPM regardless of winning bid
-   - Uses a dynamic boost factor that converges
-   - Boost factor adjusts to balance total supply cost with total virtual cost - supply is thus forcing buying to the demand side
-   - Enables sellers to optimize revenue while maintaining fixed pricing
-
-3. **First Price Auction** (`FIRST_PRICE`):
+1. **First Price Auction** (`FIRST_PRICE`):
    - Charges the winning bid amount
    - Generates competition data (`ImpressionCompetition`) for each impression
    - No boost factor (boost is always 1.0)
    - Models auction-based pricing
 
+2. **Fixed Price** (`FIXED_PRICE`):
+   - Charges a fixed CPM regardless of winning bid
+   - Can use boost factors to influence bid values
+   - Does not generate competition data
+   - Simple, predictable pricing model
+
+### Seller Convergence Strategies
+
+Sellers can use different convergence strategies for their boost factors:
+
+1. **No Convergence** (`NONE`):
+   - Boost factor remains constant at `default_value`
+   - Simple, predictable behavior
+   - Useful for baseline comparisons
+
+2. **Total Cost Convergence** (`TOTAL_COST`):
+   - Boost factor converges to balance total supply cost with target total cost
+   - Uses proportional controller for smooth adjustments
+   - Enables sellers to optimize revenue while maintaining fixed pricing
+   - Allows sellers to influence demand to meet revenue targets
+
 ### Seller Boost Factors
 
 Boost factors allow sellers to influence how campaigns value their impressions:
 - Applied multiplicatively to campaign bids: `bid = pacing × value × boost_factor`
-- Fixed boost: Set once and remains constant
-- Dynamic boost: Converges to balance seller economics
+- Fixed boost: Set once and remains constant (via `NONE` strategy)
+- Dynamic boost: Converges to balance seller economics (via `TOTAL_COST` strategy)
 - Enables sellers to adjust pricing strategy without changing base cost structure
 
 ---
@@ -164,19 +177,48 @@ Boost factors allow sellers to influence how campaigns value their impressions:
 
 Campaigns operate under one of two constraint models:
 
-1. **Fixed Impressions**: Campaign wants to obtain exactly N impressions
+1. **Fixed Impressions** (`TOTAL_IMPRESSIONS`): Campaign wants to obtain exactly N impressions
    - Pacing adjusts to bid more/less aggressively to hit the target
    - Useful for reach-based campaigns
    - Tests how impression constraints affect bidding behavior
 
-2. **Fixed Budget**: Campaign wants to spend exactly B dollars
+2. **Fixed Budget** (`TOTAL_BUDGET`): Campaign wants to spend exactly B dollars
    - Pacing adjusts to spend faster/slower to hit the target
    - Useful for budget-constrained campaigns
    - Tests how budget constraints affect impression acquisition
 
-These two models represent the fundamental trade-offs in advertising:
+3. **Fixed Budget Inverse** (`TOTAL_BUDGET_INVERSE`): Special variant for optimal bidding
+   - Uses inverse relationship between pacing and marginal utility
+   - Designed to work with optimal bidding strategies
+   - Converges on inverse of budget (1/budget) for proper marginal utility calculation
+
+These models represent the fundamental trade-offs in advertising:
 - **Reach vs. Efficiency**: Fixed impressions prioritizes reach; fixed budget prioritizes efficiency
 - **Different optimization objectives**: Impression targets optimize for volume; budget targets optimize for cost control
+
+### Campaign Types and Bidding Strategies
+
+Campaigns can use one of three bidding strategies:
+
+1. **Multiplicative Pacing** (`MULTIPLICATIVE_PACING`, `CampaignMultiplicativePacing`):
+   - Simple bid calculation: `bid = pacing × value × seller_boost_factor`
+   - Pacing multiplier is adjusted to meet campaign targets
+   - Works with both impression and budget constraints
+   - Straightforward and easy to understand
+
+2. **Optimal Bidding** (`OPTIMAL`, `CampaignOptimalBidding`):
+   - Uses sigmoid functions to model win probability
+   - Calculates marginal utility of spend from pacing: `marginal_utility = 1.0 / pacing`
+   - Uses Newton-Raphson method to find optimal bid via `marginal_utility_of_spend_inverse`
+   - Requires competition data (sigmoid parameters) to function
+   - More sophisticated, theoretically optimal approach
+   - Currently works with budget constraints only
+
+3. **Cheater/Second Price** (`CHEATER`, `CampaignCheaterSecondPrice`):
+   - Bids `value × pacing × seller_boost_factor`
+   - If bid exceeds competition, reduces to `competition.bid_cpm + 0.00001`
+   - Models strategic bidding that exploits knowledge of competition
+   - Simulates second-price auction behavior by bidding just above competition
 
 ### Convergence Mechanism
 
@@ -189,25 +231,115 @@ The system uses an **iterative feedback loop** to find optimal pacing and boost 
 **Campaign Convergence**:
 - Campaigns converge their pacing multipliers to meet impression or budget targets
 - Uses `ControllerProportional` for smooth adjustments
-- Each campaign type has its own convergence logic
+- Each convergence strategy (`ConvergeTotalImpressions`, `ConvergeTotalBudget`, `ConvergeTotalBudgetInverse`) has its own convergence logic
 
 **Seller Convergence**:
-- Sellers with dynamic boost factors converge to balance supply costs with virtual costs
-- Fixed boost sellers maintain constant boost factors
+- Sellers with `TOTAL_COST` strategy converge boost factors to balance supply costs with target costs
+- Sellers with `NONE` strategy maintain constant boost factors
 - First-price sellers don't use boost factors
 
 This is not a pacing algorithm to be studied—it's a **simulation calibration tool** that ensures campaigns and sellers operate at their optimal point, allowing clean observation of other marketplace dynamics.
 
 ### Convergence Architecture
 
-The system uses trait-based dynamic dispatch for convergence:
-- `CampaignConverge` trait: Defines convergence parameter interface for campaigns
-- `CampaignConvergePacing`: Concrete convergence parameter storing pacing multiplier
-- `SellerConverge` trait: Defines convergence parameter interface for sellers
-- `SellerConvergeBoost`: Concrete convergence parameter storing boost factor
-- `CampaignConverges` / `SellerConverges`: Containers holding convergence parameters for all campaigns/sellers
+The system uses a **strategy pattern** for convergence with trait-based dynamic dispatch:
 
-This design allows each campaign and seller type to have its own convergence logic while maintaining a uniform interface.
+**Core Traits**:
+- `ConvergingVariables`: Unified trait for convergence parameters (used by both campaigns and sellers)
+- `ConvergeAny<T>`: Generic trait for convergence strategies, parameterized by statistic type
+  - Methods: `converge_iteration`, `get_main_variable`, `create_converging_variables`, `converge_target_string`
+
+**Convergence Parameters**:
+- `ConvergingSingleVariable`: Concrete type storing a single `f64` value (pacing or boost)
+- All current implementations use `ConvergingSingleVariable` for their convergence parameters
+
+**Campaign Convergence Strategies**:
+- `ConvergeTotalImpressions`: Converges pacing to meet impression targets
+- `ConvergeTotalBudget`: Converges pacing to meet budget targets
+- `ConvergeTotalBudgetInverse`: Converges on inverse budget for optimal bidding
+
+**Seller Convergence Strategies**:
+- `ConvergeNone`: No convergence, maintains constant boost factor
+- `ConvergeTotalCost`: Converges boost factor to meet total cost targets
+
+**Design Benefits**:
+- Separation of concerns: Campaign/seller logic separate from convergence logic
+- Extensibility: New convergence strategies can be added without modifying campaign/seller code
+- Flexibility: Same convergence strategy can work with different campaign/seller types
+- Uniform interface: All convergence strategies work with `ConvergingVariables` trait objects
+
+---
+
+## Floor and Competition Generation
+
+### Floor Generation
+
+Floors represent minimum price requirements for impressions. The system uses trait-based floor generation:
+
+**FloorGeneratorTrait**:
+- `generate_floor(base_impression_value, rng) -> f64`: Generates floor CPM based on impression value
+
+**Implementations**:
+- `FloorGeneratorFixed`: Always returns a fixed floor value
+- `FloorGeneratorLogNormal`: Generates floors using lognormal distribution relative to impression value
+  - Parameterized by relative ratio and standard deviation
+  - Creates realistic floor distributions that scale with impression value
+
+### Competition Generation
+
+Competition data models external competing demand. The system uses trait-based competition generation:
+
+**CompetitionGeneratorTrait**:
+- `generate_competition(base_impression_value, rng) -> Option<ImpressionCompetition>`
+- Returns `None` if no competition should be generated
+
+**Implementations**:
+- `CompetitionGeneratorNone`: Always returns `None` (no competition)
+- `CompetitionGeneratorParametrizedLogNormal`: Generates realistic competition data
+  - Samples competing bid from lognormal distribution
+  - Generates sigmoid parameters for win probability modeling
+  - Uses rejection sampling to ensure realistic parameters (win probability at zero bid < 5%)
+  - Uses `base_impression_value` as sigmoid offset for realistic modeling
+
+---
+
+## Sigmoid Functions and Optimal Bidding
+
+### Sigmoid Model
+
+The system uses sigmoid functions to model win probability in auctions:
+
+**Sigmoid Structure**:
+- `offset`: The bid value where win probability is 0.5
+- `scale`: Controls the steepness of the sigmoid curve
+- `value`: The value of the impression to the campaign
+
+**Win Probability**:
+- `get_probability(bid)`: Returns win probability for a given bid
+- Formula: `1.0 / (1 + exp(-(bid - offset) * scale))`
+
+**Marginal Utility**:
+- `m(bid)`: Marginal utility of spend at a given bid
+- `m_prime(bid)`: Derivative of marginal utility (rate of change)
+- Used in optimal bidding to find the bid that maximizes utility
+
+**Inverse Marginal Utility**:
+- `marginal_utility_of_spend_inverse(y_target)`: Finds the bid that achieves a target marginal utility
+- Uses Newton-Raphson method with damping and backtracking for stability
+- Handles edge cases (very small targets, flat regions) gracefully
+- Returns `None` if inverse cannot be calculated
+
+### Optimal Bidding Algorithm
+
+Optimal bidding uses the following process:
+
+1. Calculate marginal utility of spend from pacing: `marginal_utility = 1.0 / pacing`
+2. Calculate impression value: `value = seller_boost_factor × impression.value`
+3. Initialize sigmoid with competition parameters and value
+4. Find optimal bid: `bid = sigmoid.marginal_utility_of_spend_inverse(marginal_utility)`
+5. Return bid (or `None` if calculation fails)
+
+This approach ensures campaigns bid optimally given their budget constraints and competition.
 
 ---
 
@@ -226,6 +358,8 @@ With optimal pacing assumed, researchers can focus on:
 - How do different valuation models affect outcomes?
 - What happens when campaigns have correlated vs. uncorrelated valuations?
 - How do campaign objectives (impressions vs. budget) affect bidding?
+- How does optimal bidding compare to multiplicative pacing?
+- What is the impact of strategic bidding (cheating) on marketplace outcomes?
 
 **Marketplace Design**:
 - How do floors and competing demand thresholds affect outcomes?
@@ -252,11 +386,11 @@ The framework explicitly does **not** study:
 ### Setup Phase
 
 1. **Define Marketplace**: Create sellers with pricing models and inventory
-2. **Define Demand**: Create campaigns with objectives (impressions or budget)
-3. **Generate Supply**: Create impressions with valuations and constraints
+2. **Define Demand**: Create campaigns with objectives (impressions or budget) and bidding strategies
+3. **Generate Supply**: Create impressions with valuations, floors, and competition data
 4. **Initialize Convergence**: 
    - Campaign pacing starts at 1.0 (true value)
-   - Seller boost factors start at 1.0 (no boost)
+   - Seller boost factors start at 1.0 (no boost) or specified default
    - `SimulationConverge` encapsulates marketplace and initial convergence state
 
 ### Convergence Phase
@@ -284,6 +418,7 @@ Once converged, analyze:
 Researchers can then vary:
 - Seller pricing models (fixed cost, first price, boost strategies)
 - Campaign objectives and constraints (impressions vs. budget)
+- Campaign bidding strategies (multiplicative pacing, optimal bidding, cheater)
 - Impression valuations and competition data
 - Marketplace rules (floors, thresholds)
 - Supply composition
@@ -299,10 +434,11 @@ The system includes a scenario framework for structured experimentation:
 - Scenarios include validation logic to verify expected behavior
 - Logging is organized by scenario and variant for easy analysis
 
-Example scenarios:
-- `s_one.rs`: Basic marketplace dynamics
-- `s_mrg_boost.rs`: Effect of seller boost factors
+**Example Scenarios**:
+- `s_one.rs`: Basic marketplace dynamics with multiple campaigns and sellers
+- `s_mrg_boost.rs`: Effect of seller boost factors on marketplace outcomes
 - `s_mrg_dynamic_boost.rs`: Comparison of fixed vs. dynamic boost strategies
+- `s_optimal.rs`: Comparison of multiplicative pacing, optimal bidding, and cheater strategies
 
 ---
 
@@ -320,7 +456,7 @@ The system provides statistics at three levels:
 
 2. **Seller Level**: Performance of individual sellers
    - Impressions sold vs. offered
-   - Revenue received
+   - Revenue received (total_provided_value)
    - Fill rates
    - Pricing model effectiveness
 
@@ -337,18 +473,50 @@ This multi-level view allows researchers to understand:
 
 ---
 
+## Visualization and Analysis
+
+### Chart Generation
+
+The system includes comprehensive chart generation capabilities:
+
+**Histogram Generation** (`charts.rs`):
+- Generates histograms for impression parameters (base value, floors, competing bids)
+- Generates histograms for competition parameters (sigmoid offsets/scales)
+- Creates side-by-side comparisons (prediction vs. actual)
+- Saves charts to `charts/` directory
+- High-resolution output (1600x1200 or 2400x1200)
+
+**Sigmoid Visualization**:
+- Visualizes sigmoid functions: `get_probability()`, `m()`, `m_prime()`
+- Visualizes inverse marginal utility: `marginal_utility_of_spend_inverse()`
+- Marks critical points (offset, error regions)
+- Helps debug optimal bidding calculations
+
+**Chart Features**:
+- Scaled titles and legends
+- Mean lines (vertical, black)
+- Consistent color schemes
+- Professional presentation
+
+---
+
 ## Design Principles
 
 ### Separation of Concerns
 
 The system separates:
-- **Impression and auction logic** (impressions.rs): Core auction mechanics, impression generation, winner determination
-- **Campaign logic** (campaigns.rs): Campaign types, bidding strategies, campaign convergence
-- **Seller logic** (sellers.rs): Seller types, pricing models, seller convergence
-- **Simulation execution** (simulationrun.rs): Running auctions, calculating statistics, marketplace structure
-- **Convergence logic** (converge.rs): Finding optimal pacing and boost factors
-- **Scenarios** (s_*.rs): Experimental setups and validations
-- **Initialization** (main.rs): Setting up experiments and scenario execution
+- **Impression and auction logic** (`impressions.rs`): Core auction mechanics, impression generation, winner determination
+- **Campaign logic** (`campaigns.rs`): Campaign types, bidding strategies, campaign convergence
+- **Seller logic** (`sellers.rs`): Seller types, pricing models, seller convergence
+- **Simulation execution** (`simulationrun.rs`): Running auctions, calculating statistics, marketplace structure
+- **Convergence logic** (`converge.rs`): Finding optimal pacing and boost factors, convergence strategies
+- **Competition generation** (`competition.rs`): Generating competition data for impressions
+- **Floor generation** (`floors.rs`): Generating floor prices for impressions
+- **Sigmoid functions** (`sigmoid.rs`): Win probability and marginal utility calculations
+- **Visualization** (`charts.rs`): Chart and histogram generation
+- **Scenarios** (`s_*.rs`): Experimental setups and validations
+- **Initialization** (`main.rs`): Setting up experiments and scenario execution
+- **Logging** (`logger.rs`): Structured logging with multiple receivers
 
 This allows each component to be understood, tested, and modified independently.
 
@@ -367,10 +535,21 @@ This design choice prioritizes simplicity and performance over flexibility.
 The system uses Rust traits for extensibility:
 - `CampaignTrait`: Defines campaign interface (bidding, convergence, statistics)
 - `SellerTrait`: Defines seller interface (pricing, impression generation, convergence)
-- `CampaignConverge` / `SellerConverge`: Define convergence parameter interfaces
+- `ConvergeAny<T>`: Generic convergence strategy trait parameterized by statistic type
+- `CompetitionGeneratorTrait`: Extensible competition generation
+- `FloorGeneratorTrait`: Extensible floor generation
 - Dynamic dispatch via trait objects enables different implementations while maintaining uniform interfaces
 
 This allows new campaign and seller types to be added without modifying core simulation logic.
+
+### Strategy Pattern for Convergence
+
+The convergence system uses the strategy pattern:
+- Campaigns and sellers hold a `Box<dyn ConvergeAny<T>>` converger
+- Convergence logic is separated from campaign/seller logic
+- New convergence strategies can be added independently
+- All strategies work with `ConvergingVariables` trait objects for uniform interface
+- Enables flexible combination of campaign/seller types with convergence strategies
 
 ### Deterministic Execution
 
@@ -388,9 +567,10 @@ This enables reproducible research and controlled experimentation.
 The framework is designed to be extended without modifying core logic:
 
 ### New Bidding Strategies
-- Implement different bid calculation methods
+- Implement `CampaignTrait` with new bid calculation methods
 - Add campaign-specific bidding logic
 - Experiment with strategic bidding
+- Examples: `CampaignMultiplicativePacing`, `CampaignOptimalBidding`, `CampaignCheaterSecondPrice`
 
 ### New Pricing Models
 - Add new seller types beyond fixed cost and first-price
@@ -398,13 +578,18 @@ The framework is designed to be extended without modifying core logic:
 - Add marketplace fees or discounts
 - Extend boost factor strategies
 
-### New Constraints
-- Add multi-dimensional constraints (both impressions AND budget)
-- Implement time-based constraints
-- Add inventory constraints
+### New Convergence Strategies
+- Implement `ConvergeAny<T>` for new convergence logic
+- Add new constraint types (time-based, inventory-based)
+- Experiment with different control algorithms
+
+### New Competition/Floor Models
+- Implement `CompetitionGeneratorTrait` for new competition models
+- Implement `FloorGeneratorTrait` for new floor models
+- Add realistic market dynamics
 
 ### New Metrics
-- Add custom statistics
+- Add custom statistics to `CampaignStat`, `SellerStat`, `OverallStat`
 - Implement efficiency measures
 - Track additional performance indicators
 
@@ -424,6 +609,7 @@ The framework is designed to be extended without modifying core logic:
 - Optimize marketplace rules
 - Validate pricing mechanisms
 - Develop marketplace optimization techniques
+- Compare bidding strategies (pacing vs. optimal vs. strategic)
 
 ---
 
@@ -450,6 +636,8 @@ The framework focuses on:
 - ✅ Pricing model comparison
 - ✅ Campaign objective optimization
 - ✅ Marketplace efficiency analysis
+- ✅ Bidding strategy comparison
+- ✅ Competition and floor modeling
 
 The framework does not focus on:
 - ❌ Pacing algorithm development
@@ -460,4 +648,3 @@ The framework does not focus on:
 ---
 
 *This document focuses on conceptual understanding. For implementation details, see the code and inline documentation.*
-

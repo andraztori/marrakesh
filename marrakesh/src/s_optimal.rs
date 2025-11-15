@@ -18,6 +18,7 @@ use crate::floors::FloorGeneratorLogNormal;
 use crate::utils;
 use crate::logger::{Logger, LogEvent};
 use crate::logln;
+use crate::errln;
 
 // Register this scenario in the catalog
 inventory::submit!(crate::scenarios::ScenarioEntry {
@@ -32,10 +33,15 @@ fn prepare_simulationconverge(hb_impressions: usize, campaign_type: CampaignType
     let mut sellers = Sellers::new();
 
     // Add campaign (ID is automatically set to match Vec index)
+    let converge_target = match campaign_type {
+        CampaignType::MULTIPLICATIVE_PACING => ConvergeTarget::TOTAL_BUDGET { target_total_budget: 20.0 },
+        CampaignType::OPTIMAL => ConvergeTarget::TOTAL_BUDGET { target_total_budget: 20.0 },
+        CampaignType::CHEATER => ConvergeTarget::TOTAL_BUDGET { target_total_budget: 20.0 },
+    };
     campaigns.add(
         "Campaign 0".to_string(),  // campaign_name
         campaign_type,  // campaign_type - either multiplicative pacing or optimal bidding
-        ConvergeTarget::TOTAL_BUDGET { target_total_budget: 20.0 },  // converge_target
+        converge_target,  // converge_target
     );
 
     // Add seller (ID is automatically set to match Vec index)
@@ -51,7 +57,7 @@ fn prepare_simulationconverge(hb_impressions: usize, campaign_type: CampaignType
     // Create impressions for all sellers using default parameters
     let impressions_params = ImpressionsParam::new(
         utils::lognormal_dist(10.0, 3.0),  // base_impression_value_dist
-        utils::lognormal_dist(1.0, 0.7),   // value_to_campaign_multiplier_dist
+        utils::lognormal_dist(1.0, 2.0),   // value_to_campaign_multiplier_dist
     );
     let impressions = Impressions::new(&sellers, &impressions_params);
 
@@ -68,7 +74,7 @@ fn prepare_simulationconverge(hb_impressions: usize, campaign_type: CampaignType
 
 pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::error::Error>> {
     // Run variant A with multiplicative pacing
-    let num_impressions = 1000;
+    let num_impressions = 10000;
     let simulation_converge_a = prepare_simulationconverge(
         num_impressions,
         CampaignType::MULTIPLICATIVE_PACING,
@@ -82,41 +88,52 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
     );
     let stats_b = simulation_converge_b.run_variant("Running with optimal bidding", scenario_name, "optimal", 100, logger);
     
-    // Compare the two variants to verify expected marketplace behavior
+    // Run variant C with cheater bidding
+    let simulation_converge_c = prepare_simulationconverge(
+        num_impressions,
+        CampaignType::CHEATER,
+    );
+    let stats_c = simulation_converge_c.run_variant("Running with cheater bidding", scenario_name, "cheater", 100, logger);
+    
+    // Validate expected marketplace behavior
     // Variant A (multiplicative pacing) uses MULTIPLICATIVE_PACING with TOTAL_BUDGET
     // Variant B (optimal bidding) uses OPTIMAL with TOTAL_BUDGET
+    // Variant C (cheater bidding) uses CHEATER with TOTAL_BUDGET
     
     logln!(logger, LogEvent::Scenario, "");
     
-    // Compare: Variant A (multiplicative pacing) vs Variant B (optimal bidding)
-    let msg = format!(
-        "Variant A (Multiplicative pacing) total buyer charge: {:.2}, Variant B (Optimal bidding) total buyer charge: {:.2}",
-        stats_a.overall_stat.total_buyer_charge,
-        stats_b.overall_stat.total_buyer_charge
-    );
-    logln!(logger, LogEvent::Scenario, "✓ {}", msg);
+    let mut errors: Vec<String> = Vec::new();
     
+    // Check: Variant C (cheater) obtained value > Variant B (optimal) obtained value
     let msg = format!(
-        "Variant A (Multiplicative pacing) total value: {:.2}, Variant B (Optimal bidding) total value: {:.2}",
-        stats_a.overall_stat.total_value,
+        "Variant C (Cheater) obtained value is greater than Variant B (Optimal bidding): {:.2} > {:.2}",
+        stats_c.overall_stat.total_value,
         stats_b.overall_stat.total_value
     );
-    logln!(logger, LogEvent::Scenario, "✓ {}", msg);
+    if stats_c.overall_stat.total_value > stats_b.overall_stat.total_value {
+        logln!(logger, LogEvent::Scenario, "✓ {}", msg);
+    } else {
+        errors.push(msg.clone());
+        errln!(logger, LogEvent::Scenario, "✗ {}", msg);
+    }
     
+    // Check: Variant B (optimal) obtained value > Variant A (multiplicative pacing) obtained value
     let msg = format!(
-        "Variant A (Multiplicative pacing) profitability (supply_cost vs buyer_charge): {:.2} vs {:.2}",
-        stats_a.overall_stat.total_supply_cost,
-        stats_a.overall_stat.total_buyer_charge
+        "Variant B (Optimal bidding) obtained value is greater than Variant A (Multiplicative pacing): {:.2} > {:.2}",
+        stats_b.overall_stat.total_value,
+        stats_a.overall_stat.total_value
     );
-    logln!(logger, LogEvent::Scenario, "✓ {}", msg);
+    if stats_b.overall_stat.total_value > stats_a.overall_stat.total_value {
+        logln!(logger, LogEvent::Scenario, "✓ {}", msg);
+    } else {
+        errors.push(msg.clone());
+        errln!(logger, LogEvent::Scenario, "✗ {}", msg);
+    }
     
-    let msg = format!(
-        "Variant B (Optimal bidding) profitability (supply_cost vs buyer_charge): {:.2} vs {:.2}",
-        stats_b.overall_stat.total_supply_cost,
-        stats_b.overall_stat.total_buyer_charge
-    );
-    logln!(logger, LogEvent::Scenario, "✓ {}", msg);
-    
-    Ok(())
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(format!("Scenario '{}' validation failed:\n{}", scenario_name, errors.join("\n")).into())
+    }
 }
 
