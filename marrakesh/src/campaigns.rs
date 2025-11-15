@@ -22,7 +22,6 @@ pub enum CampaignType {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ConvergeTarget {
     TOTAL_BUDGET { target_total_budget: f64 },
-    TOTAL_BUDGET_INVERSE { target_total_budget: f64 },
     TOTAL_IMPRESSIONS { target_total_impressions: i32 },
 }
 
@@ -102,42 +101,6 @@ impl ConvergeAny<crate::simulationrun::CampaignStat> for ConvergeTotalBudget {
     fn converge_target_string(&self, converge: &dyn crate::converge::ConvergingVariables) -> String {
         let pacing = converge.as_any().downcast_ref::<ConvergingSingleVariable>().unwrap().converging_variable;
         format!("Fixed budget ({:.2}), pacing: {:.2}", self.total_budget_target, pacing)
-    }
-}
-
-/// Convergence strategy for total budget target (inverse version)
-pub struct ConvergeTotalBudgetInverse {
-    pub total_budget_target: f64,
-    pub controller: ControllerProportional,
-}
-
-impl ConvergeAny<crate::simulationrun::CampaignStat> for ConvergeTotalBudgetInverse {
-    fn converge_iteration(&self, current_converge: &dyn crate::converge::ConvergingVariables, next_converge: &mut dyn crate::converge::ConvergingVariables, campaign_stat: &crate::simulationrun::CampaignStat) -> bool {
-        // Downcast to concrete types at the beginning
-        let current_converge = current_converge.as_any().downcast_ref::<ConvergingSingleVariable>().unwrap();
-        let next_converge = next_converge.as_any_mut().downcast_mut::<ConvergingSingleVariable>().unwrap();
-        
-        let target = 1.0 / self.total_budget_target;
-        let actual = 1.0 / campaign_stat.total_buyer_charge;
-        let current_pacing = current_converge.converging_variable;
-        
-        let (new_pacing, changed) = self.controller.pacing_in_next_iteration(target, actual, current_pacing);
-        next_converge.converging_variable = new_pacing;
-        
-        changed
-    }
-    
-    fn get_main_variable(&self, converge: &dyn crate::converge::ConvergingVariables) -> f64 {
-        converge.as_any().downcast_ref::<ConvergingSingleVariable>().unwrap().converging_variable
-    }
-    
-    fn create_converging_variables(&self) -> Box<dyn crate::converge::ConvergingVariables> {
-        Box::new(ConvergingSingleVariable { converging_variable: 1.0 })
-    }
-    
-    fn converge_target_string(&self, converge: &dyn crate::converge::ConvergingVariables) -> String {
-        let pacing = converge.as_any().downcast_ref::<ConvergingSingleVariable>().unwrap().converging_variable;
-        format!("Fixed budget inverse ({:.2}), pacing: {:.2}", self.total_budget_target, pacing)
     }
 }
 
@@ -393,12 +356,6 @@ impl Campaigns {
             }
             ConvergeTarget::TOTAL_BUDGET { target_total_budget } => {
                 Box::new(ConvergeTotalBudget {
-                    total_budget_target: target_total_budget,
-                    controller: ControllerProportional::new(),
-                })
-            }
-            ConvergeTarget::TOTAL_BUDGET_INVERSE { target_total_budget } => {
-                Box::new(ConvergeTotalBudgetInverse {
                     total_budget_target: target_total_budget,
                     controller: ControllerProportional::new(),
                 })

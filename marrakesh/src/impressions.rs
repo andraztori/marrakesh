@@ -117,7 +117,7 @@ impl Impression {
                 None => break 'result (Winner::NO_DEMAND, seller.get_supply_cost_cpm(0.0) / 1000.0),
             };
             
-            // Winning bid is below floor - no winner
+            // Winning bid is below z - no winner
             if winning_bid_cpm < self.floor_cpm {
                 break 'result (Winner::BELOW_FLOOR, seller.get_supply_cost_cpm(0.0) / 1000.0);
             }

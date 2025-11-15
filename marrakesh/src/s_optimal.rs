@@ -34,15 +34,10 @@ fn prepare_simulationconverge(hb_impressions: usize, campaign_type: CampaignType
     let mut sellers = Sellers::new();
 
     // Add campaign (ID is automatically set to match Vec index)
-    let converge_target = match campaign_type {
-        CampaignType::MULTIPLICATIVE_PACING => ConvergeTarget::TOTAL_BUDGET { target_total_budget: 20.0 },
-        CampaignType::OPTIMAL => ConvergeTarget::TOTAL_BUDGET { target_total_budget: 20.0 },
-        CampaignType::CHEATER => ConvergeTarget::TOTAL_BUDGET { target_total_budget: 20.0 },
-    };
     campaigns.add(
         "Campaign 0".to_string(),  // campaign_name
         campaign_type,  // campaign_type - either multiplicative pacing or optimal bidding
-        converge_target,  // converge_target
+        ConvergeTarget::TOTAL_BUDGET { target_total_budget: 20.0 },  // converge_target
     );
 
     // Add seller (ID is automatically set to match Vec index)
@@ -52,8 +47,8 @@ fn prepare_simulationconverge(hb_impressions: usize, campaign_type: CampaignType
         SellerConvergeStrategy::NONE { default_value: 1.0 },  // seller_converge
         hb_impressions,  // impressions_on_offer
         CompetitionGeneratorParametrizedLogNormal::new(10.0),  // competition_generator
-        //FloorGeneratorLogNormal::new(0.1, 3.0),  // floor_generator
-        FloorGeneratorFixed::new(0.0),
+        FloorGeneratorLogNormal::new(0.1, 3.0),  // floor_generator
+      //  FloorGeneratorFixed::new(0.0),
     );
 
     // Create impressions for all sellers using default parameters
