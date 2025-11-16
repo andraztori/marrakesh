@@ -1,4 +1,5 @@
 use rand::{rngs::StdRng, SeedableRng};
+use crate::utils::get_seed;
 use rand_distr::Distribution;
 use crate::impressions::Impression;
 use crate::competition::{CompetitionGeneratorParametrizedLogNormal, CompetitionGeneratorTrait};
@@ -17,7 +18,7 @@ fn generate_all_impressions() -> Vec<Impression> {
     let value_to_campaign_multiplier_dist = lognormal_dist(1.0, 0.2);
     
     // Create a seeded RNG for reproducibility
-    let mut rng = StdRng::seed_from_u64(42);
+    let mut rng = StdRng::seed_from_u64(get_seed(42));
     
     const NUM_SAMPLES: usize = 10000;
     

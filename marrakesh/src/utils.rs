@@ -1,5 +1,15 @@
 use rand_distr::LogNormal;
 use rand::Rng;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+/// Global random seed that can be modified to change all random number generation
+/// This seed is XORed into all local seeds to ensure reproducible simulations
+pub static RAND_SEED: AtomicU64 = AtomicU64::new(0);
+
+/// Get a seed value by XORing the global RAND_SEED with a local seed
+pub fn get_seed(local_seed: u64) -> u64 {
+    RAND_SEED.load(Ordering::Relaxed) ^ local_seed
+}
 
 /// Convert mean and standard deviation to log-normal distribution parameters
 /// Returns (μ, σ) for LogNormal(μ, σ) that approximates the given mean and stddev

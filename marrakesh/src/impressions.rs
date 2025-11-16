@@ -6,6 +6,7 @@ use crate::converge::CampaignConverges;
 use crate::competition::ImpressionCompetition;
 use crate::logger::LogEvent;
 use crate::errln;
+use crate::utils::get_seed;
 
 /// Represents the winner of an auction
 #[allow(non_camel_case_types)]
@@ -160,9 +161,9 @@ impl Impressions {
     /// Create a new Impressions container and populate it from sellers
     pub fn new(sellers: &Sellers, params: &ImpressionsParam) -> Self {
         // Use deterministic seed for reproducible results
-        let mut rng_floors = StdRng::seed_from_u64(1991);
-        let mut rng_generate_impression = StdRng::seed_from_u64(2992);
-        let mut rng_campaigns_multiplier = StdRng::seed_from_u64(3992);
+        let mut rng_floors = StdRng::seed_from_u64(get_seed(1991));
+        let mut rng_generate_impression = StdRng::seed_from_u64(get_seed(2992));
+        let mut rng_campaigns_multiplier = StdRng::seed_from_u64(get_seed(3992));
 
         let mut impressions = Vec::new();
 

@@ -28,10 +28,6 @@ impl ControllerProportional {
         Box::new(ConvergingSingleVariable { converging_variable: 1.0 })
     }
 
-    pub fn get_converging_variable(&self, converge: &dyn ConvergingVariables) -> f64 {
-        converge.as_any().downcast_ref::<ConvergingSingleVariable>().unwrap().converging_variable
-    }
-
     /// Calculate pacing for next iteration based on target and actual values
     /// 
     /// # Arguments
@@ -67,6 +63,17 @@ impl ControllerProportional {
             next_converge_mut.converging_variable = current_pacing;
             false
         }
+    }
+    
+    /// Get the converging variable from the convergence parameter
+    /// 
+    /// # Arguments
+    /// * `converge` - Convergence parameter to extract the variable from
+    /// 
+    /// # Returns
+    /// The converging variable value
+    pub fn get_converging_variable(&self, converge: &dyn ConvergingVariables) -> f64 {
+        converge.as_any().downcast_ref::<ConvergingSingleVariable>().unwrap().converging_variable
     }
 }
 
@@ -112,7 +119,12 @@ pub trait ConvergeAny<T> {
     /// 
     /// # Arguments
     /// * `converge` - Convergence parameter to extract the pacing value from
-    fn get_converging_variable(&self, converge: &dyn ConvergingVariables) -> f64;
+    /// 
+    /// Default implementation extracts the variable from ConvergingSingleVariable.
+    /// Implementations can override this if they need different behavior.
+    fn get_converging_variable(&self, converge: &dyn ConvergingVariables) -> f64 {
+        converge.as_any().downcast_ref::<ConvergingSingleVariable>().unwrap().converging_variable
+    }
     
     /// Create initial converging variables
     fn create_converging_variables(&self) -> Box<dyn ConvergingVariables>;

@@ -27,6 +27,8 @@ use logger::{Logger, LogEvent, ConsoleReceiver, FileReceiver, sanitize_filename}
 use std::path::PathBuf;
 
 use scenarios::get_scenario_catalog;
+use utils::RAND_SEED;
+use std::sync::atomic::Ordering;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -61,6 +63,19 @@ fn main() {
     
     // Check if "all" argument is provided
     if args.len() > 1 && args[1] == "all" {
+        // Parse iterations parameter if present
+        let iterations = if args.len() > 2 {
+            match args[2].parse::<u64>() {
+                Ok(n) => n,
+                Err(_) => {
+                    eprintln!("Error: Invalid iterations parameter '{}'. Expected a number.", args[2]);
+                    std::process::exit(1);
+                }
+            }
+        } else {
+            1
+        };
+        
         // Set up logger with console and validation file receivers
         let mut logger = Logger::new();
         logger.add_receiver(ConsoleReceiver::new(vec![LogEvent::Validation]));
@@ -70,26 +85,52 @@ fn main() {
         
         // Run all scenarios from the catalog in non-verbose mode
         let scenarios = get_scenario_catalog();
-        logln!(&mut logger, LogEvent::Validation, "Running all scenarios...\n");
         
-        for scenario in scenarios {
+        if iterations > 1 {
+            logln!(&mut logger, LogEvent::Validation, "Running all scenarios {} times...\n", iterations);
+        } else {
+            logln!(&mut logger, LogEvent::Validation, "Running all scenarios...\n");
+        }
+        
+        // Outer loop for scenarios
+        for scenario in &scenarios {
             log!(&mut logger, LogEvent::Validation, "{}: ", scenario.short_name);
             
             // Add scenario-level receiver
             let scenario_receiver_id = logger.add_receiver(FileReceiver::new(&PathBuf::from(format!("log/{}/scenario.log", sanitize_filename(scenario.short_name))), vec![LogEvent::Scenario]));
             
-            match (scenario.run)(scenario.short_name, &mut logger) {
-                Ok(()) => logln!(&mut logger, LogEvent::Validation, "✓ PASSED"),
-                Err(_e) => {
-                    logln!(&mut logger, LogEvent::Validation, "✗ FAILED");
+            // Inner loop for iterations
+            for i in 0..iterations {
+                if iterations > 1 {
+                    log!(&mut logger, LogEvent::Validation, "[{}/{}] ", i + 1, iterations);
                 }
+                
+                // Set RAND_SEED to iteration number
+                RAND_SEED.store(i, Ordering::Relaxed);
+                
+                match (scenario.run)(scenario.short_name, &mut logger) {
+                    Ok(()) => {
+                        if iterations > 1 {
+                            logln!(&mut logger, LogEvent::Validation, "✓");
+                        } else {
+                            logln!(&mut logger, LogEvent::Validation, "✓ PASSED");
+                        }
+                    },
+                    Err(_e) => {
+                        if iterations > 1 {
+                            logln!(&mut logger, LogEvent::Validation, "✗");
+                        } else {
+                            logln!(&mut logger, LogEvent::Validation, "✗ FAILED");
+                        }
+                    }
+                }
+                
+                // Flush to ensure validation is written to summary.log
+                let _ = logger.flush();
             }
             
             // Remove scenario-level receiver
             logger.remove_receiver(scenario_receiver_id);
-            
-            // Flush to ensure validation is written to summary.log
-            let _ = logger.flush();
         }
         
         // Remove validation receiver
