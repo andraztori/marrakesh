@@ -80,11 +80,17 @@ pub struct SimulationStat {
     pub campaign_stats: Vec<CampaignStat>,
     pub seller_stats: Vec<SellerStat>,
     pub overall_stat: OverallStat,
+    pub convergence_iterations: usize,
 }
 
 impl SimulationStat {
     /// Generate statistics from marketplace and simulation run
-    pub fn new(marketplace: &Marketplace, simulation_run: &SimulationRun) -> Self {
+    /// 
+    /// # Arguments
+    /// * `marketplace` - The marketplace containing campaigns, sellers, and impressions
+    /// * `simulation_run` - The simulation run results
+    /// * `convergence_iterations` - Number of iterations it took to converge (1-indexed)
+    pub fn new(marketplace: &Marketplace, simulation_run: &SimulationRun, convergence_iterations: usize) -> Self {
         // Initialize campaign statistics
         let num_campaigns = marketplace.campaigns.campaigns.len();
         let mut campaign_stats: Vec<CampaignStat> = (0..num_campaigns)
@@ -160,6 +166,7 @@ impl SimulationStat {
             campaign_stats,
             seller_stats,
             overall_stat,
+            convergence_iterations,
         }
     }
 
@@ -220,6 +227,7 @@ impl SimulationStat {
     pub fn printout_overall(&self, logger: &mut Logger) {
         
         logln!(logger, LogEvent::Variant, "\n=== Overall Statistics ===");
+        logln!(logger, LogEvent::Variant, "Convergence: {} iterations", self.convergence_iterations);
         logln!(logger, LogEvent::Variant, "Impressions (below floor/other demand/no bids): {} / {} / {}", 
                  self.overall_stat.below_floor_count,
                  self.overall_stat.other_demand_count,

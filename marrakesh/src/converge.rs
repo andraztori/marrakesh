@@ -232,6 +232,7 @@ impl SimulationConverge {
         let mut final_campaign_converges = None;
         let mut final_seller_converges = None;
         let mut converged = false;
+        let mut final_iteration = max_iterations;
         
         // Initialize current campaign converges from input for the first iteration
         let mut current_campaign_converges = self.initial_campaign_converges.clone();
@@ -244,8 +245,8 @@ impl SimulationConverge {
             // Run auctions for all impressions
             let simulation_run = SimulationRun::new(&self.marketplace, &current_campaign_converges, &current_seller_converges, logger);
 
-            // Generate statistics
-            let stats = SimulationStat::new(&self.marketplace, &simulation_run);
+            // Generate statistics (use iteration + 1 for 1-indexed iteration count)
+            let stats = SimulationStat::new(&self.marketplace, &simulation_run, iteration + 1);
             
             // Calculate next iteration's campaign converges based on current results
             let mut next_campaign_converges = current_campaign_converges.clone();
@@ -296,9 +297,10 @@ impl SimulationConverge {
         }
         
         // Log if we reached max iterations
-                    if !converged {
+        if !converged {
             warnln!(logger, LogEvent::Convergence, "{}: Reached maximum iterations ({})", variant_name, max_iterations);
         }
+        
         
         // Return the final simulation run, stats, and converges
         (
