@@ -209,7 +209,7 @@ fn main() {
         let simulation_converge = SimulationConverge::new(marketplace);
         
         // Run simulation loop with pacing adjustments (maximum 100 iterations)
-        let (_final_simulation_run, final_stats, final_campaign_converges, final_seller_converges) = simulation_converge.run(100, "test", &mut logger);
+        let (_final_simulation_run, final_stats, final_campaign_converges, final_seller_converges) = simulation_converge.run(100, "main", "test", &mut logger);
         logln!(&mut logger, LogEvent::Variant, "\n=== Final Results ===");
         final_stats.printout(&simulation_converge.marketplace.campaigns, &simulation_converge.marketplace.sellers, &final_campaign_converges, &final_seller_converges, &mut logger);
     }

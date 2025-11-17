@@ -98,7 +98,7 @@ pub trait SellerTrait {
     /// 
     /// # Returns
     /// Tuple of (Option<ImpressionCompetition>, floor_cpm)
-    fn generate_impression(&self, base_value: f64, rng: &mut StdRng) -> (Option<ImpressionCompetition>, f64);
+    fn generate_impression(&self, base_value: f64, rng_competition: &mut StdRng, rng_floor: &mut StdRng) -> (Option<ImpressionCompetition>, f64);
     
     /// Get a string representation of the charge type for logging
     fn charge_type_string(&self) -> String;
@@ -139,9 +139,9 @@ impl SellerTrait for SellerFirstPrice {
         buyer_win_cpm
     }
     
-    fn generate_impression(&self, base_value: f64, rng: &mut StdRng) -> (Option<ImpressionCompetition>, f64) {
-        let competition = self.competition_generator.generate_competition(base_value, rng);
-        let floor_cpm = self.floor_generator.generate_floor(base_value, rng);
+    fn generate_impression(&self, base_value: f64, rng_competition: &mut StdRng, rng_floor: &mut StdRng) -> (Option<ImpressionCompetition>, f64) {
+        let competition = self.competition_generator.generate_competition(base_value, rng_competition);
+        let floor_cpm = self.floor_generator.generate_floor(base_value, rng_floor);
         (competition, floor_cpm)
     }
     
@@ -178,9 +178,9 @@ impl SellerTrait for SellerFixedPrice {
         self.fixed_cost_cpm
     }
     
-    fn generate_impression(&self, base_value: f64, rng: &mut StdRng) -> (Option<ImpressionCompetition>, f64) {
-        let competition = self.competition_generator.generate_competition(base_value, rng);
-        let floor_cpm = self.floor_generator.generate_floor(base_value, rng);
+    fn generate_impression(&self, base_value: f64, rng_competition: &mut StdRng, rng_floor: &mut StdRng) -> (Option<ImpressionCompetition>, f64) {
+        let competition = self.competition_generator.generate_competition(base_value, rng_competition);
+        let floor_cpm = self.floor_generator.generate_floor(base_value, rng_floor);
         (competition, floor_cpm)
     }
     

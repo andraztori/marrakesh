@@ -7,6 +7,7 @@ use crate::warnln;
 use std::path::PathBuf;
 
 /// Proportional controller for adjusting campaign pacing based on target vs actual performance
+/// Full PID was tried, but always something became unstable
 pub struct ControllerProportional {
     tolerance_fraction: f64,      // Tolerance as a fraction of target (e.g., 0.005 = 0.5%)
     max_adjustment_factor: f64,   // Maximum adjustment factor (e.g., 0.2 = 20%)
@@ -215,6 +216,7 @@ impl SimulationConverge {
     /// 
     /// # Arguments
     /// * `max_iterations` - Maximum number of iterations to run
+    /// * `scenario_name` - Name of the scenario (for log file paths)
     /// * `variant_name` - Name of the variant being run
     /// * `logger` - Logger for event-based logging
     /// 
@@ -223,6 +225,7 @@ impl SimulationConverge {
     pub fn run(
         &self,
         max_iterations: usize,
+        scenario_name: &str,
         variant_name: &str,
         logger: &mut Logger,
     ) -> (SimulationRun, SimulationStat, CampaignConverges, SellerConverges) {
@@ -242,8 +245,14 @@ impl SimulationConverge {
         for iteration in 0..max_iterations {
             logln!(logger, LogEvent::Simulation, "\n=== {} - Iteration {} ===", variant_name, iteration + 1);
             
+            // Create auction receiver for this iteration
+ //           let auctions_receiver_id = logger.add_receiver(FileReceiver::new(&PathBuf::from(format!("log/{}/auctions-{}-iter{}.log", sanitize_filename(scenario_name), sanitize_filename(variant_name), iteration + 1)), vec![LogEvent::Auction]));
+            
             // Run auctions for all impressions
             let simulation_run = SimulationRun::new(&self.marketplace, &current_campaign_converges, &current_seller_converges, logger);
+            
+            // Remove auction receiver after this iteration
+   //         logger.remove_receiver(auctions_receiver_id);
 
             // Generate statistics (use iteration + 1 for 1-indexed iteration count)
             let stats = SimulationStat::new(&self.marketplace, &simulation_run, iteration + 1);
@@ -336,17 +345,46 @@ impl SimulationConverge {
         // Add variant receiver (for variant events)
         let variant_receiver_id = logger.add_receiver(FileReceiver::new(&PathBuf::from(format!("log/{}/variant-{}.log", sanitize_filename(scenario_name), sanitize_filename(variant_name))), vec![LogEvent::Variant]));
         
+        // Add impressions receiver (for logging impression data)
+    //    let impressions_receiver_id = logger.add_receiver(FileReceiver::new(&PathBuf::from(format!("log/{}/imps-{}.log", sanitize_filename(scenario_name), sanitize_filename(variant_name))), vec![LogEvent::Impression]));
+        
         logln!(logger, LogEvent::Variant, "\n=== {} ===", variant_description);
         
         self.marketplace.printout(logger);
         
+        // Log impression data
+        /*
+        for impression in &self.marketplace.impressions.impressions {
+            if let Some(comp) = &impression.competition {
+                logln!(logger, LogEvent::Impression,
+                    "base_value={:.4}, campaign_0_value={:.4}, floor={:.4}, comp_bid={:.4}, pred_offset={:.4}, pred_scale={:.4}, actual_offset={:.4}, actual_scale={:.4}",
+                    impression.base_impression_value,
+                    impression.value_to_campaign_id[0],
+                    impression.floor_cpm,
+                    comp.bid_cpm,
+                    comp.win_rate_prediction_sigmoid_offset,
+                    comp.win_rate_prediction_sigmoid_scale,
+                    comp.win_rate_actual_sigmoid_offset,
+                    comp.win_rate_actual_sigmoid_scale
+                );
+            } else {
+                logln!(logger, LogEvent::Impression,
+                    "base_value={:.4}, campaign_0_value={:.4}, floor={:.4}, no_competition",
+                    impression.base_impression_value,
+                    impression.value_to_campaign_id[0],
+                    impression.floor_cpm
+                );
+            }
+        }
+        */
         // Run simulation loop with pacing adjustments
-        let (_final_simulation_run, stats, final_campaign_converges, final_seller_converges) = self.run(max_iterations, variant_name, logger);
+        let (_final_simulation_run, stats, final_campaign_converges, final_seller_converges) = self.run(max_iterations, scenario_name, variant_name, logger);
         
         // Print final stats (variant-level output)
         stats.printout(&self.marketplace.campaigns, &self.marketplace.sellers, &final_campaign_converges, &final_seller_converges, logger);
         
         // Remove variant-specific receivers
+//        logger.remove_receiver(impressions_receiver_id);
         logger.remove_receiver(variant_receiver_id);
         logger.remove_receiver(iterations_receiver_id);
         

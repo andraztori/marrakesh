@@ -47,6 +47,7 @@ fn generate_all_impressions() -> Vec<Impression> {
             competition,
             floor_cpm,
             value_to_campaign_id,
+            base_impression_value,
         });
     }
     
@@ -484,8 +485,8 @@ pub fn generate_sigmoid_charts() -> Result<(), Box<dyn std::error::Error>> {
     
     // Initialize sigmoid with specific parameters that were causing issues
     let sigmoid = crate::sigmoid::Sigmoid::new(
-        20.4,     // offset
-        3.73,                    // scale
+        15.0,     // offset
+        5.0,                    // scale
         65.0,      // value
     );
     
@@ -658,8 +659,9 @@ pub fn generate_sigmoid_charts() -> Result<(), Box<dyn std::error::Error>> {
             y_values.push(y);
             
             // Calculate the inverse: x such that M(x) = y
-            if let Some(x) = sigmoid.marginal_utility_of_spend_inverse(y) {
+            if let Some(x) = sigmoid.marginal_utility_of_spend_inverse_numerical_2(y) {
                 x_values.push(x);
+               // println!("x {}, y {}", x, y);
             } else {
                 // If inverse cannot be calculated, track the y value for error line
                 x_values.push(f64::NAN);

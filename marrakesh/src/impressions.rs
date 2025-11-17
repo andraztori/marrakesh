@@ -6,6 +6,7 @@ use crate::converge::CampaignConverges;
 use crate::competition::ImpressionCompetition;
 use crate::logger::LogEvent;
 use crate::errln;
+use crate::logln;
 use crate::utils::get_seed;
 
 /// Represents the winner of an auction
@@ -75,6 +76,7 @@ pub struct Impression {
     pub competition: Option<ImpressionCompetition>,
     pub floor_cpm: f64,
     pub value_to_campaign_id: [f64; MAX_CAMPAIGNS],
+    pub base_impression_value: f64,  // Store base value for logging
 }
 
 impl Impression {
@@ -85,6 +87,7 @@ impl Impression {
         // Get bids from all campaigns
         let mut winning_bid_cpm = 0.0;
         let mut winning_campaign_id: Option<usize> = None;
+//        let mut all_bids: Vec<(usize, f64)> = Vec::new(); // Collect all bids for logging
 
         // Get seller_boost_factor from seller convergence parameter
         let seller_converge_boost = seller_converge.as_any().downcast_ref::<crate::converge::ConvergingSingleVariable>().unwrap();
@@ -100,6 +103,7 @@ impl Impression {
                     errln!(logger, LogEvent::Simulation, "Bid below zero: {:.4} from campaign_id: {}", bid, campaign_id);
                     panic!("Bid below zero: {:.4} from campaign_id: {}", bid, campaign_id);
                 }
+               // all_bids.push((campaign_id, bid));
                 if bid > winning_bid_cpm {
                     winning_bid_cpm = bid;
                     winning_campaign_id = Some(campaign_id);
@@ -144,7 +148,59 @@ impl Impression {
                 buyer_charge,
             }, supply_cost)
         };
+        /*
+        // Log auction data
+        let result_str = match &winner {
+            Winner::Campaign { campaign_id, virtual_cost, buyer_charge } => {
+                format!("WINNER:campaign_{}:bid_cpm={:.4}:virtual_cost={:.4}:buyer_charge={:.4}", 
+                    campaign_id, winning_bid_cpm, virtual_cost, buyer_charge)
+            }
+            Winner::OTHER_DEMAND => format!("WINNER:OTHER_DEMAND:winning_bid_cpm={:.4}", winning_bid_cpm),
+            Winner::BELOW_FLOOR => format!("WINNER:BELOW_FLOOR:winning_bid_cpm={:.4}:floor_cpm={:.4}", winning_bid_cpm, self.floor_cpm),
+            Winner::NO_DEMAND => "WINNER:NO_DEMAND".to_string(),
+        };
 
+        // Format competition data
+        let comp_str = if let Some(comp) = &self.competition {
+            format!("comp_bid={:.2}: offset={:.2}:scale={:.2}",
+                comp.bid_cpm,
+                comp.win_rate_actual_sigmoid_offset,
+                comp.win_rate_actual_sigmoid_scale)
+        } else {
+            "no_competition".to_string()
+        };
+
+        // Format all bids
+        let bids_str = if all_bids.is_empty() {
+            "bids=none".to_string()
+        } else {
+            let bids_parts: Vec<String> = all_bids.iter()
+                .map(|(id, bid)| format!("campaign_{}:{:.2}", id, bid))
+                .collect();
+            format!("bids={}", bids_parts.join(","))
+        };
+
+        // Format first campaign value
+        let values_str = format!("campaign_0_value={:.2}", self.value_to_campaign_id[0]);
+
+        logln!(logger, LogEvent::Auction,
+            "seller_id={}:base_value={:.2}:floor_cpm={:.2}:{}:{}:{}:supply_cost={:.4}:{}",
+            self.seller_id,
+            self.base_impression_value,
+            self.floor_cpm,
+            comp_str,
+            values_str,
+            bids_str,
+            supply_cost,
+            result_str
+        );
+        */
+
+        // Format first campaign value
+        /*if all_bids.len() > 0 {
+            let values_str = format!("{:.2} {:.4}, {:.4}", self.competition.as_ref().unwrap().win_rate_actual_sigmoid_offset,self.value_to_campaign_id[0], all_bids[0].1);
+            logln!(logger, LogEvent::Auction, "{}", values_str);
+        }*/
         AuctionResult {
             winner,
             supply_cost,
@@ -161,20 +217,21 @@ impl Impressions {
     /// Create a new Impressions container and populate it from sellers
     pub fn new(sellers: &Sellers, params: &ImpressionsParam) -> Self {
         // Use deterministic seed for reproducible results
-        let mut rng_floors = StdRng::seed_from_u64(get_seed(1991));
-        let mut rng_generate_impression = StdRng::seed_from_u64(get_seed(2992));
-        let mut rng_campaigns_multiplier = StdRng::seed_from_u64(get_seed(3992));
+        let mut rng_base_value = StdRng::seed_from_u64(get_seed(1991));
+        let mut rng_competition = StdRng::seed_from_u64(get_seed(2992));
+        let mut rng_floor = StdRng::seed_from_u64(get_seed(3993));
+        let mut rng_campaigns_multiplier = StdRng::seed_from_u64(get_seed(4994));
 
         let mut impressions = Vec::new();
 
         for seller in &sellers.sellers {
             for _ in 0..seller.get_impressions_on_offer() {
                 // First calculate base impression value (needed for floor generation)
-                let base_impression_value = params.base_impression_value_dist.sample(&mut rng_floors);
-                
+                let base_impression_value = params.base_impression_value_dist.sample(&mut rng_base_value);
                 let (competition, floor_cpm) = seller.generate_impression(
                     base_impression_value,
-                    &mut rng_generate_impression,
+                    &mut rng_competition,
+                    &mut rng_floor,
                 );
                 //println!("Base impression value: {:.4}", base_impression_value);
                 // Then generate values for each campaign by multiplying base value with campaign-specific multiplier
@@ -182,8 +239,10 @@ impl Impressions {
                 //println!("Base impression value: {}", base_impression_value);
                 for i in 0..MAX_CAMPAIGNS {
                     let multiplier = params.value_to_campaign_multiplier_dist.sample(&mut rng_campaigns_multiplier);
+                    //multiplier = 1.0;
                 //    println!("Campaign {} multiplier: {:.4}", i, multiplier);
                     value_to_campaign_id[i] = base_impression_value * multiplier;
+//                    println!("Campaign {} value: {:.4}", i, value_to_campaign_id[i]);
                 //    println!("     {}", value_to_campaign_id[i])
                 }
 
@@ -192,6 +251,7 @@ impl Impressions {
                     competition,
                     floor_cpm,
                     value_to_campaign_id,
+                    base_impression_value,
                 });
             }
         }

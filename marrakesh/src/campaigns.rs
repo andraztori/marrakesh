@@ -1,5 +1,5 @@
 use crate::impressions::Impression;
-use crate::converge::{ControllerProportional, ConvergingSingleVariable};
+use crate::converge::ControllerProportional;
 pub use crate::converge::ConvergeAny;
 use crate::sigmoid::Sigmoid;
 use crate::logger::{Logger, LogEvent};
@@ -15,6 +15,7 @@ pub enum CampaignType {
     MULTIPLICATIVE_PACING,
     OPTIMAL,
     CHEATER,
+    MAX_MARGIN,
 }
 
 /// Convergence target determining what the campaign converges on
@@ -82,7 +83,7 @@ impl ConvergeAny<crate::simulationrun::CampaignStat> for ConvergeTotalBudget {
     }
     
     fn converge_target_string(&self, converge: &dyn crate::converge::ConvergingVariables) -> String {
-        format!("Fixed budget ({:.2}), pacing: {:.2}", self.total_budget_target, self.get_converging_variable(converge))
+        format!("Fixed budget ({:.2}), pacing: {:.4}", self.total_budget_target, self.get_converging_variable(converge))
     }
 }
 
@@ -188,6 +189,7 @@ impl CampaignTrait for CampaignOptimalBidding {
         
         // Handle zero or very small pacing to avoid division by zero
         if pacing <= 1e-10 {
+            println!("Pacing is too small, returning 0.0");
             return Some(0.0);
         }
         
@@ -218,7 +220,7 @@ impl CampaignTrait for CampaignOptimalBidding {
         );
         
         // d) Calculate the bid using marginal_utility_of_spend_inverse
-        let bid = match sigmoid.marginal_utility_of_spend_inverse(marginal_utility_of_spend) {
+        let bid = match sigmoid.marginal_utility_of_spend_inverse_numerical_2(marginal_utility_of_spend) {
             Some(bid) => bid,
             None => {
                 warnln!(logger, LogEvent::Simulation,
@@ -236,10 +238,6 @@ impl CampaignTrait for CampaignOptimalBidding {
                 return None;
             }
         };
-        
-        let _probability = sigmoid.get_probability(bid);
-        //println!("Final bid: {:.4}, offset: {:.4}, scale: {:.4}, value: {:.4}, competing_bid: {:.4}, probability: {:.4}", 
-        //         bid, sigmoid.offset, sigmoid.scale, sigmoid.value, competition.bid_cpm, _probability);
         Some(bid)
     }
     
@@ -249,6 +247,63 @@ impl CampaignTrait for CampaignOptimalBidding {
     
     fn type_and_converge_string(&self, converge: &dyn crate::converge::ConvergingVariables) -> String {
         format!("Optimal bidding ({})", self.converger.converge_target_string(converge))
+    }
+    
+    fn create_converging_variables(&self) -> Box<dyn crate::converge::ConvergingVariables> {
+        self.converger.create_converging_variables()
+    }
+}
+
+/// Campaign with max margin bidding - finds bid that maximizes expected margin
+pub struct CampaignMaxMargin {
+    pub campaign_id: usize,
+    pub campaign_name: String,
+    pub converger: Box<dyn ConvergeAny<crate::simulationrun::CampaignStat>>,
+}
+
+impl CampaignTrait for CampaignMaxMargin {
+    fn campaign_id(&self) -> usize {
+        self.campaign_id
+    }
+    
+    fn campaign_name(&self) -> &str {
+        &self.campaign_name
+    }
+    
+    fn get_bid(&self, impression: &Impression, converge: &dyn crate::converge::ConvergingVariables, seller_boost_factor: f64, logger: &mut Logger) -> Option<f64> {
+        let pacing = self.converger.get_converging_variable(converge);
+        
+        // Calculate full_price (maximum we're willing to pay)
+        let full_price = pacing * seller_boost_factor * impression.value_to_campaign_id[self.campaign_id];
+        
+        // Get competition data (required for max margin bidding)
+        let competition = match &impression.competition {
+            Some(comp) => comp,
+            None => {
+                warnln!(logger, LogEvent::Simulation, 
+                    "Max margin bidding requires competition data. This impression has no competition data.");
+                return None;
+            }
+        };
+        
+        // Initialize sigmoid with competition parameters
+        let sigmoid = Sigmoid::new(
+            competition.win_rate_actual_sigmoid_offset,
+            competition.win_rate_actual_sigmoid_scale,
+            1.0,  // Using normalized value of 1.0
+        );
+        
+        // Find the bid that maximizes margin = P(win) * (full_price - bid)
+        let min_bid = impression.floor_cpm.max(0.0);
+        sigmoid.max_margin_bid_bisection(full_price, min_bid)
+    }
+    
+    fn converge_iteration(&self, current_converge: &dyn crate::converge::ConvergingVariables, next_converge: &mut dyn crate::converge::ConvergingVariables, campaign_stat: &crate::simulationrun::CampaignStat) -> bool {
+        self.converger.converge_iteration(current_converge, next_converge, campaign_stat)
+    }
+    
+    fn type_and_converge_string(&self, converge: &dyn crate::converge::ConvergingVariables) -> String {
+        format!("Max margin bidding ({})", self.converger.converge_target_string(converge))
     }
     
     fn create_converging_variables(&self) -> Box<dyn crate::converge::ConvergingVariables> {
@@ -375,6 +430,13 @@ impl Campaigns {
                     converger,
                 }));
             }
+            CampaignType::MAX_MARGIN => {
+                self.campaigns.push(Box::new(CampaignMaxMargin {
+                    campaign_id,
+                    campaign_name,
+                    converger,
+                }));
+            }
         }
     }
 }
@@ -382,6 +444,7 @@ impl Campaigns {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::converge::ConvergingSingleVariable;
 
     #[test]
     fn test_get_bid() {
@@ -415,6 +478,7 @@ mod tests {
             }),
             floor_cpm: 0.0,
             value_to_campaign_id,
+            base_impression_value: 10.0,
         };
 
         // Expected bid = 0.5 * 20.0 * 1.0 = 10.0
@@ -455,6 +519,7 @@ mod tests {
             }),
             floor_cpm: 0.0,
             value_to_campaign_id,
+            base_impression_value: 10.0,
         };
 
         // Expected bid = 1.0 * 15.0 * 1.0 = 15.0
@@ -495,6 +560,7 @@ mod tests {
             }),
             floor_cpm: 0.0,
             value_to_campaign_id,
+            base_impression_value: 10.0,
         };
 
         // Expected bid = 0.0 * 100.0 * 1.0 = 0.0

@@ -6,6 +6,10 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 /// Log event types that determine which receivers should log the message
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LogEvent {
+    /// Impression data (base values, competition parameters)
+    Impression,
+    /// Auction data (full impression data, all bids, auction results)
+    Auction,
     /// Simulation iteration data (detailed per-iteration info)
     Simulation,
     /// Convergence information (iteration counts, convergence messages)
@@ -144,6 +148,12 @@ impl Logger {
     /// Each receiver receives the message only once, even if it listens to multiple events
     fn log_with_prefix(&mut self, event: LogEvent, prefix: &str, message: &str) -> io::Result<()> {
         let events = match event {
+            LogEvent::Impression => vec![
+                LogEvent::Impression,
+            ],
+            LogEvent::Auction => vec![
+                LogEvent::Auction,
+            ],
             LogEvent::Simulation => vec![
                 LogEvent::Simulation,
                 LogEvent::Convergence,

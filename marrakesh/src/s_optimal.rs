@@ -1,12 +1,16 @@
 /// This is a simple scenario that uses first price bidding on HB supply.
 ///
-/// It uses a fixed budget campaign that converges on the marginal utility of spend.
+/// It compares different bidding strategies using a fixed budget campaign.
 ///
-/// Its two variants show different supply scenarios:
+/// Its four variants test different bidding approaches:
 ///
-/// - First variant: Scarce supply (1000 HB impressions)
+/// - Variant A: Multiplicative pacing (baseline)
 ///
-/// - Second variant: Abundant supply (10000 HB impressions)
+/// - Variant B: Optimal bidding (optimizes marginal utility of spend)
+///
+/// - Variant C: Cheater bidding (has perfect information about competition)
+///
+/// - Variant D: Max margin bidding (optimizes expected margin)
 
 use crate::simulationrun::Marketplace;
 use crate::sellers::{SellerType, SellerConvergeStrategy, Sellers};
@@ -14,8 +18,7 @@ use crate::campaigns::{CampaignType, ConvergeTarget, Campaigns};
 use crate::converge::SimulationConverge;
 use crate::impressions::{Impressions, ImpressionsParam};
 use crate::competition::CompetitionGeneratorParametrizedLogNormal;
-use crate::floors::FloorGeneratorLogNormal;
-use crate::FloorGeneratorFixed;
+use crate::floors::{FloorGeneratorFixed, FloorGeneratorLogNormal};
 use crate::utils;
 use crate::logger::{Logger, LogEvent};
 use crate::logln;
@@ -47,8 +50,8 @@ fn prepare_simulationconverge(hb_impressions: usize, campaign_type: CampaignType
         SellerConvergeStrategy::NONE { default_value: 1.0 },  // seller_converge
         hb_impressions,  // impressions_on_offer
         CompetitionGeneratorParametrizedLogNormal::new(10.0),  // competition_generator
-        FloorGeneratorLogNormal::new(0.1, 3.0),  // floor_generator
-     //  FloorGeneratorFixed::new(0.0),
+     //   FloorGeneratorLogNormal::new(0.1, 3.0),  // floor_generator
+       FloorGeneratorFixed::new(0.0),
     );
 
     // Create impressions for all sellers using default parameters
@@ -92,10 +95,18 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
     );
     let stats_c = simulation_converge_c.run_variant("Running with cheater bidding", scenario_name, "cheater", 100, logger);
     
+    // Run variant D with max margin bidding
+    let simulation_converge_d = prepare_simulationconverge(
+        num_impressions,
+        CampaignType::MAX_MARGIN,
+    );
+    let stats_d = simulation_converge_d.run_variant("Running with max margin bidding", scenario_name, "max-margin", 100, logger);
+    
     // Validate expected marketplace behavior
     // Variant A (multiplicative pacing) uses MULTIPLICATIVE_PACING with TOTAL_BUDGET
     // Variant B (optimal bidding) uses OPTIMAL with TOTAL_BUDGET
     // Variant C (cheater bidding) uses CHEATER with TOTAL_BUDGET
+    // Variant D (max margin bidding) uses MAX_MARGIN with TOTAL_BUDGET
     
     logln!(logger, LogEvent::Scenario, "");
     
@@ -121,6 +132,32 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
         stats_a.overall_stat.total_value
     );
     if stats_b.overall_stat.total_value > stats_a.overall_stat.total_value {
+        logln!(logger, LogEvent::Scenario, "✓ {}", msg);
+    } else {
+        errors.push(msg.clone());
+        errln!(logger, LogEvent::Scenario, "✗ {}", msg);
+    }
+    
+    // Check: Variant C (cheater) obtained value > Variant D (max margin) obtained value
+    let msg = format!(
+        "Variant C (Cheater) obtained value is greater than Variant D (Max margin): {:.2} > {:.2}",
+        stats_c.overall_stat.total_value,
+        stats_d.overall_stat.total_value
+    );
+    if stats_c.overall_stat.total_value > stats_d.overall_stat.total_value {
+        logln!(logger, LogEvent::Scenario, "✓ {}", msg);
+    } else {
+        errors.push(msg.clone());
+        errln!(logger, LogEvent::Scenario, "✗ {}", msg);
+    }
+    
+    // Check: Variant D (max margin) obtained value > Variant A (multiplicative pacing) obtained value
+    let msg = format!(
+        "Variant D (Max margin) obtained value is greater than Variant A (Multiplicative pacing): {:.2} > {:.2}",
+        stats_d.overall_stat.total_value,
+        stats_a.overall_stat.total_value
+    );
+    if stats_d.overall_stat.total_value > stats_a.overall_stat.total_value {
         logln!(logger, LogEvent::Scenario, "✓ {}", msg);
     } else {
         errors.push(msg.clone());
