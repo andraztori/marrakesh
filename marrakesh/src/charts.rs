@@ -485,13 +485,13 @@ pub fn generate_sigmoid_charts() -> Result<(), Box<dyn std::error::Error>> {
     
     // Initialize sigmoid with specific parameters that were causing issues
     let sigmoid = crate::sigmoid::Sigmoid::new(
-        15.0,     // offset
-        5.0,                    // scale
-        65.0,      // value
+        10.0,     // offset
+        0.5,                    // scale
+        10.0,      // value
     );
-    
+    println!("sigmoid: offset={:.4}, scale={:.4}, value={:.4}", sigmoid.offset, sigmoid.scale, sigmoid.value);
     // Define the x range for plotting
-    let x_min = 0.0;
+    let x_min = 0.01;
     let x_max = 40.0;
     let num_points = 1000;
     
@@ -645,7 +645,7 @@ pub fn generate_sigmoid_charts() -> Result<(), Box<dyn std::error::Error>> {
         root.fill(&WHITE)?;
         
         // Define the y range (marginal utility of spend) from 0 to 1
-        let y_min = 0.0;
+        let y_min = 0.1;
         let y_max = 1.0;
         let num_points = 1000;
         
@@ -659,7 +659,7 @@ pub fn generate_sigmoid_charts() -> Result<(), Box<dyn std::error::Error>> {
             y_values.push(y);
             
             // Calculate the inverse: x such that M(x) = y
-            if let Some(x) = sigmoid.marginal_utility_of_spend_inverse_numerical_2(y) {
+            if let Some(x) = sigmoid.marginal_utility_of_spend_inverse_numerical_2(y, 0.1) {
                 x_values.push(x);
                // println!("x {}, y {}", x, y);
             } else {

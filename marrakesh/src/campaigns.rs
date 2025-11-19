@@ -24,6 +24,7 @@ pub enum CampaignType {
 pub enum ConvergeTarget {
     TOTAL_BUDGET { target_total_budget: f64 },
     TOTAL_IMPRESSIONS { target_total_impressions: i32 },
+    NONE { default_pacing: f64 },
 }
 
 
@@ -84,6 +85,31 @@ impl ConvergeAny<crate::simulationrun::CampaignStat> for ConvergeTotalBudget {
     
     fn converge_target_string(&self, converge: &dyn crate::converge::ConvergingVariables) -> String {
         format!("Fixed budget ({:.2}), pacing: {:.4}", self.total_budget_target, self.get_converging_variable(converge))
+    }
+}
+
+/// Convergence strategy for no convergence (fixed pacing)
+pub struct ConvergeNone {
+    pub default_pacing: f64,
+}
+
+impl ConvergeAny<crate::simulationrun::CampaignStat> for ConvergeNone {
+    fn converge_iteration(&self, _current_converge: &dyn crate::converge::ConvergingVariables, _next_converge: &mut dyn crate::converge::ConvergingVariables, _campaign_stat: &crate::simulationrun::CampaignStat) -> bool {
+        false
+    }
+    
+    fn get_converging_variable(&self, converge: &dyn crate::converge::ConvergingVariables) -> f64 {
+        converge.as_any().downcast_ref::<crate::converge::ConvergingSingleVariable>().unwrap().converging_variable
+    }
+    
+    fn create_converging_variables(&self) -> Box<dyn crate::converge::ConvergingVariables> {
+        Box::new(crate::converge::ConvergingSingleVariable {
+            converging_variable: self.default_pacing,
+        })
+    }
+    
+    fn converge_target_string(&self, converge: &dyn crate::converge::ConvergingVariables) -> String {
+        format!("No convergence, fixed pacing: {:.4}", self.get_converging_variable(converge))
     }
 }
 
@@ -220,7 +246,7 @@ impl CampaignTrait for CampaignOptimalBidding {
         );
         
         // d) Calculate the bid using marginal_utility_of_spend_inverse
-        let bid = match sigmoid.marginal_utility_of_spend_inverse_numerical_2(marginal_utility_of_spend) {
+        let mut bid = match sigmoid.marginal_utility_of_spend_inverse_numerical_2(marginal_utility_of_spend, impression.floor_cpm.max(0.0)) {
             Some(bid) => bid,
             None => {
                 warnln!(logger, LogEvent::Simulation,
@@ -238,6 +264,11 @@ impl CampaignTrait for CampaignOptimalBidding {
                 return None;
             }
         };
+        if bid  < impression.floor_cpm.max(0.0) { 
+            return None;
+        }
+  //      let bid = impression.floor_cpm.max(bid);
+//        println!("bid: {:.4}", bid);
         Some(bid)
     }
     
@@ -403,6 +434,11 @@ impl Campaigns {
                 Box::new(ConvergeTotalBudget {
                     total_budget_target: target_total_budget,
                     controller: ControllerProportional::new(),
+                })
+            }
+            ConvergeTarget::NONE { default_pacing } => {
+                Box::new(ConvergeNone {
+                    default_pacing,
                 })
             }
         };

@@ -5,6 +5,8 @@ use crate::logger::{Logger, LogEvent, FileReceiver, sanitize_filename};
 use crate::logln;
 use crate::warnln;
 use std::path::PathBuf;
+use crate::utils::VERBOSE_IMPRESSIONS;
+use std::sync::atomic::Ordering;
 
 /// Proportional controller for adjusting campaign pacing based on target vs actual performance
 /// Full PID was tried, but always something became unstable
@@ -246,13 +248,41 @@ impl SimulationConverge {
             logln!(logger, LogEvent::Simulation, "\n=== {} - Iteration {} ===", variant_name, iteration + 1);
             
             // Create auction receiver for this iteration
- //           let auctions_receiver_id = logger.add_receiver(FileReceiver::new(&PathBuf::from(format!("log/{}/auctions-{}-iter{}.log", sanitize_filename(scenario_name), sanitize_filename(variant_name), iteration + 1)), vec![LogEvent::Auction]));
+            let auctions_receiver_id = if VERBOSE_IMPRESSIONS.load(Ordering::Relaxed) {
+                let receiver_id = logger.add_receiver(FileReceiver::new(&PathBuf::from(format!("log/{}/auctions-{}-iter{}.csv", sanitize_filename(scenario_name), sanitize_filename(variant_name), iteration + 1)), vec![LogEvent::Auction]));
+                
+                // Write CSV header
+                let mut header_fields = vec![
+                    "seller_id".to_string(),
+                    "campaign_id".to_string(),
+                    "winning_bid".to_string(),
+                    "floor_cpm".to_string(),
+                    "impression_base_value".to_string(),
+                    "competing_bid".to_string(),
+                    "win_rate_actual_sigmoid_offset".to_string(),
+                    "win_rate_actual_sigmoid_scale".to_string(),
+                ];
+                
+                // Add campaign columns
+                for campaign_id in 0..self.marketplace.campaigns.campaigns.len() {
+                    header_fields.push(format!("campaign_{}_value", campaign_id));
+                    header_fields.push(format!("campaign_{}_bid", campaign_id));
+                }
+                
+                logln!(logger, LogEvent::Auction, "{}", header_fields.join(","));
+                
+                Some(receiver_id)
+            } else {
+                None
+            };
             
             // Run auctions for all impressions
             let simulation_run = SimulationRun::new(&self.marketplace, &current_campaign_converges, &current_seller_converges, logger);
             
             // Remove auction receiver after this iteration
-   //         logger.remove_receiver(auctions_receiver_id);
+            if let Some(id) = auctions_receiver_id {
+                logger.remove_receiver(id);
+            }
 
             // Generate statistics (use iteration + 1 for 1-indexed iteration count)
             let stats = SimulationStat::new(&self.marketplace, &simulation_run, iteration + 1);

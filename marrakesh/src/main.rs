@@ -31,7 +31,25 @@ use utils::RAND_SEED;
 use std::sync::atomic::Ordering;
 
 fn main() {
-    let args: Vec<String> = std::env::args().collect();
+    let raw_args: Vec<String> = std::env::args().collect();
+    
+    // Parse and filter out --verbose argument
+    let mut args = Vec::new();
+    let mut skip_next = false;
+    for (i, arg) in raw_args.iter().enumerate() {
+        if skip_next {
+            skip_next = false;
+            continue;
+        }
+        if arg == "--verbose" {
+            if i + 1 < raw_args.len() && raw_args[i+1] == "impressions" {
+                utils::VERBOSE_IMPRESSIONS.store(true, Ordering::Relaxed);
+                skip_next = true;
+            }
+            continue;
+        }
+        args.push(arg.clone());
+    }
     
     // Check if "charts" argument is provided
     if args.len() > 1 && args[1] == "charts" {
@@ -61,8 +79,10 @@ fn main() {
         return;
     }
     
-    // Check if "all" argument is provided
-    if args.len() > 1 && args[1] == "all" {
+    // Check if scenario argument is provided (either "all" or a specific scenario name)
+    if args.len() > 1 {
+        let scenario_arg = &args[1];
+        
         // Parse iterations parameter if present
         let iterations = if args.len() > 2 {
             match args[2].parse::<u64>() {
@@ -83,13 +103,41 @@ fn main() {
         // Add validation receiver (for validation events)
         let summary_receiver_id = logger.add_receiver(FileReceiver::new(&PathBuf::from("log/summary.log"), vec![LogEvent::Validation]));
         
-        // Run all scenarios from the catalog in non-verbose mode
-        let scenarios = get_scenario_catalog();
+        // Get all scenarios from the catalog
+        let all_scenarios = get_scenario_catalog();
         
-        if iterations > 1 {
-            logln!(&mut logger, LogEvent::Validation, "Running all scenarios {} times...\n", iterations);
+        // Filter scenarios: if "all", use all scenarios; otherwise filter to the named scenario
+        let scenarios: Vec<_> = if scenario_arg == "all" {
+            all_scenarios.clone()
         } else {
-            logln!(&mut logger, LogEvent::Validation, "Running all scenarios...\n");
+            // Find the requested scenario
+            let found = all_scenarios.iter().find(|s| s.short_name == scenario_arg);
+            match found {
+                Some(scenario) => vec![scenario.clone()],
+                None => {
+                    eprintln!("Error: Scenario '{}' not found.", scenario_arg);
+                    eprintln!("Available scenarios:");
+                    for s in &all_scenarios {
+                        eprintln!("  - {}", s.short_name);
+                    }
+                    std::process::exit(1);
+                }
+            }
+        };
+        
+        // Log appropriate message
+        if scenario_arg == "all" {
+            if iterations > 1 {
+                logln!(&mut logger, LogEvent::Validation, "Running all scenarios {} times...\n", iterations);
+            } else {
+                logln!(&mut logger, LogEvent::Validation, "Running all scenarios...\n");
+            }
+        } else {
+            if iterations > 1 {
+                logln!(&mut logger, LogEvent::Validation, "Running scenario '{}' {} times...\n", scenario_arg, iterations);
+            } else {
+                logln!(&mut logger, LogEvent::Validation, "Running scenario '{}'...\n", scenario_arg);
+            }
         }
         
         // Outer loop for scenarios
@@ -116,11 +164,11 @@ fn main() {
                             logln!(&mut logger, LogEvent::Validation, "✓ PASSED");
                         }
                     },
-                    Err(_e) => {
+                    Err(e) => {
                         if iterations > 1 {
                             logln!(&mut logger, LogEvent::Validation, "✗");
                         } else {
-                            logln!(&mut logger, LogEvent::Validation, "✗ FAILED");
+                            logln!(&mut logger, LogEvent::Validation, "✗ FAILED: {}", e);
                         }
                     }
                 }

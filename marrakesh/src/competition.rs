@@ -96,7 +96,7 @@ impl CompetitionGeneratorTrait for CompetitionGeneratorParametrizedLogNormal {
         
         // Rejection sampling for win_rate_actual_sigmoid_offset and win_rate_actual_sigmoid_scale
         // Reject if sigmoid.get_probability(0.0) > 0.01
-        let (win_rate_actual_sigmoid_offset, mut win_rate_actual_sigmoid_scale) = loop {
+        let (win_rate_actual_sigmoid_offset, win_rate_actual_sigmoid_scale) = loop {
             // Generate win_rate_actual_sigmoid_offset based on lognormal distribution
             // centered around value_base, with some stddev.
             //let offset = Distribution::sample(&self.actual_offset_dist, rng);

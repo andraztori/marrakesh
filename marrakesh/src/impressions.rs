@@ -8,6 +8,8 @@ use crate::logger::LogEvent;
 use crate::errln;
 use crate::logln;
 use crate::utils::get_seed;
+use crate::utils::VERBOSE_IMPRESSIONS;
+use std::sync::atomic::Ordering;
 
 /// Represents the winner of an auction
 #[allow(non_camel_case_types)]
@@ -87,7 +89,11 @@ impl Impression {
         // Get bids from all campaigns
         let mut winning_bid_cpm = 0.0;
         let mut winning_campaign_id: Option<usize> = None;
-//        let mut all_bids: Vec<(usize, f64)> = Vec::new(); // Collect all bids for logging
+        let mut all_bids = if VERBOSE_IMPRESSIONS.load(Ordering::Relaxed) {
+            Some(Vec::new())
+        } else {
+            None
+        };
 
         // Get seller_boost_factor from seller convergence parameter
         let seller_converge_boost = seller_converge.as_any().downcast_ref::<crate::converge::ConvergingSingleVariable>().unwrap();
@@ -103,7 +109,9 @@ impl Impression {
                     errln!(logger, LogEvent::Simulation, "Bid below zero: {:.4} from campaign_id: {}", bid, campaign_id);
                     panic!("Bid below zero: {:.4} from campaign_id: {}", bid, campaign_id);
                 }
-               // all_bids.push((campaign_id, bid));
+                if let Some(bids) = &mut all_bids {
+                    bids.push((campaign_id, bid));
+                }
                 if bid > winning_bid_cpm {
                     winning_bid_cpm = bid;
                     winning_campaign_id = Some(campaign_id);
@@ -148,53 +156,64 @@ impl Impression {
                 buyer_charge,
             }, supply_cost)
         };
-        /*
-        // Log auction data
-        let result_str = match &winner {
-            Winner::Campaign { campaign_id, virtual_cost, buyer_charge } => {
-                format!("WINNER:campaign_{}:bid_cpm={:.4}:virtual_cost={:.4}:buyer_charge={:.4}", 
-                    campaign_id, winning_bid_cpm, virtual_cost, buyer_charge)
+
+        // Log auction data in CSV format
+        if VERBOSE_IMPRESSIONS.load(Ordering::Relaxed) {
+            let all_bids = all_bids.as_ref().unwrap();
+            
+            // Build CSV row
+            let mut csv_fields = Vec::new();
+            
+            // seller_id
+            csv_fields.push(format!("{}", self.seller_id));
+            
+            // demand_id (winner identifier)
+            let demand_id = match &winner {
+                Winner::Campaign { campaign_id, .. } => format!("{}", campaign_id),
+                Winner::OTHER_DEMAND => "OTHER_DEMAND".to_string(),
+                Winner::BELOW_FLOOR => "BELOW_FLOOR".to_string(),
+                Winner::NO_DEMAND => "NO_DEMAND".to_string(),
+            };
+            csv_fields.push(demand_id);
+            
+            // winning_bid
+            csv_fields.push(format!("{:.4}", winning_bid_cpm));
+            
+            // floor_cpm
+            csv_fields.push(format!("{:.4}", self.floor_cpm));
+            
+            // impression_base_value
+            csv_fields.push(format!("{:.4}", self.base_impression_value));
+            
+            // competing_bid, competing_offset, competing_scale
+            if let Some(comp) = &self.competition {
+                csv_fields.push(format!("{:.4}", comp.bid_cpm));
+                csv_fields.push(format!("{:.4}", comp.win_rate_actual_sigmoid_offset));
+                csv_fields.push(format!("{:.4}", comp.win_rate_actual_sigmoid_scale));
+            } else {
+                csv_fields.push("".to_string());
+                csv_fields.push("".to_string());
+                csv_fields.push("".to_string());
             }
-            Winner::OTHER_DEMAND => format!("WINNER:OTHER_DEMAND:winning_bid_cpm={:.4}", winning_bid_cpm),
-            Winner::BELOW_FLOOR => format!("WINNER:BELOW_FLOOR:winning_bid_cpm={:.4}:floor_cpm={:.4}", winning_bid_cpm, self.floor_cpm),
-            Winner::NO_DEMAND => "WINNER:NO_DEMAND".to_string(),
-        };
-
-        // Format competition data
-        let comp_str = if let Some(comp) = &self.competition {
-            format!("comp_bid={:.2}: offset={:.2}:scale={:.2}",
-                comp.bid_cpm,
-                comp.win_rate_actual_sigmoid_offset,
-                comp.win_rate_actual_sigmoid_scale)
-        } else {
-            "no_competition".to_string()
-        };
-
-        // Format all bids
-        let bids_str = if all_bids.is_empty() {
-            "bids=none".to_string()
-        } else {
-            let bids_parts: Vec<String> = all_bids.iter()
-                .map(|(id, bid)| format!("campaign_{}:{:.2}", id, bid))
-                .collect();
-            format!("bids={}", bids_parts.join(","))
-        };
-
-        // Format first campaign value
-        let values_str = format!("campaign_0_value={:.2}", self.value_to_campaign_id[0]);
-
-        logln!(logger, LogEvent::Auction,
-            "seller_id={}:base_value={:.2}:floor_cpm={:.2}:{}:{}:{}:supply_cost={:.4}:{}",
-            self.seller_id,
-            self.base_impression_value,
-            self.floor_cpm,
-            comp_str,
-            values_str,
-            bids_str,
-            supply_cost,
-            result_str
-        );
-        */
+            
+            // For each campaign: value and bid
+            // Create a map of campaign_id to bid for quick lookup
+            let bid_map: std::collections::HashMap<usize, f64> = all_bids.iter().cloned().collect();
+            
+            for campaign_id in 0..campaigns.campaigns.len() {
+                // campaign value
+                csv_fields.push(format!("{:.4}", self.value_to_campaign_id[campaign_id]));
+                
+                // campaign bid (empty if no bid)
+                if let Some(bid) = bid_map.get(&campaign_id) {
+                    csv_fields.push(format!("{:.4}", bid));
+                } else {
+                    csv_fields.push("".to_string());
+                }
+            }
+            
+            logln!(logger, LogEvent::Auction, "{}", csv_fields.join(","));
+        }
 
         // Format first campaign value
         /*if all_bids.len() > 0 {

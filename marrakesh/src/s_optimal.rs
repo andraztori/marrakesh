@@ -50,7 +50,7 @@ fn prepare_simulationconverge(hb_impressions: usize, campaign_type: CampaignType
         SellerConvergeStrategy::NONE { default_value: 1.0 },  // seller_converge
         hb_impressions,  // impressions_on_offer
         CompetitionGeneratorParametrizedLogNormal::new(10.0),  // competition_generator
-     //   FloorGeneratorLogNormal::new(0.1, 3.0),  // floor_generator
+     // FloorGeneratorLogNormal::new(1.0, 3.0),  // floor_generator
        FloorGeneratorFixed::new(0.0),
     );
 
