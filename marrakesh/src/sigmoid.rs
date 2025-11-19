@@ -137,45 +137,6 @@ impl Sigmoid {
         numerator / denominator
     }
 
-    /// Inverse of marginal_utility_of_spend using Newton-Raphson iteration
-    /// Finds x such that M(x) = y_target
-    /// Find x such that m(x) is closest to y_target using grid search
-    /// 
-    /// # Arguments
-    /// * `y_target` - Target value for m(x)
-    /// 
-    /// # Returns
-    /// The x value where m(x) is closest to y_target
-    pub fn marginal_utility_of_spend_inverse_numerical(&self, y_target: f64) -> Option<f64> {
-
-        //let min_x = self.offset / 2.0;
-        //let max_x = self.offset * 2.0;
-        let min_x = 0.0;
-        let max_x = 100.0;
-        let step = (max_x - min_x) / 10000.0;
-        
-        let mut best_x = min_x;
-        let mut best_error = f64::INFINITY;
-        
-        let mut x = min_x;
-        while x <= max_x {
-            let m_val = self.m(x);
-            let error = (m_val - y_target).abs();
-            
-            if error < best_error {
-                best_error = error;
-                best_x = x;
-            }
-            
-            x += step;
-        }
-        /*eprintln!(
-            "Warning: Derivative is close to zero at x={:.2}. Method cannot proceed. \
-            y_target={:.2}, Sigmoid parameters: scale={:.2}, offset={:.2}, value={:.2}, result={:.2}",
-            x, y_target, self.scale, self.offset, self.value, best_x
-        );*/
-        Some(best_x)
-    }
 
     /// Inverse of marginal_utility_of_spend using bisection method
     /// Finds x such that M(x) = y_target
@@ -189,24 +150,33 @@ impl Sigmoid {
     pub fn marginal_utility_of_spend_inverse_numerical_2(&self, y_target: f64, mut min_x: f64) -> Option<f64> {
         let max_iterations = 100;
         let tolerance = 1e-6;
-        min_x = 0.0;
         
         // Store the original min_x (will not be modified)
         let original_min_x = min_x;
         
         // Initial search bounds (use separate variable for bisection that can be modified)
-        let mut bisection_min = min_x;
         let mut max_x = 1000.0;
         
+        if min_x > 1.0 / y_target * self.value {
+            return Some(1.0 / y_target * self.value); // this is below floor
+        }
+        
+
         // First, try to find an interval where f(min_x) and f(max_x) have opposite signs
         // f(x) = m(x) - y_target, we want f(x) = 0
-        
         // Evaluate at bounds
-        let f_min = self.m(bisection_min) - y_target;
+        let f_min = self.m(min_x) - y_target;
         let f_max = self.m(max_x) - y_target;
-        
-        // If both are positive or both are negative, we need to expand the search
-        if f_min * f_max > 0.0 {
+        let r = 1.0 / y_target * self.value;
+
+        // If both are negative, the maximum is at min_bid
+        if f_min < 0.0 && f_max < 0.0 {
+            return Some(min_x);
+        }
+
+
+        // If both are positive, we need to expand the search
+        if f_min > 0.0 && f_max > 0.0 {
             // Try expanding max_x
             let mut expanded_max = max_x * 2.0;
             let mut f_expanded = self.m(expanded_max) - y_target;
@@ -228,72 +198,34 @@ impl Sigmoid {
                 println!("sigmoid: offset={:.4}, scale={:.4}, value={:.4}", self.offset, self.scale, self.value);
                 */
                 //return Some(min_x);
-                return self.marginal_utility_of_spend_inverse_numerical(y_target);
+                return None;
+                //return self.marginal_utility_of_spend_inverse_numerical(y_target);
             }
         }
         
         // Perform bisection (ensuring we never go below original_min_x)
         for _i in 0..max_iterations {
-            let mid_x = (bisection_min + max_x) / 2.0;
+            let mid_x = (min_x + max_x) / 2.0;
             let f_mid = self.m(mid_x) - y_target;
             
             // Check for convergence
-            if f_mid.abs() < tolerance || (max_x - bisection_min) < tolerance {
-                return Some(mid_x.max(original_min_x));
+            if f_mid.abs() < tolerance || (max_x - min_x) < tolerance {
+                return Some(mid_x);
             }
             
             // Determine which half contains the root
-            let f_min = self.m(bisection_min) - y_target;
+            let f_min = self.m(min_x) - y_target;
             if f_min * f_mid < 0.0 {
-                // Root is in [bisection_min, mid_x]
+                // Root is in [min_x, mid_x]
                 max_x = mid_x;
             } else {
                 // Root is in [mid_x, max_x]
-                bisection_min = mid_x.max(original_min_x);
+                min_x = mid_x;
             }
         }
         
         // Return the midpoint of the final interval, ensuring it's not below original_min_x
-        Some(((bisection_min + max_x) / 2.0).max(original_min_x))
-    }
-
-    /// Find the bid that maximizes margin = P(win) * (full_price - bid)
-    /// Uses grid search for robustness
-    /// 
-    /// # Arguments
-    /// * `full_price` - Maximum price we're willing to pay (also used as max_bid)
-    /// * `min_bid` - Minimum bid (typically floor price)
-    /// 
-    /// # Returns
-    /// The bid that maximizes margin, or None if max_bid <= min_bid
-    #[allow(dead_code)]
-    pub fn max_margin_bid(&self, full_price: f64, min_bid: f64) -> Option<f64> {
-        const NUM_SAMPLES: usize = 100;
-        
-        let max_bid = full_price;
-        
-        if max_bid <= min_bid {
-            // Can't afford even the floor
-            return None;
-        }
-        
-        let step = (max_bid - min_bid) / (NUM_SAMPLES as f64);
-        
-        let mut best_bid = min_bid;
-        let mut best_margin = f64::NEG_INFINITY;
-        
-        for i in 0..=NUM_SAMPLES {
-            let bid = min_bid + (i as f64) * step;
-            let prob = self.get_probability(bid);
-            let margin = prob * (full_price - bid);
-            
-            if margin > best_margin {
-                best_margin = margin;
-                best_bid = bid;
-            }
-        }
-        
-        Some(best_bid)
+        Some(((min_x + max_x) / 2.0))
     }
 
     /// Find the bid that maximizes margin = P(win) * (full_price - bid)
@@ -337,7 +269,6 @@ impl Sigmoid {
         // Check if we have opposite signs at the bounds
         let f_min = margin_derivative(min_bid);
         let f_max = margin_derivative(max_bid);
-        
         // If both are positive, the maximum is at max_bid
         if f_min > 0.0 && f_max > 0.0 {
             return Some(max_bid);
@@ -376,7 +307,7 @@ impl Sigmoid {
         Some((low + high) / 2.0)
     }
 
-    // The problem with this function is that it is not robust at all
+    // The problem with this function is that it is not robust at  - better to use bisection
     #[allow(dead_code)]
     pub fn marginal_utility_of_spend_inverse(&self, y_target: f64) -> Option<f64> {
         let max_iterations = 100;

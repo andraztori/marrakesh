@@ -16,7 +16,7 @@ mod s_one;
 mod s_optimal;
 mod s_mrg_boost;
 mod s_mrg_dynamic_boost;
-mod s_experiment;
+mod s_maxmargin_equality;
 
 use sellers::{SellerType, SellerConvergeStrategy, Sellers};
 use campaigns::{CampaignType, ConvergeTarget, Campaigns};
@@ -80,7 +80,91 @@ fn main() {
         return;
     }
     
-    // Check if scenario argument is provided (either "all" or a specific scenario name)
+    // Check if "test" argument is provided
+    if args.len() > 1 && args[1] == "test" {
+        use campaigns::{CampaignOptimalBidding, CampaignMaxMargin, ConvergeNone, CampaignTrait, MAX_CAMPAIGNS, ConvergeAny};
+        use impressions::Impression;
+        use competition::ImpressionCompetition;
+        
+        // Setup shared resources
+        let converger_none = ConvergeNone {
+            default_pacing: 0.8298,
+        };
+        
+        let campaign_optimal = CampaignOptimalBidding {
+            campaign_id: 0,
+            campaign_name: "Optimal".to_string(),
+            converger: Box::new(ConvergeNone { default_pacing: 0.8298 }),
+        };
+        
+        let campaign_max_margin = CampaignMaxMargin {
+            campaign_id: 0,
+            campaign_name: "MaxMargin".to_string(),
+            converger: Box::new(ConvergeNone { default_pacing: 0.8298 }),
+        };
+        
+        let converge_vars = converger_none.create_converging_variables();
+        let mut logger = Logger::new();
+
+        struct TestCase {
+            name: &'static str,
+            value: f64,
+            bid_cpm: f64,
+            floor_cpm: f64,
+            sigmoid_offset: f64,
+            sigmoid_scale: f64,
+        }
+
+        let test_cases = vec![
+            TestCase {
+                name: "Impression 1",
+                value: 17.8285,
+                bid_cpm: 0.0,
+                floor_cpm: 8.8836,
+                sigmoid_offset: 5.5722,
+                sigmoid_scale: 1.5482,
+            },
+            TestCase {
+                name: "Impression 2",
+                value: 9.4124,
+                bid_cpm: 8.758,
+                floor_cpm: 9.0558,
+                sigmoid_offset: 9.4124,
+                sigmoid_scale: 1.9304,
+            },
+        ];
+
+        for test_case in test_cases {
+            println!("\n--- {} ---", test_case.name);
+            
+            let mut value_to_campaign_id = [0.0; MAX_CAMPAIGNS];
+            value_to_campaign_id[0] = test_case.value;
+            
+            let impression = Impression {
+                seller_id: 0,
+                competition: Some(ImpressionCompetition {
+                    bid_cpm: test_case.bid_cpm,
+                    win_rate_prediction_sigmoid_offset: test_case.sigmoid_offset,
+                    win_rate_prediction_sigmoid_scale: test_case.sigmoid_scale,
+                    win_rate_actual_sigmoid_offset: test_case.sigmoid_offset,
+                    win_rate_actual_sigmoid_scale: test_case.sigmoid_scale,
+                }),
+                floor_cpm: test_case.floor_cpm,
+                value_to_campaign_id,
+                base_impression_value: test_case.value,
+            };
+            
+            println!("{}: {:#?}", test_case.name, impression);
+            
+            let bid_optimal = campaign_optimal.get_bid(&impression, converge_vars.as_ref(), 1.0, &mut logger);
+            let bid_max_margin = campaign_max_margin.get_bid(&impression, converge_vars.as_ref(), 1.0, &mut logger);
+            
+            println!("Optimal Bid (pacing=0.8298): {:?}", bid_optimal);
+            println!("Max Margin Bid (pacing=0.8298): {:?}", bid_max_margin);
+        }
+        
+        return;
+    }
     if args.len() > 1 {
         let scenario_arg = &args[1];
         

@@ -1,10 +1,13 @@
-/// This is an experimental scenario comparing Optimal and Max Margin bidding with fixed pacing.
-///
+/// This scenario compares Optimal and Max Margin bidding with fixed pacing, expecting equality.
+/// This numerically proves that the methods are actually equivalent.
+
 /// It compares two bidding strategies using fixed pacing factors:
 ///
-/// - Variant B: Optimal bidding (optimizes marginal utility of spend) with pacing = 1/0.8298
+/// - Variant B: Optimal bidding (optimizes marginal utility of spend) with pacing = 0.8298
 ///
 /// - Variant D: Max margin bidding (optimizes expected margin) with pacing = 0.8298
+/// Thi
+
 
 use crate::simulationrun::Marketplace;
 use crate::sellers::{SellerType, SellerConvergeStrategy, Sellers};
@@ -16,10 +19,11 @@ use crate::floors::{FloorGeneratorFixed, FloorGeneratorLogNormal};
 use crate::utils;
 use crate::logger::{Logger, LogEvent};
 use crate::logln;
+use crate::errln;
 
 // Register this scenario in the catalog
 inventory::submit!(crate::scenarios::ScenarioEntry {
-    short_name: "experiment",
+    short_name: "maxmargin_equality",
     run,
 });
 
@@ -43,7 +47,8 @@ fn prepare_simulationconverge(hb_impressions: usize, campaign_type: CampaignType
         SellerConvergeStrategy::NONE { default_value: 1.0 },  // seller_converge
         hb_impressions,  // impressions_on_offer
         CompetitionGeneratorParametrizedLogNormal::new(10.0),  // competition_generator
-        FloorGeneratorFixed::new(0.0),
+        //FloorGeneratorFixed::new(0.0),
+        FloorGeneratorLogNormal::new(1.0, 3.0),
     );
 
     // Create impressions for all sellers using default parameters
@@ -87,10 +92,38 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
     
     logln!(logger, LogEvent::Scenario, "");
     
-    // Compare results
-    logln!(logger, LogEvent::Scenario, "Comparison:");
-    logln!(logger, LogEvent::Scenario, "Optimal Bidding Total Value: {:.2}", stats_b.overall_stat.total_value);
-    logln!(logger, LogEvent::Scenario, "Max Margin Bidding Total Value: {:.2}", stats_d.overall_stat.total_value);
+    // Validation
+    let mut errors = Vec::new();
     
-    Ok(())
+    // Check spend equality
+    let spend_diff = (stats_b.overall_stat.total_buyer_charge - stats_d.overall_stat.total_buyer_charge).abs();
+    let spend_avg = (stats_b.overall_stat.total_buyer_charge + stats_d.overall_stat.total_buyer_charge) / 2.0;
+    let spend_diff_pct = if spend_avg > 0.0 { spend_diff / spend_avg * 100.0 } else { 0.0 };
+    
+    if spend_diff_pct < 1.0 {
+        logln!(logger, LogEvent::Scenario, "✓ Spend is roughly equal ({:.2}% diff)", spend_diff_pct);
+    } else {
+        let msg = format!("Spend is NOT roughly equal ({:.2}% diff). Optimal: {:.2}, MaxMargin: {:.2}", spend_diff_pct, stats_b.overall_stat.total_buyer_charge, stats_d.overall_stat.total_buyer_charge);
+        errln!(logger, LogEvent::Scenario, "✗ {}", msg);
+        errors.push(msg);
+    }
+    
+    // Check value equality
+    let value_diff = (stats_b.overall_stat.total_value - stats_d.overall_stat.total_value).abs();
+    let value_avg = (stats_b.overall_stat.total_value + stats_d.overall_stat.total_value) / 2.0;
+    let value_diff_pct = if value_avg > 0.0 { value_diff / value_avg * 100.0 } else { 0.0 };
+    
+    if value_diff_pct < 1.0 {
+        logln!(logger, LogEvent::Scenario, "✓ Value is roughly equal ({:.2}% diff)", value_diff_pct);
+    } else {
+        let msg = format!("Value is NOT roughly equal ({:.2}% diff). Optimal: {:.2}, MaxMargin: {:.2}", value_diff_pct, stats_b.overall_stat.total_value, stats_d.overall_stat.total_value);
+        errln!(logger, LogEvent::Scenario, "✗ {}", msg);
+        errors.push(msg);
+    }
+    
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(format!("Scenario '{}' validation failed:\n{}", scenario_name, errors.join("\n")).into())
+    }
 }

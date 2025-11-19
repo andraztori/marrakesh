@@ -264,6 +264,7 @@ impl CampaignTrait for CampaignOptimalBidding {
                 return None;
             }
         };
+//        println!("optimal bid: {:.4}", bid);
         if bid  < impression.floor_cpm.max(0.0) { 
             return None;
         }
@@ -306,7 +307,7 @@ impl CampaignTrait for CampaignMaxMargin {
         
         // Calculate full_price (maximum we're willing to pay)
         let full_price = pacing * seller_boost_factor * impression.value_to_campaign_id[self.campaign_id];
-        
+       // println!("full_price: {:.4}", full_price);
         // Get competition data (required for max margin bidding)
         let competition = match &impression.competition {
             Some(comp) => comp,
@@ -326,6 +327,7 @@ impl CampaignTrait for CampaignMaxMargin {
         
         // Find the bid that maximizes margin = P(win) * (full_price - bid)
         let min_bid = impression.floor_cpm.max(0.0);
+      //  println!("min_bid: {:.4}, full_price: {:.4}", min_bid, full_price);
         sigmoid.max_margin_bid_bisection(full_price, min_bid)
     }
     
