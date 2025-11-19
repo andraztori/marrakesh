@@ -39,6 +39,12 @@ The simulation uses seeded random number generation to ensure reproducibility. T
 - Debugging and validation of results
 - Scientific rigor in experimentation
 
+**Global Random Seed**:
+- A global `RAND_SEED` (`AtomicU64`) enables reproducible multiple simulation runs
+- Each seeding site XORs the global seed with local seeds for reproducibility
+- The seed can be set per iteration to enable multiple runs of the same scenario with different random sequences
+- This allows statistical analysis across multiple runs while maintaining reproducibility
+
 ---
 
 ## Marketplace Model
@@ -187,10 +193,7 @@ Campaigns operate under one of two constraint models:
    - Useful for budget-constrained campaigns
    - Tests how budget constraints affect impression acquisition
 
-3. **Fixed Budget Inverse** (`TOTAL_BUDGET_INVERSE`): Special variant for optimal bidding
-   - Uses inverse relationship between pacing and marginal utility
-   - Designed to work with optimal bidding strategies
-   - Converges on inverse of budget (1/budget) for proper marginal utility calculation
+
 
 These models represent the fundamental trade-offs in advertising:
 - **Reach vs. Efficiency**: Fixed impressions prioritizes reach; fixed budget prioritizes efficiency
@@ -214,11 +217,17 @@ Campaigns can use one of three bidding strategies:
    - More sophisticated, theoretically optimal approach
    - Currently works with budget constraints only
 
-3. **Cheater/Second Price** (`CHEATER`, `CampaignCheaterSecondPrice`):
+3. **Cheater/Last Look** (`CHEATER`, `CampaignCheaterLastLook`):
    - Bids `value × pacing × seller_boost_factor`
    - If bid exceeds competition, reduces to `competition.bid_cpm + 0.00001`
    - Models strategic bidding that exploits knowledge of competition
    - Simulates second-price auction behavior by bidding just above competition
+
+4. **Max Margin** (`MAX_MARGIN`, `CampaignMaxMargin`):
+   - Finds the bid that maximizes expected margin: `P(win) × (value - bid)`
+   - Uses bisection method to find the bid where the derivative of margin is zero
+   - Requires competition data (sigmoid parameters)
+   - Balances win probability against cost to maximize net value
 
 ### Convergence Mechanism
 
@@ -231,7 +240,8 @@ The system uses an **iterative feedback loop** to find optimal pacing and boost 
 **Campaign Convergence**:
 - Campaigns converge their pacing multipliers to meet impression or budget targets
 - Uses `ControllerProportional` for smooth adjustments
-- Each convergence strategy (`ConvergeTotalImpressions`, `ConvergeTotalBudget`, `ConvergeTotalBudgetInverse`) has its own convergence logic
+- Each convergence strategy (`ConvergeTotalImpressions`, `ConvergeTotalBudget`) has its own convergence logic
+- Convergence tracks the number of iterations taken to converge, stored in `SimulationStat`
 
 **Seller Convergence**:
 - Sellers with `TOTAL_COST` strategy converge boost factors to balance supply costs with target costs
@@ -247,7 +257,8 @@ The system uses a **strategy pattern** for convergence with trait-based dynamic 
 **Core Traits**:
 - `ConvergingVariables`: Unified trait for convergence parameters (used by both campaigns and sellers)
 - `ConvergeAny<T>`: Generic trait for convergence strategies, parameterized by statistic type
-  - Methods: `converge_iteration`, `get_main_variable`, `create_converging_variables`, `converge_target_string`
+  - Methods: `converge_iteration`, `get_converging_variable`, `create_converging_variables`, `converge_target_string`
+  - `get_converging_variable` has a default implementation that delegates to the controller
 
 **Convergence Parameters**:
 - `ConvergingSingleVariable`: Concrete type storing a single `f64` value (pacing or boost)
@@ -256,7 +267,7 @@ The system uses a **strategy pattern** for convergence with trait-based dynamic 
 **Campaign Convergence Strategies**:
 - `ConvergeTotalImpressions`: Converges pacing to meet impression targets
 - `ConvergeTotalBudget`: Converges pacing to meet budget targets
-- `ConvergeTotalBudgetInverse`: Converges on inverse budget for optimal bidding
+
 
 **Seller Convergence Strategies**:
 - `ConvergeNone`: No convergence, maintains constant boost factor
@@ -325,9 +336,13 @@ The system uses sigmoid functions to model win probability in auctions:
 
 **Inverse Marginal Utility**:
 - `marginal_utility_of_spend_inverse(y_target)`: Finds the bid that achieves a target marginal utility
-- Uses Newton-Raphson method with damping and backtracking for stability
-- Handles edge cases (very small targets, flat regions) gracefully
-- Returns `None` if inverse cannot be calculated
+  - Uses Newton-Raphson method with damping and backtracking for stability
+  - Falls back to `marginal_utility_of_spend_inverse_numerical_2` if Newton-Raphson fails
+- `marginal_utility_of_spend_inverse_numerical_2(y_target, min_x)`: Numerical inverse using bisection
+  - Uses bisection method between `min_x` and `100.0` to find the root of `m(x) = y_target`
+  - Ensures the result respects the minimum bid constraint (`min_x`, typically the floor price)
+  - More robust than Newton-Raphson for edge cases
+  - Returns `None` if no solution found in the search range
 
 ### Optimal Bidding Algorithm
 
@@ -336,10 +351,25 @@ Optimal bidding uses the following process:
 1. Calculate marginal utility of spend from pacing: `marginal_utility = 1.0 / pacing`
 2. Calculate impression value: `value = seller_boost_factor × impression.value`
 3. Initialize sigmoid with competition parameters and value
-4. Find optimal bid: `bid = sigmoid.marginal_utility_of_spend_inverse(marginal_utility)`
+4. Find optimal bid: `bid = sigmoid.marginal_utility_of_spend_inverse_numerical_2(marginal_utility, floor_cpm)`
+   - Uses bisection method with `floor_cpm` as the minimum bid constraint
+   - Ensures bids respect floor prices
 5. Return bid (or `None` if calculation fails)
 
-This approach ensures campaigns bid optimally given their budget constraints and competition.
+This approach ensures campaigns bid optimally given their budget constraints and competition, while respecting minimum bid requirements.
+
+### Max Margin Bidding Algorithm
+
+Max margin bidding finds the bid that maximizes the expected margin:
+`margin(bid) = P(win|bid) × (full_price - bid)`
+
+Where `full_price` is the maximum willingness to pay (`pacing × value`).
+
+The algorithm:
+1. Calculates `full_price` based on pacing and value
+2. Uses `max_margin_bid_bisection` to find the bid where the derivative of the margin function is zero
+3. Solves `scale × (1 - P(bid)) × (full_price - bid) - 1 = 0`
+4. Returns the optimal bid for maximizing immediate margin
 
 ---
 
@@ -434,11 +464,19 @@ The system includes a scenario framework for structured experimentation:
 - Scenarios include validation logic to verify expected behavior
 - Logging is organized by scenario and variant for easy analysis
 
+**Scenario Execution**:
+- Scenarios can be run individually by name: `cargo run -- <scenario_name> [iterations]`
+- Or all scenarios can be run: `cargo run -- all [iterations]`
+- Optional `iterations` parameter runs each scenario multiple times with different random seeds
+- Each iteration uses its iteration number as the global `RAND_SEED` for reproducibility
+- When running multiple iterations, each scenario completes all its iterations before moving to the next scenario
+
 **Example Scenarios**:
 - `s_one.rs`: Basic marketplace dynamics with multiple campaigns and sellers
 - `s_mrg_boost.rs`: Effect of seller boost factors on marketplace outcomes
 - `s_mrg_dynamic_boost.rs`: Comparison of fixed vs. dynamic boost strategies
-- `s_optimal.rs`: Comparison of multiplicative pacing, optimal bidding, and cheater strategies
+- `s_optimal.rs`: Comparison of multiplicative pacing, optimal bidding, cheater, and max margin strategies
+- `s_maxmargin_equality.rs`: Comparison of Optimal Bidding and Max Margin strategies (formerly `s_experiment.rs`). This scenario proves the equality of Max Margin and Optimal Bidding strategies.
 
 ---
 
@@ -470,6 +508,49 @@ This multi-level view allows researchers to understand:
 - Individual participant behavior
 - Market-wide dynamics
 - Interactions between levels
+
+---
+
+## Logging System
+
+### Structured Logging
+
+The system uses a structured logging framework with event-based filtering and multiple receivers:
+
+**Log Event Types**:
+- `Impression`: Impression data (base values, competition parameters)
+- `Auction`: Full auction data (impression data, all bids, auction results)
+- `Simulation`: Per-iteration simulation data
+- `Convergence`: Convergence information (iteration counts, convergence messages)
+- `Variant`: Final converged simulation results for a variant
+- `Scenario`: Comparisons between variants, scenario summaries
+- `Validation`: Validation results (pass/fail messages, validation checks)
+
+**Log Receivers**:
+- `ConsoleReceiver`: Writes to stdout for real-time monitoring
+- `FileReceiver`: Writes to files organized by scenario and variant
+
+**Log File Organization**:
+- Logs are organized in `log/<scenario_name>/` directories
+- `iterations-<variant_name>.log`: Per-iteration simulation and convergence data
+- `variant-<variant_name>.log`: Final variant results
+- `auctions-<variant_name>-iter<iteration_number>.csv`: Detailed auction data for each iteration
+  - Contains full impression data (competition and floor)
+  - Lists all bidders for each impression (irrespective of winning)
+  - Includes auction result (winner, bid amount, etc.)
+  - One dense line per auction in CSV format
+  - Only logs value for the first campaign to reduce file size
+
+**Event Hierarchy**:
+Log events follow a hierarchy where higher-level events also receive lower-level messages:
+- `Simulation` → also receives `Convergence`, `Variant`, `Scenario`, `Validation`
+- `Convergence` → also receives `Variant`, `Scenario`, `Validation`
+- `Variant` → also receives `Scenario`, `Validation`
+- `Scenario` → also receives `Validation`
+- `Validation` → only receives validation messages
+- `Impression` and `Auction` → standalone events (no hierarchy)
+
+This allows fine-grained control over what gets logged where, enabling detailed analysis while keeping log files manageable.
 
 ---
 
@@ -570,7 +651,7 @@ The framework is designed to be extended without modifying core logic:
 - Implement `CampaignTrait` with new bid calculation methods
 - Add campaign-specific bidding logic
 - Experiment with strategic bidding
-- Examples: `CampaignMultiplicativePacing`, `CampaignOptimalBidding`, `CampaignCheaterSecondPrice`
+- Examples: `CampaignMultiplicativePacing`, `CampaignOptimalBidding`, `CampaignCheaterLastLook`
 
 ### New Pricing Models
 - Add new seller types beyond fixed cost and first-price
