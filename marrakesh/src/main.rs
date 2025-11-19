@@ -16,6 +16,7 @@ mod s_one;
 mod s_optimal;
 mod s_mrg_boost;
 mod s_mrg_dynamic_boost;
+mod s_experiment;
 
 use sellers::{SellerType, SellerConvergeStrategy, Sellers};
 use campaigns::{CampaignType, ConvergeTarget, Campaigns};
