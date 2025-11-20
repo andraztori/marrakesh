@@ -1,7 +1,7 @@
 use crate::impressions::{AuctionResult, Winner};
 use crate::sellers::Sellers;
 use crate::campaigns::Campaigns;
-use crate::converge::{CampaignConverges, SellerConverges};
+use crate::converge::{CampaignControllerStates, SellerControllerStates};
 use crate::logger::{Logger, LogEvent};
 use crate::logln;
 
@@ -31,14 +31,14 @@ pub struct SimulationRun {
 
 impl SimulationRun {
     /// Create a new SimulationRun container and run auctions for all impressions
-    pub fn new(marketplace: &Marketplace, campaign_converges: &CampaignConverges, seller_converges: &SellerConverges, logger: &mut Logger) -> Self {
+    pub fn new(marketplace: &Marketplace, campaign_controller_states: &CampaignControllerStates, seller_controller_states: &SellerControllerStates, logger: &mut Logger) -> Self {
         let mut results = Vec::with_capacity(marketplace.impressions.impressions.len());
         
         for impression in &marketplace.impressions.impressions {
             // Get the seller and seller_converge for this impression
             let seller = marketplace.sellers.sellers[impression.seller_id].as_ref();
-            let seller_converge = seller_converges.seller_converges[seller.seller_id()].as_ref();
-            let result = impression.run_auction(&marketplace.campaigns, campaign_converges, seller, seller_converge, logger);
+            let seller_converge = seller_controller_states.seller_controller_states[seller.seller_id()].as_ref();
+            let result = impression.run_auction(&marketplace.campaigns, campaign_controller_states, seller, seller_converge, logger);
             results.push(result);
         }
         
@@ -171,11 +171,11 @@ impl SimulationStat {
     }
 
     /// Output campaign statistics (without header, for compact iteration output)
-    pub fn printout_campaigns(&self, campaigns: &Campaigns, campaign_converges: &CampaignConverges, logger: &mut Logger, event: LogEvent) {
+    pub fn printout_campaigns(&self, campaigns: &Campaigns, campaign_controller_states: &CampaignControllerStates, logger: &mut Logger, event: LogEvent) {
         
         for (index, campaign_stat) in self.campaign_stats.iter().enumerate() {
             let campaign = &campaigns.campaigns[index];
-            let converge = campaign_converges.campaign_converges[index].as_ref();
+            let converge = campaign_controller_states.campaign_controller_states[index].as_ref();
             let type_target_and_controller_string = campaign.type_target_and_controller_state_string(converge);
             
             logln!(logger, event, "\nCampaign {} ({}) - {}", 
@@ -190,11 +190,11 @@ impl SimulationStat {
     }
 
     /// Output seller statistics (without header, for compact iteration output)
-    pub fn printout_sellers(&self, sellers: &Sellers, seller_converges: &SellerConverges, logger: &mut Logger, event: LogEvent) {
+    pub fn printout_sellers(&self, sellers: &Sellers, seller_controller_states: &SellerControllerStates, logger: &mut Logger, event: LogEvent) {
         
         for (index, seller_stat) in self.seller_stats.iter().enumerate() {
             let seller = &sellers.sellers[index];
-            let converge = seller_converges.seller_converges[index].as_ref();
+            let converge = seller_controller_states.seller_controller_states[index].as_ref();
             let type_target_and_controller_string = seller.type_target_and_controller_state_string(converge);
             
             logln!(logger, event, "\nSeller {} ({}) - {}", 
@@ -209,15 +209,15 @@ impl SimulationStat {
     }
 
     /// Output complete statistics
-    pub fn printout(&self, campaigns: &Campaigns, sellers: &Sellers, campaign_converges: &CampaignConverges, seller_converges: &SellerConverges, logger: &mut Logger) {
+    pub fn printout(&self, campaigns: &Campaigns, sellers: &Sellers, campaign_controller_states: &CampaignControllerStates, seller_controller_states: &SellerControllerStates, logger: &mut Logger) {
         
         // Output campaign statistics
         logln!(logger, LogEvent::Variant, "\n=== Campaign Statistics ===");
-        self.printout_campaigns(campaigns, campaign_converges, logger, LogEvent::Variant);
+        self.printout_campaigns(campaigns, campaign_controller_states, logger, LogEvent::Variant);
 
         // Output seller statistics
         logln!(logger, LogEvent::Variant, "\n=== Seller Statistics ===");
-        self.printout_sellers(sellers, seller_converges, logger, LogEvent::Variant);
+        self.printout_sellers(sellers, seller_controller_states, logger, LogEvent::Variant);
 
         // Output overall statistics
         self.printout_overall(logger);

@@ -2,7 +2,7 @@ use rand::{rngs::StdRng, SeedableRng};
 use crate::utils::get_seed;
 use rand_distr::Distribution;
 use crate::impressions::Impression;
-use crate::competition::{CompetitionGeneratorParametrizedLogNormal, CompetitionGeneratorTrait};
+use crate::competition::{CompetitionGeneratorLogNormal, CompetitionGeneratorTrait};
 use crate::floors::{FloorGeneratorLogNormal, FloorGeneratorTrait};
 use crate::campaigns::MAX_CAMPAIGNS;
 use crate::utils::lognormal_dist;
@@ -12,7 +12,7 @@ use std::fs;
 /// Generate all impressions once
 fn generate_all_impressions() -> Vec<Impression> {
     // Initialize generators
-    let competition_generator = CompetitionGeneratorParametrizedLogNormal::new(10.0);
+    let competition_generator = CompetitionGeneratorLogNormal::new(10.0);
     let floor_generator = FloorGeneratorLogNormal::new(0.2, 2.0);
     let base_impression_value_dist = lognormal_dist(10.0, 3.0);
     let value_to_campaign_multiplier_dist = lognormal_dist(1.0, 0.2);

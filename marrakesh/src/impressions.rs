@@ -2,7 +2,7 @@ use rand::{rngs::StdRng, SeedableRng};
 use rand_distr::Distribution;
 use crate::sellers::{Sellers, SellerTrait};
 use crate::campaigns::{Campaigns, MAX_CAMPAIGNS};
-use crate::converge::CampaignConverges;
+use crate::converge::CampaignControllerStates;
 use crate::competition::ImpressionCompetition;
 use crate::logger::LogEvent;
 use crate::errln;
@@ -85,7 +85,7 @@ impl Impression {
 
     /// Run an auction for this impression with the given campaigns, campaign converges, seller, and seller convergence parameters
     /// Returns the auction result
-    pub fn run_auction(&self, campaigns: &Campaigns, campaign_converges: &CampaignConverges, seller: &dyn SellerTrait, seller_converge: &dyn crate::converge::ConvergingVariables, logger: &mut crate::logger::Logger) -> AuctionResult {
+    pub fn run_auction(&self, campaigns: &Campaigns, campaign_controller_states: &CampaignControllerStates, seller: &dyn SellerTrait, seller_converge: &dyn crate::controllers::ControllerState, logger: &mut crate::logger::Logger) -> AuctionResult {
         // Get bids from all campaigns
         let mut winning_bid_cpm = 0.0;
         let mut winning_campaign_id: Option<usize> = None;
@@ -96,12 +96,12 @@ impl Impression {
         };
 
         // Get seller_boost_factor from seller convergence parameter
-        let seller_converge_boost = seller_converge.as_any().downcast_ref::<crate::converge::ConvergingSingleVariable>().unwrap();
+        let seller_converge_boost = seller_converge.as_any().downcast_ref::<crate::controllers::ControllerStateSingleVariable>().unwrap();
         let seller_boost_factor = seller_converge_boost.converging_variable;
 
         for campaign in &campaigns.campaigns {
             let campaign_id = campaign.campaign_id();
-            let campaign_converge = &campaign_converges.campaign_converges[campaign_id];
+            let campaign_converge = &campaign_controller_states.campaign_controller_states[campaign_id];
             // Use the trait method for get_bid
             if let Some(bid) = campaign.get_bid(self, campaign_converge.as_ref(), seller_boost_factor, logger) {
                 // Check if bid is below zero

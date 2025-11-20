@@ -79,7 +79,6 @@ impl ConvergeTargetAny<crate::simulationrun::CampaignStat> for ConvergeNone {
 }
 
 pub use crate::controllers::ConvergeController;
-pub use crate::controllers::{ConvergeControllerConstant, ConvergeControllerProportional};
 
 /// Trait for campaigns participating in auctions
 pub trait CampaignTrait {

@@ -19,7 +19,7 @@ use crate::sellers::{SellerType, SellerConvergeStrategy, Sellers};
 use crate::campaigns::{CampaignType, ConvergeTarget, Campaigns};
 use crate::converge::SimulationConverge;
 use crate::impressions::{Impressions, ImpressionsParam};
-use crate::competition::CompetitionGeneratorParametrizedLogNormal;
+use crate::competition::CompetitionGeneratorLogNormal;
 use crate::floors;
 use crate::utils;
 use crate::logger::{Logger, LogEvent};
@@ -51,7 +51,7 @@ fn prepare_simulationconverge(hb_impressions: usize, campaign_type: CampaignType
         SellerType::FIRST_PRICE,  // seller_type
         SellerConvergeStrategy::NONE { default_value: 1.0 },  // seller_converge
         hb_impressions,  // impressions_on_offer
-        CompetitionGeneratorParametrizedLogNormal::new(10.0),  // competition_generator
+        CompetitionGeneratorLogNormal::new(10.0),  // competition_generator
       floors::FloorGeneratorLogNormal::new(1.0, 3.0),  // floor_generator
     //   floors::FloorGeneratorFixed::new(0.0),
     );

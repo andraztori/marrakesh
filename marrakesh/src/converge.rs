@@ -24,61 +24,61 @@ pub trait ConvergeTargetAny<T> {
     fn converge_target_string(&self) -> String;
 }
 
-/// Container for campaign convergence parameters
+/// Container for campaign controller states
 /// Uses dynamic dispatch to support different campaign types
-pub struct CampaignConverges {
-    pub campaign_converges: Vec<Box<dyn ControllerState>>,
+pub struct CampaignControllerStates {
+    pub campaign_controller_states: Vec<Box<dyn ControllerState>>,
 }
 
-impl Clone for CampaignConverges {
+impl Clone for CampaignControllerStates {
     fn clone(&self) -> Self {
         Self {
-            campaign_converges: self.campaign_converges.iter().map(|p| p.clone_box()).collect(),
+            campaign_controller_states: self.campaign_controller_states.iter().map(|p| p.clone_box()).collect(),
         }
     }
 }
 
-impl CampaignConverges {
-    /// Create campaign converges from campaigns
+impl CampaignControllerStates {
+    /// Create campaign controller states from campaigns
     pub fn new(campaigns: &Campaigns) -> Self {
-        let mut campaign_converges = Vec::with_capacity(campaigns.campaigns.len());
+        let mut campaign_controller_states = Vec::with_capacity(campaigns.campaigns.len());
         for campaign in &campaigns.campaigns {
-            campaign_converges.push(campaign.create_controller_state());
+            campaign_controller_states.push(campaign.create_controller_state());
         }
-        Self { campaign_converges }
+        Self { campaign_controller_states }
     }
 }
 
-/// Container for seller convergence parameters
+/// Container for seller controller states
 /// Uses dynamic dispatch to support different seller types
-pub struct SellerConverges {
-    pub seller_converges: Vec<Box<dyn ControllerState>>,
+pub struct SellerControllerStates {
+    pub seller_controller_states: Vec<Box<dyn ControllerState>>,
 }
 
-impl Clone for SellerConverges {
+impl Clone for SellerControllerStates {
     fn clone(&self) -> Self {
         Self {
-            seller_converges: self.seller_converges.iter().map(|p| p.clone_box()).collect(),
+            seller_controller_states: self.seller_controller_states.iter().map(|p| p.clone_box()).collect(),
         }
     }
 }
 
-impl SellerConverges {
-    /// Create seller converges from sellers
+impl SellerControllerStates {
+    /// Create seller controller states from sellers
     pub fn new(sellers: &Sellers) -> Self {
-        let mut seller_converges = Vec::with_capacity(sellers.sellers.len());
+        let mut seller_controller_states = Vec::with_capacity(sellers.sellers.len());
         for seller in &sellers.sellers {
-            seller_converges.push(seller.create_controller_state());
+            seller_controller_states.push(seller.create_controller_state());
         }
-        Self { seller_converges }
+        Self { seller_controller_states }
     }
 }
 
 /// Object for running simulation convergence with pacing adjustments
 pub struct SimulationConverge {
     pub marketplace: Marketplace,
-    pub initial_campaign_converges: CampaignConverges,
-    pub initial_seller_converges: SellerConverges,
+    pub initial_campaign_controller_states: CampaignControllerStates,
+    pub initial_seller_controller_states: SellerControllerStates,
 }
 
 impl SimulationConverge {
@@ -89,13 +89,13 @@ impl SimulationConverge {
     /// 
     /// Initializes campaign and seller convergence parameters internally
     pub fn new(marketplace: Marketplace) -> Self {
-        let initial_campaign_converges = CampaignConverges::new(&marketplace.campaigns);
-        let initial_seller_converges = SellerConverges::new(&marketplace.sellers);
+        let initial_campaign_controller_states = CampaignControllerStates::new(&marketplace.campaigns);
+        let initial_seller_controller_states = SellerControllerStates::new(&marketplace.sellers);
         
         Self {
             marketplace,
-            initial_campaign_converges,
-            initial_seller_converges,
+            initial_campaign_controller_states,
+            initial_seller_controller_states,
         }
     }
     
@@ -108,25 +108,25 @@ impl SimulationConverge {
     /// * `logger` - Logger for event-based logging
     /// 
     /// # Returns
-    /// Returns a tuple of (final SimulationRun, final SimulationStat, final CampaignConverges, final SellerConverges)
+    /// Returns a tuple of (final SimulationRun, final SimulationStat, final CampaignControllerStates, final SellerControllerStates)
     pub fn run(
         &self,
         max_iterations: usize,
         scenario_name: &str,
         variant_name: &str,
         logger: &mut Logger,
-    ) -> (SimulationRun, SimulationStat, CampaignConverges, SellerConverges) {
+    ) -> (SimulationRun, SimulationStat, CampaignControllerStates, SellerControllerStates) {
         
         let mut final_simulation_run = None;
         let mut final_stats = None;
-        let mut final_campaign_converges = None;
-        let mut final_seller_converges = None;
+        let mut final_campaign_controller_states = None;
+        let mut final_seller_controller_states = None;
         let mut converged = false;
         
-        // Initialize current campaign converges from input for the first iteration
-        let mut current_campaign_converges = self.initial_campaign_converges.clone();
-        // Initialize current seller converges from input for the first iteration
-        let mut current_seller_converges = self.initial_seller_converges.clone();
+        // Initialize current campaign controller states from input for the first iteration
+        let mut current_campaign_controller_states = self.initial_campaign_controller_states.clone();
+        // Initialize current seller controller states from input for the first iteration
+        let mut current_seller_controller_states = self.initial_seller_controller_states.clone();
         
         for iteration in 0..max_iterations {
             logln!(logger, LogEvent::Simulation, "\n=== {} - Iteration {} ===", variant_name, iteration + 1);
@@ -161,7 +161,7 @@ impl SimulationConverge {
             };
             
             // Run auctions for all impressions
-            let simulation_run = SimulationRun::new(&self.marketplace, &current_campaign_converges, &current_seller_converges, logger);
+            let simulation_run = SimulationRun::new(&self.marketplace, &current_campaign_controller_states, &current_seller_controller_states, logger);
             
             // Remove auction receiver after this iteration
             if let Some(id) = auctions_receiver_id {
@@ -171,41 +171,41 @@ impl SimulationConverge {
             // Generate statistics (use iteration + 1 for 1-indexed iteration count)
             let stats = SimulationStat::new(&self.marketplace, &simulation_run, iteration + 1);
             
-            // Calculate next iteration's campaign converges based on current results
-            let mut next_campaign_converges = current_campaign_converges.clone();
+            // Calculate next iteration's campaign controller states based on current results
+            let mut next_campaign_controller_states = current_campaign_controller_states.clone();
             let mut pacing_changed = false;
             for (index, campaign) in self.marketplace.campaigns.campaigns.iter().enumerate() {
                 let campaign_stat = &stats.campaign_stats[index];
-                let previous_state = current_campaign_converges.campaign_converges[index].as_ref();
-                let next_state = next_campaign_converges.campaign_converges[index].as_mut();
+                let previous_state = current_campaign_controller_states.campaign_controller_states[index].as_ref();
+                let next_state = next_campaign_controller_states.campaign_controller_states[index].as_mut();
                 
                 // Use the campaign's next_controller_state method (now part of CampaignTrait)
                 pacing_changed |= campaign.next_controller_state(previous_state, next_state, campaign_stat);
             }
             
-            // Calculate next iteration's seller converges based on current results
-            let mut next_seller_converges = current_seller_converges.clone();
+            // Calculate next iteration's seller controller states based on current results
+            let mut next_seller_controller_states = current_seller_controller_states.clone();
             let mut boost_changed = false;
             for (index, seller) in self.marketplace.sellers.sellers.iter().enumerate() {
                 let seller_stat = &stats.seller_stats[index];
-                let previous_state = current_seller_converges.seller_converges[index].as_ref();
-                let next_state = next_seller_converges.seller_converges[index].as_mut();
+                let previous_state = current_seller_controller_states.seller_controller_states[index].as_ref();
+                let next_state = next_seller_controller_states.seller_controller_states[index].as_mut();
                 
                 // Use the seller's next_controller_state method
                 boost_changed |= seller.next_controller_state(previous_state, next_state, seller_stat);
             }
             
-            // Output campaign statistics for each iteration (using the converges that were actually used)
-            stats.printout_campaigns(&self.marketplace.campaigns, &current_campaign_converges, logger, LogEvent::Simulation);
+            // Output campaign statistics for each iteration (using the controller states that were actually used)
+            stats.printout_campaigns(&self.marketplace.campaigns, &current_campaign_controller_states, logger, LogEvent::Simulation);
             
-            // Output seller statistics for each iteration (using the converges that were actually used)
-            stats.printout_sellers(&self.marketplace.sellers, &current_seller_converges, logger, LogEvent::Simulation);
+            // Output seller statistics for each iteration (using the controller states that were actually used)
+            stats.printout_sellers(&self.marketplace.sellers, &current_seller_controller_states, logger, LogEvent::Simulation);
             
             // Keep track of final simulation run and stats
                 final_simulation_run = Some(simulation_run);
                 final_stats = Some(stats);
-            final_campaign_converges = Some(current_campaign_converges.clone());
-            final_seller_converges = Some(current_seller_converges.clone());
+            final_campaign_controller_states = Some(current_campaign_controller_states.clone());
+            final_seller_controller_states = Some(current_seller_controller_states.clone());
             
             // Break early if no pacing or boost changes were made (converged)
             if !pacing_changed && !boost_changed {
@@ -215,8 +215,8 @@ impl SimulationConverge {
             }
             
             // Prepare for next iteration
-            current_campaign_converges = next_campaign_converges;
-            current_seller_converges = next_seller_converges;
+            current_campaign_controller_states = next_campaign_controller_states;
+            current_seller_controller_states = next_seller_controller_states;
         }
         
         // Log if we reached max iterations
@@ -225,12 +225,12 @@ impl SimulationConverge {
         }
         
         
-        // Return the final simulation run, stats, and converges
+        // Return the final simulation run, stats, and controller states
         (
             final_simulation_run.expect("Should have at least one iteration"),
             final_stats.expect("Should have at least one iteration"),
-            final_campaign_converges.expect("Should have at least one iteration"),
-            final_seller_converges.expect("Should have at least one iteration"),
+            final_campaign_controller_states.expect("Should have at least one iteration"),
+            final_seller_controller_states.expect("Should have at least one iteration"),
         )
     }
     
@@ -292,10 +292,10 @@ impl SimulationConverge {
         }
         */
         // Run simulation loop with pacing adjustments
-        let (_final_simulation_run, stats, final_campaign_converges, final_seller_converges) = self.run(max_iterations, scenario_name, variant_name, logger);
+        let (_final_simulation_run, stats, final_campaign_controller_states, final_seller_controller_states) = self.run(max_iterations, scenario_name, variant_name, logger);
         
         // Print final stats (variant-level output)
-        stats.printout(&self.marketplace.campaigns, &self.marketplace.sellers, &final_campaign_converges, &final_seller_converges, logger);
+        stats.printout(&self.marketplace.campaigns, &self.marketplace.sellers, &final_campaign_controller_states, &final_seller_controller_states, logger);
         
         // Remove variant-specific receivers
 //        logger.remove_receiver(impressions_receiver_id);

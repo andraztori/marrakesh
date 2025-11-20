@@ -47,12 +47,12 @@ impl CompetitionGeneratorTrait for CompetitionGeneratorNone {
     }
 }
 
-/// Generator for impression competition information using parametrized lognormal distributions
+/// Generator for impression competition information using lognormal distributions
 /// 
 /// Holds distributions used to generatively build competition that resembles real world.
-pub struct CompetitionGeneratorParametrizedLogNormal {
+pub struct CompetitionGeneratorLogNormal {
     /// Distribution for actual sigmoid offset (centered around value_base, stddev=5.0)
-    actual_offset_dist: rand_distr::LogNormal<f64>,
+    // actual_offset_dist: rand_distr::LogNormal<f64>,
     /// Distribution for actual sigmoid scale (mean=2.0, stddev=1.0)
     actual_scale_dist: rand_distr::LogNormal<f64>,
     /// Distribution for offset lognormal noise (mean=1.0, stddev=0.5)
@@ -61,15 +61,15 @@ pub struct CompetitionGeneratorParametrizedLogNormal {
     noise_scale_dist: rand_distr::LogNormal<f64>,
 }
 
-impl CompetitionGeneratorParametrizedLogNormal {
+impl CompetitionGeneratorLogNormal {
     /// Create a new generator with distributions initialized
     /// 
     /// # Arguments
     /// * `value_base` - Base value parameter used to center the actual sigmoid offset
-    pub fn new(value_base: f64) -> Box<Self> {
+    pub fn new(_value_base: f64) -> Box<Self> {
         Box::new(Self {
             // With current parameters, we end up with 0.3% of impressions at zero bid
-            actual_offset_dist: lognormal_dist(value_base, 3.0),
+            // actual_offset_dist: lognormal_dist(value_base, 3.0),
             actual_scale_dist: lognormal_dist(1.5, 1.0),
             noise_offset_dist: lognormal_dist(1.0, 0.05),
             noise_scale_dist: lognormal_dist(1.0, 0.05),
@@ -101,7 +101,7 @@ impl CompetitionGeneratorParametrizedLogNormal {
 /// 5. **Debugging information**: We could in theory throw away the actual offset and scale of
 ///    the sigmoid from which we sample, but we keep them (`win_rate_actual_sigmoid_offset` and
 ///    `win_rate_actual_sigmoid_scale`) for debugging purposes.
-impl CompetitionGeneratorTrait for CompetitionGeneratorParametrizedLogNormal {
+impl CompetitionGeneratorTrait for CompetitionGeneratorLogNormal {
     /// Generate competition information for an impression.
     /// 
     /// This function generatively builds competition that resembles real world, based on

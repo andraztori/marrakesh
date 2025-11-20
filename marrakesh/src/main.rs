@@ -12,6 +12,7 @@ mod charts;
 mod floors;
 mod competition;
 mod sigmoid;
+mod controllers;
 
 // Include scenario files so their constructors run
 mod s_one;
@@ -24,7 +25,7 @@ use sellers::{SellerType, SellerConvergeStrategy, Sellers};
 use campaigns::{CampaignType, ConvergeTarget, Campaigns};
 use converge::SimulationConverge;
 use impressions::Impressions;
-use competition::{CompetitionGeneratorParametrizedLogNormal, CompetitionGeneratorNone};
+use competition::{CompetitionGeneratorLogNormal, CompetitionGeneratorNone};
 use floors::{FloorGeneratorFixed, FloorGeneratorLogNormal};
 use logger::{Logger, LogEvent, ConsoleReceiver, FileReceiver, sanitize_filename};
 use std::path::PathBuf;
@@ -92,18 +93,18 @@ fn main() {
         let campaign_optimal = CampaignOptimalBidding {
             campaign_id: 0,
             campaign_name: "Optimal".to_string(),
-            converger: Box::new(ConvergeNone { default_pacing: 0.8298 }),
-            converge_controller: Box::new(crate::campaigns::ConvergeControllerEmpty::new(0.8298)),
+            converge_target: Box::new(ConvergeNone),
+            converge_controller: Box::new(crate::controllers::ConvergeControllerConstant::new(0.8298)),
         };
         
         let campaign_max_margin = CampaignMaxMargin {
             campaign_id: 0,
             campaign_name: "MaxMargin".to_string(),
-            converger: Box::new(ConvergeNone { default_pacing: 0.8298 }),
-            converge_controller: Box::new(crate::campaigns::ConvergeControllerEmpty::new(0.8298)),
+            converge_target: Box::new(ConvergeNone),
+            converge_controller: Box::new(crate::controllers::ConvergeControllerConstant::new(0.8298)),
         };
         
-        let converge_vars = campaign_optimal.create_converging_variables();
+        let converge_vars = campaign_optimal.create_controller_state();
         let mut logger = Logger::new();
 
         struct TestCase {
@@ -315,7 +316,7 @@ fn main() {
             SellerType::FIRST_PRICE,  // seller_type
             SellerConvergeStrategy::NONE { default_value: 1.0 },  // seller_converge
             1000,  // impressions_on_offer
-            CompetitionGeneratorParametrizedLogNormal::new(10.0),  // competition_generator
+            CompetitionGeneratorLogNormal::new(10.0),  // competition_generator
             FloorGeneratorLogNormal::new(0.2, 3.0),  // floor_generator
         );
 
@@ -342,8 +343,8 @@ fn main() {
         let simulation_converge = SimulationConverge::new(marketplace);
         
         // Run simulation loop with pacing adjustments (maximum 100 iterations)
-        let (_final_simulation_run, final_stats, final_campaign_converges, final_seller_converges) = simulation_converge.run(100, "main", "test", &mut logger);
+        let (_final_simulation_run, final_stats, final_campaign_controller_states, final_seller_controller_states) = simulation_converge.run(100, "main", "test", &mut logger);
         logln!(&mut logger, LogEvent::Variant, "\n=== Final Results ===");
-        final_stats.printout(&simulation_converge.marketplace.campaigns, &simulation_converge.marketplace.sellers, &final_campaign_converges, &final_seller_converges, &mut logger);
+        final_stats.printout(&simulation_converge.marketplace.campaigns, &simulation_converge.marketplace.sellers, &final_campaign_controller_states, &final_seller_controller_states, &mut logger);
     }
 }
