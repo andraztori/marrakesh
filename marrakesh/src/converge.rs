@@ -7,103 +7,7 @@ use crate::warnln;
 use std::path::PathBuf;
 use crate::utils::VERBOSE_AUCTION;
 use std::sync::atomic::Ordering;
-
-/// Proportional controller for adjusting campaign pacing based on target vs actual performance
-/// Full PID was tried, but always something became unstable
-pub struct ControllerProportional {
-    tolerance_fraction: f64,      // Tolerance as a fraction of target (e.g., 0.005 = 0.5%)
-    max_adjustment_factor: f64,   // Maximum adjustment factor (e.g., 0.2 = 20%)
-    proportional_gain: f64,       // Proportional gain (e.g., 0.2 = 20% of error)
-}
-
-impl ControllerProportional {
-    /// Create a new proportional controller with default parameters
-    pub fn new() -> Self {
-        Self {
-            tolerance_fraction: 0.005,  // 0.5% tolerance
-            max_adjustment_factor: 0.2,  // Max 20% adjustment
-            proportional_gain: 0.1,      // 20% of error
-        }
-    }
-
-    /// Create initial converging variables
-    pub fn create_converging_variables(&self) -> Box<dyn ConvergingVariables> {
-        Box::new(ConvergingSingleVariable { converging_variable: 1.0 })
-    }
-
-    /// Calculate pacing for next iteration based on target and actual values
-    /// 
-    /// # Arguments
-    /// * `target` - Target value to achieve
-    /// * `actual` - Actual value achieved
-    /// * `current_converge` - Current convergence parameter
-    /// * `next_converge` - Next convergence parameter to be updated (mutable)
-    /// 
-    /// # Returns
-    /// `true` if pacing was changed, `false` if it remained the same
-    pub fn converge_next_iteration(&self, target: f64, actual: f64, current_converge: &dyn ConvergingVariables, next_converge: &mut dyn ConvergingVariables) -> bool {
-        let current_pacing = current_converge.as_any().downcast_ref::<ConvergingSingleVariable>().unwrap().converging_variable;
-        let next_converge_mut = next_converge.as_any_mut().downcast_mut::<ConvergingSingleVariable>().unwrap();
-        
-        let tolerance = target * self.tolerance_fraction;
-        
-        if actual < target - tolerance {
-            // Below target - increase pacing
-            let error_ratio = (target - actual) / target;
-            let adjustment_factor = (error_ratio * self.proportional_gain).min(self.max_adjustment_factor);
-            let new_pacing = current_pacing * (1.0 + adjustment_factor);
-            next_converge_mut.converging_variable = new_pacing;
-            true
-        } else if actual > target + tolerance {
-            // Above target - decrease pacing
-            let error_ratio = (actual - target) / target;
-            let adjustment_factor = (error_ratio * self.proportional_gain).min(self.max_adjustment_factor);
-            let new_pacing = current_pacing * (1.0 - adjustment_factor);
-            next_converge_mut.converging_variable = new_pacing;
-            true
-        } else {
-            // Within tolerance - keep constant
-            next_converge_mut.converging_variable = current_pacing;
-            false
-        }
-    }
-    
-    /// Get the converging variable from the convergence parameter
-    /// 
-    /// # Arguments
-    /// * `converge` - Convergence parameter to extract the variable from
-    /// 
-    /// # Returns
-    /// The converging variable value
-    pub fn get_converging_variable(&self, converge: &dyn ConvergingVariables) -> f64 {
-        converge.as_any().downcast_ref::<ConvergingSingleVariable>().unwrap().converging_variable
-    }
-}
-
-/// Unified trait for convergence parameters
-/// Used for both campaigns and sellers
-pub trait ConvergingVariables: std::any::Any {
-    /// Clone the convergence parameter
-    fn clone_box(&self) -> Box<dyn ConvergingVariables>;
-    
-    /// Get a reference to Any for downcasting
-    fn as_any(&self) -> &dyn std::any::Any;
-    
-    /// Get a mutable reference to Any for downcasting
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any;
-}
-
-/// Unified convergence parameter for both campaigns and sellers
-#[derive(Clone)]
-pub struct ConvergingSingleVariable {
-    pub converging_variable: f64,
-}
-
-impl ConvergingVariables for ConvergingSingleVariable {
-    fn clone_box(&self) -> Box<dyn ConvergingVariables> { Box::new(self.clone()) }
-    fn as_any(&self) -> &dyn std::any::Any { self }
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
-}
+pub use crate::controllers::ControllerState;
 
 /// Trait for campaign convergence strategies
 pub trait ConvergeTargetAny<T> {
@@ -123,7 +27,7 @@ pub trait ConvergeTargetAny<T> {
 /// Container for campaign convergence parameters
 /// Uses dynamic dispatch to support different campaign types
 pub struct CampaignConverges {
-    pub campaign_converges: Vec<Box<dyn ConvergingVariables>>,
+    pub campaign_converges: Vec<Box<dyn ControllerState>>,
 }
 
 impl Clone for CampaignConverges {
@@ -139,7 +43,7 @@ impl CampaignConverges {
     pub fn new(campaigns: &Campaigns) -> Self {
         let mut campaign_converges = Vec::with_capacity(campaigns.campaigns.len());
         for campaign in &campaigns.campaigns {
-            campaign_converges.push(campaign.create_converging_variables());
+            campaign_converges.push(campaign.create_controller_state());
         }
         Self { campaign_converges }
     }
@@ -148,7 +52,7 @@ impl CampaignConverges {
 /// Container for seller convergence parameters
 /// Uses dynamic dispatch to support different seller types
 pub struct SellerConverges {
-    pub seller_converges: Vec<Box<dyn ConvergingVariables>>,
+    pub seller_converges: Vec<Box<dyn ControllerState>>,
 }
 
 impl Clone for SellerConverges {
@@ -164,7 +68,7 @@ impl SellerConverges {
     pub fn new(sellers: &Sellers) -> Self {
         let mut seller_converges = Vec::with_capacity(sellers.sellers.len());
         for seller in &sellers.sellers {
-            seller_converges.push(seller.create_converging_variables());
+            seller_converges.push(seller.create_controller_state());
         }
         Self { seller_converges }
     }
@@ -272,11 +176,11 @@ impl SimulationConverge {
             let mut pacing_changed = false;
             for (index, campaign) in self.marketplace.campaigns.campaigns.iter().enumerate() {
                 let campaign_stat = &stats.campaign_stats[index];
-                let current_converge = current_campaign_converges.campaign_converges[index].as_ref();
-                let next_converge = next_campaign_converges.campaign_converges[index].as_mut();
+                let previous_state = current_campaign_converges.campaign_converges[index].as_ref();
+                let next_state = next_campaign_converges.campaign_converges[index].as_mut();
                 
-                // Use the campaign's converge_iteration method (now part of CampaignTrait)
-                pacing_changed |= campaign.converge_iteration(current_converge, next_converge, campaign_stat);
+                // Use the campaign's next_controller_state method (now part of CampaignTrait)
+                pacing_changed |= campaign.next_controller_state(previous_state, next_state, campaign_stat);
             }
             
             // Calculate next iteration's seller converges based on current results
@@ -284,11 +188,11 @@ impl SimulationConverge {
             let mut boost_changed = false;
             for (index, seller) in self.marketplace.sellers.sellers.iter().enumerate() {
                 let seller_stat = &stats.seller_stats[index];
-                let current_converge = current_seller_converges.seller_converges[index].as_ref();
-                let next_converge = next_seller_converges.seller_converges[index].as_mut();
+                let previous_state = current_seller_converges.seller_converges[index].as_ref();
+                let next_state = next_seller_converges.seller_converges[index].as_mut();
                 
-                // Use the seller's converge_iteration method
-                boost_changed |= seller.converge_iteration(current_converge, next_converge, seller_stat);
+                // Use the seller's next_controller_state method
+                boost_changed |= seller.next_controller_state(previous_state, next_state, seller_stat);
             }
             
             // Output campaign statistics for each iteration (using the converges that were actually used)

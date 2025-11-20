@@ -1,6 +1,6 @@
 use crate::competition::{ImpressionCompetition, CompetitionGeneratorTrait};
 use crate::floors::FloorGeneratorTrait;
-use crate::campaigns::ConvergeController;
+use crate::controllers::ConvergeController;
 use rand::rngs::StdRng;
 pub use crate::converge::ConvergeTargetAny;
 
@@ -47,7 +47,7 @@ impl ConvergeTargetAny<crate::simulationrun::SellerStat> for ConvergeTargetTotal
     }
     
     fn converge_target_string(&self) -> String {
-        format!("Target cost: {:.2}", self.target_cost)
+        format!("Converge target cost: {:.2}", self.target_cost)
     }
 }
 
@@ -77,23 +77,23 @@ pub trait SellerTrait {
     /// Tuple of (Option<ImpressionCompetition>, floor_cpm)
     fn generate_impression(&self, base_value: f64, rng_competition: &mut StdRng, rng_floor: &mut StdRng) -> (Option<ImpressionCompetition>, f64);
     
-    /// Get a string representation of the charge type for logging
-    fn charge_type_string(&self) -> String;
+    /// Get a string representation of the seller type and convergence for logging
+    fn type_target_and_controller_state_string(&self, converge: &dyn crate::controllers::ControllerState) -> String;
     
     /// Create a new convergence parameter for this seller type
-    fn create_converging_variables(&self) -> Box<dyn crate::converge::ConvergingVariables>;
+    fn create_controller_state(&self) -> Box<dyn crate::controllers::ControllerState>;
     
-    /// Perform one iteration of convergence, updating the next convergence parameter
+    /// Calculate the next controller state
     /// This method encapsulates the convergence logic for each seller type
     /// 
     /// # Arguments
-    /// * `current_converge` - Current convergence parameter (immutable)
-    /// * `next_converge` - Next convergence parameter to be updated (mutable)
+    /// * `previous_state` - Previous controller state (immutable)
+    /// * `next_state` - Next controller state to be updated (mutable)
     /// * `seller_stat` - Statistics from the current simulation run
     /// 
     /// # Returns
     /// `true` if boost_factor was changed, `false` if it remained the same
-    fn converge_iteration(&self, current_converge: &dyn crate::converge::ConvergingVariables, next_converge: &mut dyn crate::converge::ConvergingVariables, seller_stat: &crate::simulationrun::SellerStat) -> bool;
+    fn next_controller_state(&self, previous_state: &dyn crate::controllers::ControllerState, next_state: &mut dyn crate::controllers::ControllerState, seller_stat: &crate::simulationrun::SellerStat) -> bool;
     
 }
 
@@ -102,7 +102,7 @@ pub struct SellerFirstPrice {
     pub seller_id: usize,
     pub seller_name: String,
     pub impressions_on_offer: usize,
-    pub converger: Box<dyn ConvergeTargetAny<crate::simulationrun::SellerStat>>,
+    pub converge_target: Box<dyn ConvergeTargetAny<crate::simulationrun::SellerStat>>,
     pub converge_controller: Box<dyn ConvergeController>,
     pub competition_generator: Box<dyn CompetitionGeneratorTrait>,
     pub floor_generator: Box<dyn FloorGeneratorTrait>,
@@ -123,17 +123,17 @@ impl SellerTrait for SellerFirstPrice {
         (competition, floor_cpm)
     }
     
-    fn charge_type_string(&self) -> String {
-        "FIRST_PRICE".to_string()
+    fn type_target_and_controller_state_string(&self, converge: &dyn crate::controllers::ControllerState) -> String {
+        format!("First price ({}, {})", self.converge_target.converge_target_string(), self.converge_controller.controller_string(converge))
     }
     
-    fn create_converging_variables(&self) -> Box<dyn crate::converge::ConvergingVariables> {
-        self.converge_controller.create_converging_variables()
+    fn create_controller_state(&self) -> Box<dyn crate::controllers::ControllerState> {
+        self.converge_controller.create_controller_state()
     }
     
-    fn converge_iteration(&self, current_converge: &dyn crate::converge::ConvergingVariables, next_converge: &mut dyn crate::converge::ConvergingVariables, seller_stat: &crate::simulationrun::SellerStat) -> bool {
-        let (actual, target) = self.converger.get_actual_and_target(seller_stat);
-        self.converge_controller.converge_iteration(current_converge, next_converge, target, actual)
+    fn next_controller_state(&self, previous_state: &dyn crate::controllers::ControllerState, next_state: &mut dyn crate::controllers::ControllerState, seller_stat: &crate::simulationrun::SellerStat) -> bool {
+        let (actual, target) = self.converge_target.get_actual_and_target(seller_stat);
+        self.converge_controller.next_controller_state(previous_state, next_state, actual, target)
     }
 }
 
@@ -143,7 +143,7 @@ pub struct SellerFixedPrice {
     pub seller_name: String,
     pub fixed_cost_cpm: f64,
     pub impressions_on_offer: usize,
-    pub converger: Box<dyn ConvergeTargetAny<crate::simulationrun::SellerStat>>,
+    pub converge_target: Box<dyn ConvergeTargetAny<crate::simulationrun::SellerStat>>,
     pub converge_controller: Box<dyn ConvergeController>,
     pub competition_generator: Box<dyn CompetitionGeneratorTrait>,
     pub floor_generator: Box<dyn FloorGeneratorTrait>,
@@ -164,17 +164,17 @@ impl SellerTrait for SellerFixedPrice {
         (competition, floor_cpm)
     }
     
-    fn charge_type_string(&self) -> String {
-        format!("FIXED_PRICE ({} CPM)", self.fixed_cost_cpm)
+    fn type_target_and_controller_state_string(&self, converge: &dyn crate::controllers::ControllerState) -> String {
+        format!("Fixed price CPM: {:.2} ({}, {})", self.fixed_cost_cpm, self.converge_target.converge_target_string(), self.converge_controller.controller_string(converge))
     }
     
-    fn create_converging_variables(&self) -> Box<dyn crate::converge::ConvergingVariables> {
-        self.converge_controller.create_converging_variables()
+    fn create_controller_state(&self) -> Box<dyn crate::controllers::ControllerState> {
+        self.converge_controller.create_controller_state()
     }
     
-    fn converge_iteration(&self, current_converge: &dyn crate::converge::ConvergingVariables, next_converge: &mut dyn crate::converge::ConvergingVariables, seller_stat: &crate::simulationrun::SellerStat) -> bool {
-        let (actual, target) = self.converger.get_actual_and_target(seller_stat);
-        self.converge_controller.converge_iteration(current_converge, next_converge, target, actual)
+    fn next_controller_state(&self, previous_state: &dyn crate::controllers::ControllerState, next_state: &mut dyn crate::controllers::ControllerState, seller_stat: &crate::simulationrun::SellerStat) -> bool {
+        let (actual, target) = self.converge_target.get_actual_and_target(seller_stat);
+        self.converge_controller.next_controller_state(previous_state, next_state, actual, target)
     }
 }
 
@@ -203,25 +203,21 @@ impl Sellers {
     pub fn add(&mut self, seller_name: String, seller_type: SellerType, seller_converge: SellerConvergeStrategy, impressions_on_offer: usize, competition_generator: Box<dyn CompetitionGeneratorTrait>, floor_generator: Box<dyn FloorGeneratorTrait>) {
         let seller_id = self.sellers.len();
         
-        // Create converger based on seller_converge
-        let converger: Box<dyn ConvergeTargetAny<crate::simulationrun::SellerStat>> = match seller_converge {
-            SellerConvergeStrategy::NONE { .. } => {
-                Box::new(ConvergeNone)
+        // Create converge_target and converge_controller based on seller_converge
+        let (converge_target, converge_controller): (Box<dyn ConvergeTargetAny<crate::simulationrun::SellerStat>>, Box<dyn ConvergeController>) = match seller_converge {
+            SellerConvergeStrategy::NONE { default_value } => {
+                (
+                    Box::new(ConvergeNone),
+                    Box::new(crate::controllers::ConvergeControllerConstant::new(default_value))
+                )
             }
             SellerConvergeStrategy::TOTAL_COST { target_total_cost } => {
-                Box::new(ConvergeTargetTotalCost {
-                    target_cost: target_total_cost,
-                })
-            }
-        };
-        
-        // Create converge_controller based on seller_converge
-        let converge_controller: Box<dyn ConvergeController> = match seller_converge {
-            SellerConvergeStrategy::NONE { default_value } => {
-                Box::new(crate::campaigns::ConvergeControllerEmpty::new(default_value))
-            }
-            SellerConvergeStrategy::TOTAL_COST { .. } => {
-                Box::new(crate::campaigns::ConvergeControllerProportional::new())
+                (
+                    Box::new(ConvergeTargetTotalCost {
+                        target_cost: target_total_cost,
+                    }),
+                    Box::new(crate::controllers::ConvergeControllerProportional::new())
+                )
             }
         };
         
@@ -232,7 +228,7 @@ impl Sellers {
                     seller_id,
                     seller_name,
                     impressions_on_offer,
-                    converger,
+                    converge_target,
                     converge_controller,
                     competition_generator,
                     floor_generator,
@@ -244,7 +240,7 @@ impl Sellers {
                     seller_name,
                     fixed_cost_cpm,
                     impressions_on_offer,
-                    converger,
+                    converge_target,
                     converge_controller,
                     competition_generator,
                     floor_generator,
