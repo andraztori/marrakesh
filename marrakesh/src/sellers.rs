@@ -78,7 +78,7 @@ pub trait SellerTrait {
     fn generate_impression(&self, base_value: f64, rng_competition: &mut StdRng, rng_floor: &mut StdRng) -> (Option<ImpressionCompetition>, f64);
     
     /// Get a string representation of the seller type and convergence for logging
-    fn type_target_and_controller_state_string(&self, converge: &dyn crate::controllers::ControllerState) -> String;
+    fn type_target_and_controller_state_string(&self, controller_state: &dyn crate::controllers::ControllerState) -> String;
     
     /// Create a new convergence parameter for this seller type
     fn create_controller_state(&self) -> Box<dyn crate::controllers::ControllerState>;
@@ -123,8 +123,8 @@ impl SellerTrait for SellerFirstPrice {
         (competition, floor_cpm)
     }
     
-    fn type_target_and_controller_state_string(&self, converge: &dyn crate::controllers::ControllerState) -> String {
-        format!("First price ({}, {})", self.converge_target.converge_target_string(), self.converge_controller.controller_string(converge))
+    fn type_target_and_controller_state_string(&self, controller_state: &dyn crate::controllers::ControllerState) -> String {
+        format!("First price ({}, {})", self.converge_target.converge_target_string(), self.converge_controller.controller_string(controller_state))
     }
     
     fn create_controller_state(&self) -> Box<dyn crate::controllers::ControllerState> {
@@ -164,8 +164,8 @@ impl SellerTrait for SellerFixedPrice {
         (competition, floor_cpm)
     }
     
-    fn type_target_and_controller_state_string(&self, converge: &dyn crate::controllers::ControllerState) -> String {
-        format!("Fixed price CPM: {:.2} ({}, {})", self.fixed_cost_cpm, self.converge_target.converge_target_string(), self.converge_controller.controller_string(converge))
+    fn type_target_and_controller_state_string(&self, controller_state: &dyn crate::controllers::ControllerState) -> String {
+        format!("Fixed price CPM: {:.2} ({}, {})", self.fixed_cost_cpm, self.converge_target.converge_target_string(), self.converge_controller.controller_string(controller_state))
     }
     
     fn create_controller_state(&self) -> Box<dyn crate::controllers::ControllerState> {

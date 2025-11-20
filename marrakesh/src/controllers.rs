@@ -84,8 +84,8 @@ impl ControllerProportional {
     /// * `converge` - Controller state to extract the variable from
     /// 
     /// # Returns
-    /// The converging variable value
-    pub fn get_converging_variable(&self, converge: &dyn ControllerState) -> f64 {
+    /// The control variable value
+    pub fn get_control_variable(&self, converge: &dyn ControllerState) -> f64 {
         converge.as_any().downcast_ref::<ControllerStateSingleVariable>().unwrap().converging_variable
     }
 }
@@ -104,11 +104,11 @@ pub trait ConvergeController: Send + Sync {
     /// `true` if the convergence value changed, `false` if it remained the same
     fn next_controller_state(&self, previous_state: &dyn ControllerState, next_state: &mut dyn ControllerState, actual: f64, target: f64) -> bool;
     
-    /// Get the converging parameter (pacing value)
+    /// Get the control variable (pacing value)
     /// 
     /// # Arguments
     /// * `converge` - Controller state to extract the pacing value from
-    fn get_converging_variable(&self, converge: &dyn ControllerState) -> f64;
+    fn get_control_variable(&self, converge: &dyn ControllerState) -> f64;
     
     /// Create initial controller state
     fn create_controller_state(&self) -> Box<dyn ControllerState>;
@@ -138,7 +138,7 @@ impl ConvergeController for ConvergeControllerConstant {
         false
     }
     
-    fn get_converging_variable(&self, converge: &dyn ControllerState) -> f64 {
+    fn get_control_variable(&self, converge: &dyn ControllerState) -> f64 {
         converge.as_any().downcast_ref::<ControllerStateSingleVariable>().unwrap().converging_variable
     }
     
@@ -149,7 +149,7 @@ impl ConvergeController for ConvergeControllerConstant {
     }
     
     fn controller_string(&self, converge: &dyn ControllerState) -> String {
-        format!("Constant value: {:.4}", self.get_converging_variable(converge))
+        format!("Constant value: {:.4}", self.get_control_variable(converge))
     }
 }
 
@@ -173,8 +173,8 @@ impl ConvergeController for ConvergeControllerProportional {
         self.controller.controller_next_state(target, actual, previous_state, next_state)
     }
     
-    fn get_converging_variable(&self, converge: &dyn ControllerState) -> f64 {
-        self.controller.get_converging_variable(converge)
+    fn get_control_variable(&self, converge: &dyn ControllerState) -> f64 {
+        self.controller.get_control_variable(converge)
     }
     
     fn create_controller_state(&self) -> Box<dyn ControllerState> {
@@ -182,7 +182,7 @@ impl ConvergeController for ConvergeControllerProportional {
     }
     
     fn controller_string(&self, converge: &dyn ControllerState) -> String {
-        format!("Proportional controller, pacing: {:.4}", self.get_converging_variable(converge))
+        format!("Proportional controller, pacing: {:.4}", self.get_control_variable(converge))
     }
 }
 

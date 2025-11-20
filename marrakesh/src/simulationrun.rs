@@ -175,8 +175,8 @@ impl SimulationStat {
         
         for (index, campaign_stat) in self.campaign_stats.iter().enumerate() {
             let campaign = &campaigns.campaigns[index];
-            let converge = campaign_controller_states.campaign_controller_states[index].as_ref();
-            let type_target_and_controller_string = campaign.type_target_and_controller_state_string(converge);
+            let controller_state = campaign_controller_states.campaign_controller_states[index].as_ref();
+            let type_target_and_controller_string = campaign.type_target_and_controller_state_string(controller_state);
             
             logln!(logger, event, "\nCampaign {} ({}) - {}", 
                      campaign.campaign_id(), campaign.campaign_name(), type_target_and_controller_string);
@@ -194,8 +194,8 @@ impl SimulationStat {
         
         for (index, seller_stat) in self.seller_stats.iter().enumerate() {
             let seller = &sellers.sellers[index];
-            let converge = seller_controller_states.seller_controller_states[index].as_ref();
-            let type_target_and_controller_string = seller.type_target_and_controller_state_string(converge);
+            let controller_state = seller_controller_states.seller_controller_states[index].as_ref();
+            let type_target_and_controller_string = seller.type_target_and_controller_state_string(controller_state);
             
             logln!(logger, event, "\nSeller {} ({}) - {}", 
                      seller.seller_id(), seller.seller_name(), type_target_and_controller_string);
