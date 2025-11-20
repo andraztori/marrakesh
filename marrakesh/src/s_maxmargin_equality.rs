@@ -1,12 +1,12 @@
-/// This scenario compares Optimal and Max Margin bidding with fixed pacing, expecting equality.
+/// This scenario compares Optimal and Max Margin bidding converging to $20 spend, expecting equality.
 /// This numerically proves that the methods are actually equivalent.
-
-/// It compares two bidding strategies using fixed pacing factors:
 ///
-/// - Variant B: Optimal bidding (optimizes marginal utility of spend) with pacing = 0.8298
+/// It compares two bidding strategies converging to the same budget:
 ///
-/// - Variant D: Max margin bidding (optimizes expected margin) with pacing = 0.8298
-/// Thi
+/// - Variant B: Optimal bidding (optimizes marginal utility of spend) converging to $20 spend
+///
+/// - Variant D: Max margin bidding (optimizes expected margin) converging to $20 spend
+/// This scenario proves that Max Margin and Optimal Bidding are equivalent when configured correctly.
 
 
 use crate::simulationrun::Marketplace;
@@ -28,7 +28,7 @@ inventory::submit!(crate::scenarios::ScenarioEntry {
 });
 
 /// Prepare simulation converge instance with campaign and seller setup
-fn prepare_simulationconverge(hb_impressions: usize, campaign_type: CampaignType, pacing_factor: f64) -> SimulationConverge {
+fn prepare_simulationconverge(hb_impressions: usize, campaign_type: CampaignType) -> SimulationConverge {
     // Initialize containers for campaigns and sellers
     let mut campaigns = Campaigns::new();
     let mut sellers = Sellers::new();
@@ -37,7 +37,7 @@ fn prepare_simulationconverge(hb_impressions: usize, campaign_type: CampaignType
     campaigns.add(
         "Campaign 0".to_string(),  // campaign_name
         campaign_type,  // campaign_type
-        ConvergeTarget::NONE { default_pacing: pacing_factor },  // converge_target
+        ConvergeTarget::TOTAL_BUDGET { target_total_budget: 20.0 },  // converge_target
     );
 
     // Add seller (ID is automatically set to match Vec index)
@@ -73,20 +73,18 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
     let num_impressions = 10000;
     
     // Run variant B with optimal bidding
-    // Pacing factor: 1 / 0.8298
+    // Converging to $20 spend
     let simulation_converge_b = prepare_simulationconverge(
         num_impressions,
         CampaignType::OPTIMAL,
-        0.8298,
     );
     let stats_b = simulation_converge_b.run_variant("Running with optimal bidding", scenario_name, "optimal", 100, logger);
     
     // Run variant D with max margin bidding
-    // Pacing factor: 0.8298
+    // Converging to $20 spend
     let simulation_converge_d = prepare_simulationconverge(
         num_impressions,
         CampaignType::MAX_MARGIN,
-        0.8298,
     );
     let stats_d = simulation_converge_d.run_variant("Running with max margin bidding", scenario_name, "max-margin", 100, logger);
     
