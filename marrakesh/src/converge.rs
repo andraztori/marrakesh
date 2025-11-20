@@ -5,7 +5,7 @@ use crate::logger::{Logger, LogEvent, FileReceiver, sanitize_filename};
 use crate::logln;
 use crate::warnln;
 use std::path::PathBuf;
-use crate::utils::VERBOSE_IMPRESSIONS;
+use crate::utils::VERBOSE_AUCTION;
 use std::sync::atomic::Ordering;
 
 /// Proportional controller for adjusting campaign pacing based on target vs actual performance
@@ -106,37 +106,18 @@ impl ConvergingVariables for ConvergingSingleVariable {
 }
 
 /// Trait for campaign convergence strategies
-pub trait ConvergeAny<T> {
-    /// Perform one iteration of convergence, updating the next convergence parameter
+pub trait ConvergeTargetAny<T> {
+    /// Get the actual and target values for convergence
     /// 
     /// # Arguments
-    /// * `current_converge` - Current convergence parameter
-    /// * `next_converge` - Next convergence parameter to be updated (mutable)
-    /// * `campaign_stat` - Statistics from the current simulation run
+    /// * `stat` - Statistics from the current simulation run
     /// 
     /// # Returns
-    /// `true` if pacing was changed, `false` if it remained the same
-    fn converge_iteration(&self, current_converge: &dyn ConvergingVariables, next_converge: &mut dyn ConvergingVariables, campaign_stat: &T) -> bool;
+    /// A tuple `(actual, target)` representing the actual value achieved and the target value
+    fn get_actual_and_target(&self, stat: &T) -> (f64, f64);
     
-    /// Get the converging parameter (pacing value)
-    /// 
-    /// # Arguments
-    /// * `converge` - Convergence parameter to extract the pacing value from
-    /// 
-    /// Default implementation extracts the variable from ConvergingSingleVariable.
-    /// Implementations can override this if they need different behavior.
-    fn get_converging_variable(&self, converge: &dyn ConvergingVariables) -> f64 {
-        converge.as_any().downcast_ref::<ConvergingSingleVariable>().unwrap().converging_variable
-    }
-    
-    /// Create initial converging variables
-    fn create_converging_variables(&self) -> Box<dyn ConvergingVariables>;
-    
-    /// Get a string representation of the convergence target and pacing
-    /// 
-    /// # Arguments
-    /// * `converge` - Convergence parameter to include pacing information
-    fn converge_target_string(&self, converge: &dyn ConvergingVariables) -> String;
+    /// Get a string representation of the convergence target
+    fn converge_target_string(&self) -> String;
 }
 
 /// Container for campaign convergence parameters
@@ -237,7 +218,6 @@ impl SimulationConverge {
         let mut final_campaign_converges = None;
         let mut final_seller_converges = None;
         let mut converged = false;
-        let mut final_iteration = max_iterations;
         
         // Initialize current campaign converges from input for the first iteration
         let mut current_campaign_converges = self.initial_campaign_converges.clone();
@@ -248,7 +228,7 @@ impl SimulationConverge {
             logln!(logger, LogEvent::Simulation, "\n=== {} - Iteration {} ===", variant_name, iteration + 1);
             
             // Create auction receiver for this iteration
-            let auctions_receiver_id = if VERBOSE_IMPRESSIONS.load(Ordering::Relaxed) {
+            let auctions_receiver_id = if VERBOSE_AUCTION.load(Ordering::Relaxed) {
                 let receiver_id = logger.add_receiver(FileReceiver::new(&PathBuf::from(format!("log/{}/auctions-{}-iter{}.csv", sanitize_filename(scenario_name), sanitize_filename(variant_name), iteration + 1)), vec![LogEvent::Auction]));
                 
                 // Write CSV header

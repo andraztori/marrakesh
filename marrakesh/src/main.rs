@@ -1,3 +1,5 @@
+
+#[allow(unused_imports)]
 mod simulationrun;
 mod converge;
 mod utils;
@@ -43,8 +45,8 @@ fn main() {
             continue;
         }
         if arg == "--verbose" {
-            if i + 1 < raw_args.len() && raw_args[i+1] == "impressions" {
-                utils::VERBOSE_IMPRESSIONS.store(true, Ordering::Relaxed);
+            if i + 1 < raw_args.len() && raw_args[i+1] == "auction" {
+                utils::VERBOSE_AUCTION.store(true, Ordering::Relaxed);
                 skip_next = true;
             }
             continue;
@@ -82,28 +84,26 @@ fn main() {
     
     // Check if "test" argument is provided
     if args.len() > 1 && args[1] == "test" {
-        use campaigns::{CampaignOptimalBidding, CampaignMaxMargin, ConvergeNone, CampaignTrait, MAX_CAMPAIGNS, ConvergeAny};
+        use campaigns::{CampaignOptimalBidding, CampaignMaxMargin, ConvergeNone, CampaignTrait, MAX_CAMPAIGNS};
         use impressions::Impression;
         use competition::ImpressionCompetition;
         
         // Setup shared resources
-        let converger_none = ConvergeNone {
-            default_pacing: 0.8298,
-        };
-        
         let campaign_optimal = CampaignOptimalBidding {
             campaign_id: 0,
             campaign_name: "Optimal".to_string(),
             converger: Box::new(ConvergeNone { default_pacing: 0.8298 }),
+            converge_controller: Box::new(crate::campaigns::ConvergeControllerEmpty::new(0.8298)),
         };
         
         let campaign_max_margin = CampaignMaxMargin {
             campaign_id: 0,
             campaign_name: "MaxMargin".to_string(),
             converger: Box::new(ConvergeNone { default_pacing: 0.8298 }),
+            converge_controller: Box::new(crate::campaigns::ConvergeControllerEmpty::new(0.8298)),
         };
         
-        let converge_vars = converger_none.create_converging_variables();
+        let converge_vars = campaign_optimal.create_converging_variables();
         let mut logger = Logger::new();
 
         struct TestCase {

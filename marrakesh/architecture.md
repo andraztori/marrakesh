@@ -11,9 +11,6 @@ The framework enables investigation of:
 - How bidding strategies perform under optimal pacing conditions
 - How marketplace rules and constraints shape supply and demand interactions
 - How value is distributed between sellers, buyers, and the marketplace itself
-- How different campaign objectives (impression targets vs. budget constraints) interact
-- How optimal bidding strategies compare to simple multiplicative pacing
-- How strategic bidding (cheating) affects marketplace outcomes
 
 ---
 
@@ -25,33 +22,26 @@ The framework enables investigation of:
 
 **Why This Matters**:
 - Pacing optimization can be considered a separate problem from marketplace optimization
-- The interesting research questions lie in pricing, bidding strategies, and marketplace design
-- By removing pacing as a variable, we can cleanly observe other dynamics
-- Real-world systems typically have pacing solutions; the question is what happens after pacing is solved
+- By removing pacing as a variable, we can cleanly observe other market dynamics
 
 The convergence mechanism in Marrakesh is **not** a pacing algorithm to be studied—it's a **simulation setup tool** that ensures campaigns operate at their optimal pacing point, allowing researchers to focus on other aspects of marketplace behavior.
 
 ### Deterministic Randomness
 
-The simulation uses seeded random number generation to ensure reproducibility. This allows:
-- Exact replication of experiments
-- Controlled comparison between different configurations
-- Debugging and validation of results
-- Scientific rigor in experimentation
+The simulation uses seeded random number generation to ensure reproducibility. 
 
 **Global Random Seed**:
 - A global `RAND_SEED` (`AtomicU64`) enables reproducible multiple simulation runs
-- Each seeding site XORs the global seed with local seeds for reproducibility
 - The seed can be set per iteration to enable multiple runs of the same scenario with different random sequences
-- This allows statistical analysis across multiple runs while maintaining reproducibility
+- This allows analysis across multiple runs while maintaining reproducibility
 
 ---
 
 ## Marketplace Model
 
-### Three-Party System
+### Two-Party System
 
-Marrakesh models a marketplace with three distinct parties, each with different objectives and constraints:
+Marrakesh models a marketplace with two distinct parties, each with different objectives and constraints:
 
 1. **Sellers** (Supply Side)
    - Offer impressions with different pricing models
@@ -67,11 +57,7 @@ Marrakesh models a marketplace with three distinct parties, each with different 
    - Operate under optimal pacing (assumed)
    - Use different bidding strategies (multiplicative pacing, optimal bidding, strategic cheating)
 
-3. **Marketplace** (Platform)
-   - Facilitates transactions
-   - Tracks multiple cost metrics (supply cost, virtual cost, buyer charge)
-   - May have rules (floors, competing demand thresholds)
-   - Observes overall market efficiency
+The marketplace itself is the framework that facilitates transactions between sellers and campaigns. It tracks metrics (supply cost, virtual cost, buyer charge), enforces rules (floors, competing demand thresholds), and observes overall market efficiency, but it is not an active participant with its own objectives or constraints.
 
 ### Cost Accounting Model
 
@@ -311,6 +297,44 @@ Competition data models external competing demand. The system uses trait-based c
   - Generates sigmoid parameters for win probability modeling
   - Uses rejection sampling to ensure realistic parameters (win probability at zero bid < 5%)
   - Uses `base_impression_value` as sigmoid offset for realistic modeling
+
+#### Building Realistic Competitive Markets
+
+The `CompetitionGeneratorParametrizedLogNormal` implementation uses several key considerations to generate competition that resembles real-world auction dynamics:
+
+**1. Base Value as 50% Win Rate Point**:
+- The `impression_base_value` parameter is used as the value at which 50% win rate occurs
+- This value becomes the **offset** (center point) of the logistic curve representing the actual win probability
+- The **scale** parameter is then randomized from a lognormal distribution to create variation in the steepness of the win rate curve
+- This approach ensures that higher-value impressions naturally have higher competition thresholds
+
+**2. Rejection Sampling for Realistic Low-Bid Behavior**:
+- Simple random sampling of sigmoid parameters can lead to unrealistic scenarios where win probability at minimal CPM (e.g., $0.0001) is too high
+- To address this, the system uses **rejection sampling**: it repeatedly samples offset and scale parameters until the resulting sigmoid has a win probability at zero bid ≤ 2%
+- This ensures that very low bids have near-zero win probability, which matches real-world auction behavior where minimal bids rarely win
+
+**3. Sampling Competing Bids**:
+- Once acceptable sigmoid parameters are found, the system samples an actual competing bid from the logistic distribution defined by these parameters
+- This sampled bid (`bid_cpm`) represents the external competing demand that must be exceeded to win the auction
+- The bid is clipped to be non-negative to ensure realistic auction constraints
+
+**4. Perturbation for Imperfect Modeling**:
+- In real systems, win rate prediction models are imperfect and have estimation errors
+- To simulate this, the system applies **multiplicative lognormal noise** to the actual sigmoid parameters
+- This creates `win_rate_prediction_sigmoid_offset` and `win_rate_prediction_sigmoid_scale` that differ from the actual parameters
+- The noise distributions are centered around 1.0 with small standard deviations (0.05), creating realistic prediction errors
+- This allows testing of bidding strategies under conditions where predicted win rates don't perfectly match actual win rates
+
+**5. Debugging Information**:
+- The system retains both the actual parameters (`win_rate_actual_sigmoid_offset`, `win_rate_actual_sigmoid_scale`) and the perturbed prediction parameters
+- While the actual parameters could theoretically be discarded after sampling the competing bid, they are kept for debugging and analysis purposes
+- This enables researchers to:
+  - Compare predicted vs. actual win rates
+  - Understand the impact of prediction errors on bidding strategies
+  - Validate that the competition generation process produces realistic distributions
+  - Debug issues with optimal bidding algorithms that depend on win rate predictions
+
+This multi-step process ensures that the generated competition data reflects realistic auction dynamics while providing the flexibility to study the impact of prediction errors and modeling imperfections on bidding strategies.
 
 ---
 

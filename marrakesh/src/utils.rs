@@ -6,8 +6,8 @@ use std::sync::atomic::{AtomicU64, AtomicBool, Ordering};
 /// This seed is XORed into all local seeds to ensure reproducible simulations
 pub static RAND_SEED: AtomicU64 = AtomicU64::new(0);
 
-/// Global flag for verbose logging of impression/auction data
-pub static VERBOSE_IMPRESSIONS: AtomicBool = AtomicBool::new(false);
+/// Global flag for verbose logging of auction data
+pub static VERBOSE_AUCTION: AtomicBool = AtomicBool::new(false);
 
 /// Get a seed value by XORing the global RAND_SEED with a local seed
 pub fn get_seed(local_seed: u64) -> u64 {

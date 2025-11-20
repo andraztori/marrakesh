@@ -15,7 +15,7 @@ use crate::campaigns::{CampaignType, ConvergeTarget, Campaigns};
 use crate::converge::SimulationConverge;
 use crate::impressions::{Impressions, ImpressionsParam};
 use crate::competition::CompetitionGeneratorParametrizedLogNormal;
-use crate::floors::{FloorGeneratorFixed, FloorGeneratorLogNormal};
+use crate::floors;
 use crate::utils;
 use crate::logger::{Logger, LogEvent};
 use crate::logln;
@@ -47,8 +47,8 @@ fn prepare_simulationconverge(hb_impressions: usize, campaign_type: CampaignType
         SellerConvergeStrategy::NONE { default_value: 1.0 },  // seller_converge
         hb_impressions,  // impressions_on_offer
         CompetitionGeneratorParametrizedLogNormal::new(10.0),  // competition_generator
-        //FloorGeneratorFixed::new(0.0),
-        FloorGeneratorLogNormal::new(1.0, 3.0),
+        //floors::FloorGeneratorFixed::new(0.0),
+        floors::FloorGeneratorLogNormal::new(1.0, 3.0),
     );
 
     // Create impressions for all sellers using default parameters

@@ -8,7 +8,7 @@ use crate::logger::LogEvent;
 use crate::errln;
 use crate::logln;
 use crate::utils::get_seed;
-use crate::utils::VERBOSE_IMPRESSIONS;
+use crate::utils::VERBOSE_AUCTION;
 use std::sync::atomic::Ordering;
 
 /// Represents the winner of an auction
@@ -89,7 +89,7 @@ impl Impression {
         // Get bids from all campaigns
         let mut winning_bid_cpm = 0.0;
         let mut winning_campaign_id: Option<usize> = None;
-        let mut all_bids = if VERBOSE_IMPRESSIONS.load(Ordering::Relaxed) {
+        let mut all_bids = if VERBOSE_AUCTION.load(Ordering::Relaxed) {
             Some(Vec::new())
         } else {
             None
@@ -158,7 +158,7 @@ impl Impression {
         };
 
         // Log auction data in CSV format
-        if VERBOSE_IMPRESSIONS.load(Ordering::Relaxed) {
+        if VERBOSE_AUCTION.load(Ordering::Relaxed) {
             let all_bids = all_bids.as_ref().unwrap();
             
             // Build CSV row

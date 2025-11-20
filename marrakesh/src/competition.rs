@@ -1,5 +1,4 @@
 use rand::rngs::StdRng;
-use rand::Rng;
 use rand_distr::Distribution;
 use crate::utils::lognormal_dist;
 
@@ -72,12 +71,36 @@ impl CompetitionGeneratorParametrizedLogNormal {
             // With current parameters, we end up with 0.3% of impressions at zero bid
             actual_offset_dist: lognormal_dist(value_base, 3.0),
             actual_scale_dist: lognormal_dist(1.5, 1.0),
-            noise_offset_dist: lognormal_dist(1.0, 0.3),
-            noise_scale_dist: lognormal_dist(1.0, 0.3),
+            noise_offset_dist: lognormal_dist(1.0, 0.05),
+            noise_scale_dist: lognormal_dist(1.0, 0.05),
         })
     }
 }
 
+/// Implementation considerations for building a realistic competitive environment:
+///
+/// 1. **Base value as 50% win rate point**: We take `impression_base_value` as the value at which
+///    50% win rate will happen. This means we use that `impression_base_value` as the offset
+///    (center point) of the logistic curve, and then randomize the scale parameter to represent
+///    the real win rate curve.
+///
+/// 2. **Rejection sampling for realistic low-bid behavior**: Having too high win rate at minimal
+///    CPM (like $0.0001) does not sound realistic. Therefore, we use rejection sampling to ensure
+///    the win rate at zero bid is near zero (specifically, we reject samples where
+///    `sigmoid.get_probability(0.0) > 0.02`).
+///
+/// 3. **Sampling competing bids**: We sample an actual bid from the logistic distribution defined
+///    by the accepted offset and scale parameters. This sampled bid represents a competing bid
+///    in the auction.
+///
+/// 4. **Perturbation for imperfect modeling**: We prepare a perturbation of the actual parameters
+///    (by multiplying with lognormal noise) to simulate imperfect modeling of the win rate
+///    prediction curve. This creates `win_rate_prediction_sigmoid_offset` and
+///    `win_rate_prediction_sigmoid_scale` that differ from the actual parameters.
+///
+/// 5. **Debugging information**: We could in theory throw away the actual offset and scale of
+///    the sigmoid from which we sample, but we keep them (`win_rate_actual_sigmoid_offset` and
+///    `win_rate_actual_sigmoid_scale`) for debugging purposes.
 impl CompetitionGeneratorTrait for CompetitionGeneratorParametrizedLogNormal {
     /// Generate competition information for an impression.
     /// 
@@ -91,8 +114,6 @@ impl CompetitionGeneratorTrait for CompetitionGeneratorParametrizedLogNormal {
     /// # Returns
     /// A new `ImpressionCompetition` instance with generated parameters
     fn generate_competition(&self, base_impression_value: f64, rng: &mut StdRng) -> Option<ImpressionCompetition> {
-        // Generate random 0 or 1
-       // let random_bit: i32 = rng.gen_range(0..2);
         
         // Rejection sampling for win_rate_actual_sigmoid_offset and win_rate_actual_sigmoid_scale
         // Reject if sigmoid.get_probability(0.0) > 0.01
@@ -101,7 +122,7 @@ impl CompetitionGeneratorTrait for CompetitionGeneratorParametrizedLogNormal {
             // centered around value_base, with some stddev.
             //let offset = Distribution::sample(&self.actual_offset_dist, rng);
             let offset = base_impression_value;
-            let scale = Distribution::sample(&self.actual_scale_dist, rng).min(4.0);
+            let scale = Distribution::sample(&self.actual_scale_dist, rng);
             
             // Create a temporary sigmoid to evaluate the rejection criterion
             let temp_sigmoid = crate::sigmoid::Sigmoid::new(offset, scale, 1.0);
@@ -112,14 +133,7 @@ impl CompetitionGeneratorTrait for CompetitionGeneratorParametrizedLogNormal {
                 break (offset, scale);
             }
             // Otherwise, reject and resample
-        };/*
-        if random_bit == 0 {
-            win_rate_actual_sigmoid_offset= 10.0;
-            win_rate_actual_sigmoid_scale = 5.0;
-        } else {
-            win_rate_actual_sigmoid_offset= 15.0;
-            win_rate_actual_sigmoid_scale = 5.0;
-        }*/
+        };
         
         // Sample competing bid by sampling from logistic distribution using actual parameters
         let mut bid_cpm = crate::utils::sample_logistic_bid(
@@ -132,13 +146,11 @@ impl CompetitionGeneratorTrait for CompetitionGeneratorParametrizedLogNormal {
         bid_cpm = bid_cpm.max(0.0); 
 
         // Add multiplicative lognormal noise to get win_rate_prediction_sigmoid_offset
-        //let noise_offset = Distribution::sample(&self.noise_offset_dist, rng);
-        let noise_offset = 1.0;
+        let noise_offset = Distribution::sample(&self.noise_offset_dist, rng);
         let win_rate_prediction_sigmoid_offset = win_rate_actual_sigmoid_offset * noise_offset;
         
         // Add multiplicative lognormal noise to get win_rate_prediction_sigmoid_scale
-        //let noise_scale = Distribution::sample(&self.noise_scale_dist, rng);
-        let noise_scale = 1.0;
+        let noise_scale = Distribution::sample(&self.noise_scale_dist, rng);
         let win_rate_prediction_sigmoid_scale = win_rate_actual_sigmoid_scale * noise_scale;
         Some(ImpressionCompetition {
             bid_cpm,

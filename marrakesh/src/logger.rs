@@ -6,8 +6,6 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 /// Log event types that determine which receivers should log the message
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LogEvent {
-    /// Impression data (base values, competition parameters)
-    Impression,
     /// Auction data (full impression data, all bids, auction results)
     Auction,
     /// Simulation iteration data (detailed per-iteration info)
@@ -144,15 +142,18 @@ impl Logger {
     }
     
     /// Helper method to write a message with newline to the specified event and all upward events
-    /// Hierarchy: Simulation -> Convergence -> Variant -> Scenario -> Validation
+    /// Hierarchy: Auction -> Simulation -> Convergence -> Variant -> Scenario -> Validation
     /// Each receiver receives the message only once, even if it listens to multiple events
     fn log_with_prefix(&mut self, event: LogEvent, prefix: &str, message: &str) -> io::Result<()> {
         let events = match event {
-            LogEvent::Impression => vec![
-                LogEvent::Impression,
-            ],
+            
             LogEvent::Auction => vec![
                 LogEvent::Auction,
+                LogEvent::Simulation,
+                LogEvent::Convergence,
+                LogEvent::Variant,
+                LogEvent::Scenario,
+                LogEvent::Validation,
             ],
             LogEvent::Simulation => vec![
                 LogEvent::Simulation,
@@ -194,7 +195,7 @@ impl Logger {
     }
     
     /// Write a message with newline to the specified event and all upward events
-    /// Hierarchy: Simulation -> Convergence -> Variant -> Scenario -> Validation
+    /// Hierarchy: Auction -> Simulation -> Convergence -> Variant -> Scenario -> Validation
     /// Automatically prepends "ERROR" to the message
     /// Each receiver receives the message only once, even if it listens to multiple events
     pub fn errln(&mut self, event: LogEvent, message: &str) -> io::Result<()> {
@@ -202,7 +203,7 @@ impl Logger {
     }
     
     /// Write a message with newline to the specified event and all upward events
-    /// Hierarchy: Simulation -> Convergence -> Variant -> Scenario -> Validation
+    /// Hierarchy: Auction -> Simulation -> Convergence -> Variant -> Scenario -> Validation
     /// Automatically prepends "WARNING" to the message
     /// Each receiver receives the message only once, even if it listens to multiple events
     pub fn warnln(&mut self, event: LogEvent, message: &str) -> io::Result<()> {
@@ -256,7 +257,7 @@ macro_rules! log {
 }
 
 /// Macro to log a formatted string with newline to the specified event and all upward events
-/// Hierarchy: Simulation -> Convergence -> Variant -> Scenario -> Validation
+/// Hierarchy: Auction -> Simulation -> Convergence -> Variant -> Scenario -> Validation
 #[macro_export]
 macro_rules! errln {
     ($logger:expr, $event:expr, $($arg:tt)*) => {
@@ -267,7 +268,7 @@ macro_rules! errln {
 }
 
 /// Macro to log a formatted string with newline to the specified event and all upward events
-/// Hierarchy: Simulation -> Convergence -> Variant -> Scenario -> Validation
+/// Hierarchy: Auction -> Simulation -> Convergence -> Variant -> Scenario -> Validation
 /// Automatically prepends "WARNING" to the message
 #[macro_export]
 macro_rules! warnln {

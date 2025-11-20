@@ -151,8 +151,6 @@ impl Sigmoid {
         let max_iterations = 100;
         let tolerance = 1e-6;
         
-        // Store the original min_x (will not be modified)
-        let original_min_x = min_x;
         
         // Initial search bounds (use separate variable for bisection that can be modified)
         let mut max_x = 1000.0;
@@ -167,8 +165,7 @@ impl Sigmoid {
         // Evaluate at bounds
         let f_min = self.m(min_x) - y_target;
         let f_max = self.m(max_x) - y_target;
-        let r = 1.0 / y_target * self.value;
-
+    
         // If both are negative, the maximum is at min_bid
         if f_min < 0.0 && f_max < 0.0 {
             return Some(min_x);
@@ -225,7 +222,7 @@ impl Sigmoid {
         }
         
         // Return the midpoint of the final interval, ensuring it's not below original_min_x
-        Some(((min_x + max_x) / 2.0))
+        Some((min_x + max_x) / 2.0)
     }
 
     /// Find the bid that maximizes margin = P(win) * (full_price - bid)
