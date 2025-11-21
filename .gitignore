@@ -7,3 +7,5 @@ __pycache__
 **/target/
 **/*.rs.bk
 *.pdb
+charts
+log
