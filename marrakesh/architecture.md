@@ -203,7 +203,7 @@ Campaigns can use one of three bidding strategies:
    - More sophisticated, theoretically optimal approach
    - Currently works with budget constraints only
 
-3. **Cheater/Last Look** (`CHEATER`, `CampaignCheaterLastLook`):
+3. **Cheater/Last Look** (`CHEATER`, uses `CampaignGeneral` with `BidderCheaterLastLook`):
    - Bids `value × pacing × seller_boost_factor`
    - If bid exceeds competition, reduces to `competition.bid_cpm + 0.00001`
    - Models strategic bidding that exploits knowledge of competition
@@ -688,7 +688,7 @@ The framework is designed to be extended without modifying core logic:
 - Implement `CampaignTrait` with new bid calculation methods
 - Add campaign-specific bidding logic
 - Experiment with strategic bidding
-- Examples: `CampaignMultiplicativePacing`, `CampaignOptimalBidding`, `CampaignCheaterLastLook`
+- Examples: `CampaignGeneral` (used for all campaign types with different bidders), `CampaignCheaterLastLook` (deprecated, now uses `CampaignGeneral`)
 
 ### New Pricing Models
 - Add new seller types beyond fixed cost and first-price
