@@ -10,7 +10,7 @@ Marrakesh is a research tool designed to study marketplace phenomena under the a
 
 - **Two-party marketplace model**: Sellers (supply) and Campaigns (demand) with distinct objectives
 - **Multiple pricing models**: Fixed-price and first-price auction sellers
-- **Various bidding strategies**: Multiplicative pacing, optimal bidding, max margin, and strategic bidding
+- **Various bidding strategies**: Multiplicative pacing, optimal bidding, max margin, cheater/last look, and ALB (Auction Level Bid)
 - **Convergence framework**: Automatic calibration to optimal pacing and boost factors
 - **Deterministic simulations**: Seeded random number generation for reproducibility
 - **Comprehensive logging**: Structured logging with multiple receivers and event types
@@ -24,9 +24,9 @@ See [BUILD.md](BUILD.md) for detailed build instructions.
 
 ### Optimal Pacing Assumption
 
-Marrakesh assumes campaigns have access to perfect pacing algorithms. This is not a limitation but a deliberate design choice that allows researchers to Focus on marketplace dynamics rather than pacing optimization
+Marrakesh assumes campaigns have access to perfect pacing algorithms. This is not a limitation but a deliberate design choice that allows researchers to focus on marketplace dynamics rather than pacing optimization.
 
-The simulation is run multiple times and the convergence mechanism is used to come for one single pacing constant for each participant (buy or sell side). The convergence mechanism in Marrakesh is a **simulation setup tool**, not a pacing algorithm to be studied.
+The simulation is run multiple times and the convergence mechanism is used to converge to one single pacing constant for each participant (buy or sell side). The convergence mechanism in Marrakesh is a **simulation setup tool**, not a pacing algorithm to be studied.
 
 ### Marketplace Model
 
@@ -43,10 +43,11 @@ The simulation is run multiple times and the convergence mechanism is used to co
 
 ### Bidding Strategies
 
-1. **Multiplicative Pacing**: Simple bid calculation `bid = pacing × value × boost`
-2. **Optimal Bidding**: Uses sigmoid functions to model win probability and find optimal bids
-3. **Max Margin**: Maximizes expected margin `P(win) × (value - bid)`
-4. **Cheater/Last Look**: Strategic bidding that exploits competition knowledge
+1. **Multiplicative Pacing**: Simple bid calculation `bid = pacing × value × seller_boost_factor`
+2. **Optimal Bidding**: Uses sigmoid functions to model win probability and finds optimal bids based on marginal utility of spend
+3. **Max Margin**: Maximizes expected margin `P(win) × (full_price - bid)` where `full_price = pacing × value × seller_boost_factor`
+4. **Cheater/Last Look**: Strategic bidding that exploits competition knowledge by bidding just above the competition
+5. **ALB (Auction Level Bid)**: Bids at the predicted offset point if the pacing bid exceeds it, otherwise doesn't bid
 
 ### Convergence
 
@@ -101,29 +102,9 @@ Simulation logs are organized in the `log/` directory:
 With optimal pacing assumed, researchers can study:
 
 - **Pricing Mechanisms**: Fixed-price vs. auction-based sellers
-- **Bidding Strategies**: Comparison of different bidding approaches
+- **Bidding Strategies**: Comparison of different bidding approaches (multiplicative, optimal, max margin, cheater, ALB)
 - **Marketplace Design**: Impact of floors, competition thresholds, and rules
 - **Supply and Demand Dynamics**: How supply composition affects outcomes
 - **Value Distribution**: How value is distributed between parties
-
-## Project Structure
-
-```
-marrakesh/
-├── src/                    # Source code
-│   ├── main.rs            # Entry point and CLI
-│   ├── campaigns.rs       # Campaign types and bidding strategies
-│   ├── sellers.rs         # Seller types and pricing models
-│   ├── impressions.rs     # Impression generation and auctions
-│   ├── converge.rs         # Convergence framework
-│   ├── controllers.rs      # Controller implementations
-│   ├── scenarios.rs       # Scenario framework
-│   ├── logger.rs          # Structured logging
-│   ├── charts.rs          # Visualization
-│   └── s_*.rs             # Scenario implementations
-├── toys/                  # Experimental scripts and tools
-├── Cargo.toml            # Project configuration
-└── architecture.md       # Architecture documentation
-```
-
-
+- **Convergence Strategies**: Fixed vs. dynamic boost factors for sellers
+- **Strategy Equivalence**: Comparison of optimal bidding and max margin (seem to be equivalent)

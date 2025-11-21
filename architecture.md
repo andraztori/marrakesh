@@ -64,10 +64,10 @@ The marketplace itself is the framework that facilitates transactions between se
 The system tracks three distinct cost metrics to model realistic marketplace economics:
 
 - **Supply Cost**: What sellers actually receive
-- **Virtual Cost**: What the marketplace tracks internally
-- **Buyer Charge**: What campaigns actually pay
+- **Virtual Cost**: What the marketplace tracks internally (currently `winning_bid_cpm / 1000.0`)
+- **Buyer Charge**: What campaigns actually pay (currently `winning_bid_cpm / 1000.0`)
 
-In the current implementation, virtual cost and buyer charge are identical, but the separation allows for future modeling of marketplace fees, margins, discounts, or other platform mechanisms.
+In the current implementation, virtual cost and buyer charge are identical (both equal the winning bid converted from CPM to actual cost), but the separation allows for future modeling of marketplace fees, margins, discounts, or other platform mechanisms.
 
 ---
 
@@ -122,20 +122,31 @@ Sellers that use first-price auctions generate competition data; fixed-cost sell
 
 ## Seller Pricing Models
 
-### Two Seller Types
+### Seller Architecture
 
-Sellers operate under one of two pricing models:
+All sellers use the `SellerGeneral` structure, which combines several independent components:
+- **Convergence Target** (`ConvergeTargetAny<T>`): Defines what to converge to (total cost or none)
+- **Convergence Controller** (`ConvergeController`): Defines how to converge (proportional, constant)
+- **Competition Generator** (`CompetitionGeneratorTrait`): Generates competition data for impressions
+- **Floor Generator** (`FloorGeneratorTrait`): Generates floor prices for impressions
+- **Charger** (`SellerCharger`): Defines the pricing model (first-price or fixed-price)
 
-1. **First Price Auction** (`FIRST_PRICE`):
-   - Charges the winning bid amount
+This design allows flexible combination of any convergence strategy, competition model, floor model, and pricing model.
+
+### Two Seller Pricing Models
+
+Sellers operate under one of two pricing models (implemented as `SellerCharger` trait objects):
+
+1. **First Price Auction** (`FIRST_PRICE`, `SellerChargerFirstPrice`):
+   - Charges the winning bid amount: `supply_cost = buyer_win_cpm`
    - Generates competition data (`ImpressionCompetition`) for each impression
-   - No boost factor (boost is always 1.0)
+   - Boost factor can be used but typically remains at 1.0
    - Models auction-based pricing
 
-2. **Fixed Price** (`FIXED_PRICE`):
-   - Charges a fixed CPM regardless of winning bid
+2. **Fixed Price** (`FIXED_PRICE`, `SellerChargerFixedPrice`):
+   - Charges a fixed CPM regardless of winning bid: `supply_cost = fixed_cost_cpm`
    - Can use boost factors to influence bid values
-   - Does not generate competition data
+   - Does not generate competition data (uses `CompetitionGeneratorNone`)
    - Simple, predictable pricing model
 
 ### Seller Convergence Strategies
@@ -185,35 +196,54 @@ These models represent the fundamental trade-offs in advertising:
 - **Reach vs. Efficiency**: Fixed impressions prioritizes reach; fixed budget prioritizes efficiency
 - **Different optimization objectives**: Impression targets optimize for volume; budget targets optimize for cost control
 
+### Campaign Architecture
+
+All campaigns use the `CampaignGeneral` structure, which combines three independent components:
+- **Convergence Target** (`ConvergeTargetAny<T>`): Defines what to converge to (impressions, budget, or none)
+- **Convergence Controller** (`ConvergeController`): Defines how to converge (proportional, constant)
+- **Bidder** (`CampaignBidder`): Defines the bidding strategy
+
+This design allows flexible combination of any convergence target, controller, and bidding strategy.
+
 ### Campaign Types and Bidding Strategies
 
-Campaigns can use one of three bidding strategies:
+Campaigns can use one of five bidding strategies (implemented as `CampaignBidder` trait objects):
 
-1. **Multiplicative Pacing** (`MULTIPLICATIVE_PACING`, `CampaignMultiplicativePacing`):
+1. **Multiplicative Pacing** (`MULTIPLICATIVE_PACING`, `CampaignBidderMultiplicative`):
    - Simple bid calculation: `bid = pacing × value × seller_boost_factor`
    - Pacing multiplier is adjusted to meet campaign targets
    - Works with both impression and budget constraints
    - Straightforward and easy to understand
+   - Returns `None` if bid is below floor
 
-2. **Optimal Bidding** (`OPTIMAL`, `CampaignOptimalBidding`):
+2. **Optimal Bidding** (`OPTIMAL`, `CampaignBidderOptimal`):
    - Uses sigmoid functions to model win probability
    - Calculates marginal utility of spend from pacing: `marginal_utility = 1.0 / pacing`
-   - Uses Newton-Raphson method to find optimal bid via `marginal_utility_of_spend_inverse`
+   - Uses bisection method (`marginal_utility_of_spend_inverse_numerical_2`) to find optimal bid
    - Requires competition data (sigmoid parameters) to function
    - More sophisticated, theoretically optimal approach
-   - Currently works with budget constraints only
+   - Works with any convergence target (impressions or budget), but requires competition data
 
-3. **Cheater/Last Look** (`CHEATER`, uses `CampaignGeneral` with `BidderCheaterLastLook`):
-   - Bids `value × pacing × seller_boost_factor`
-   - If bid exceeds competition, reduces to `competition.bid_cpm + 0.00001`
+3. **Cheater/Last Look** (`CHEATER`, `CampaignBidderCheaterLastLook`):
+   - Calculates maximum affordable bid: `max_affordable_bid = pacing × value × seller_boost_factor`
+   - Calculates minimum winning bid as `max(floor_cpm, competition.bid_cpm) + 0.00001`
+   - Bids the minimum winning bid if affordable, otherwise doesn't bid
    - Models strategic bidding that exploits knowledge of competition
    - Simulates second-price auction behavior by bidding just above competition
 
-4. **Max Margin** (`MAX_MARGIN`, `CampaignMaxMargin`):
-   - Finds the bid that maximizes expected margin: `P(win) × (value - bid)`
+4. **Max Margin** (`MAX_MARGIN`, `BidderMaxMargin`):
+   - Finds the bid that maximizes expected margin: `P(win) × (full_price - bid)`
+   - Where `full_price = pacing × value × seller_boost_factor`
    - Uses bisection method to find the bid where the derivative of margin is zero
    - Requires competition data (sigmoid parameters)
    - Balances win probability against cost to maximize net value
+
+5. **ALB (Auction Level Bid)** (`ALB`, `CampaignBidderALB`):
+   - Uses multiplicative pacing to calculate initial bid
+   - Only bids if the pacing bid is above the predicted offset point
+   - If bidding, bids at the predicted offset point (or floor if floor is higher)
+   - Requires competition data (for predicted offset)
+   - Research observation: ALB improves vs. multiplicative bidding when there is abundance of impressions, but is worse when there is scarcity and high fill rates
 
 ### Convergence Mechanism
 
@@ -221,7 +251,9 @@ The system uses an **iterative feedback loop** to find optimal pacing and boost 
 - Run auctions with current pacing and boost factors
 - Measure actual performance vs. targets
 - Adjust pacing/boost proportionally to error using proportional controllers
-- Repeat until convergence (no changes in an iteration)
+- Check if any pacing or boost factors changed
+- Repeat until convergence (no changes in any pacing or boost factor in an iteration)
+- If maximum iterations reached without convergence, log a warning
 
 **Campaign Convergence**:
 - Campaigns converge their pacing multipliers to meet impression or budget targets
@@ -253,21 +285,26 @@ The system uses a **strategy pattern** for convergence with trait-based dynamic 
 
 **Controller Implementations**:
 - `ConvergeControllerConstant`: Constant controller that maintains a fixed value
+  - Used for campaigns/sellers with `ConvergeNone` target
+  - Initializes controller state with the specified default value
 - `ConvergeControllerProportional`: Proportional controller that adjusts based on error between target and actual
   - Uses `ControllerProportional` internally for the control algorithm
+  - Default parameters: tolerance_fraction=0.005 (0.5%), max_adjustment_factor=0.2 (20%), proportional_gain=0.1 (10%)
+  - Initializes controller state with pacing/boost = 1.0
 
 **Campaign Convergence Targets**:
 - `ConvergeTargetTotalImpressions`: Target is total impressions obtained
-- `ConvergeTargetTotalBudget`: Target is total budget spent
-- `ConvergeTargetNone`: No target (constant pacing)
+- `ConvergeTargetTotalBudget`: Target is total budget spent (uses `total_buyer_charge`)
+- `ConvergeNone`: No target (constant pacing, with configurable default value)
 
 **Seller Convergence Targets**:
-- `ConvergeTargetNone`: No target (constant boost factor)
-- `ConvergeTargetTotalCost`: Target is total cost (supply cost)
+- `ConvergeNone`: No target (constant boost factor, with configurable default value)
+- `ConvergeTargetTotalCost`: Target is total cost (uses `total_virtual_cost` from seller statistics)
 
 **State Containers**:
-- `CampaignControllerStates`: Container for campaign controller states
-- `SellerControllerStates`: Container for seller controller states
+- `CampaignControllerStates`: Container for campaign controller states (vector of `Box<dyn ControllerState>`)
+- `SellerControllerStates`: Container for seller controller states (vector of `Box<dyn ControllerState>`)
+- Both use the unified `ControllerStateSingleVariable` type internally
 
 **Design Benefits**:
 - Clear separation: Convergence targets define what to converge to, controllers define how to converge
@@ -320,7 +357,7 @@ The `CompetitionGeneratorLogNormal` implementation uses several key consideratio
 
 **2. Rejection Sampling for Realistic Low-Bid Behavior**:
 - Simple random sampling of sigmoid parameters can lead to unrealistic scenarios where win probability at minimal CPM (e.g., $0.0001) is too high
-- To address this, the system uses **rejection sampling**: it repeatedly samples offset and scale parameters until the resulting sigmoid has a win probability at zero bid ≤ 2%
+- To address this, the system uses **rejection sampling**: it repeatedly samples offset and scale parameters until the resulting sigmoid has a win probability at zero bid ≤ 2% (0.02)
 - This ensures that very low bids have near-zero win probability, which matches real-world auction behavior where minimal bids rarely win
 
 **3. Sampling Competing Bids**:
@@ -332,7 +369,9 @@ The `CompetitionGeneratorLogNormal` implementation uses several key consideratio
 - In real systems, win rate prediction models are imperfect and have estimation errors
 - To simulate this, the system applies **multiplicative lognormal noise** to the actual sigmoid parameters
 - This creates `win_rate_prediction_sigmoid_offset` and `win_rate_prediction_sigmoid_scale` that differ from the actual parameters
-- The noise distributions are centered around 1.0 with small standard deviations (0.05), creating realistic prediction errors
+- The noise distributions are:
+  - Offset noise: lognormal(mean=1.0, stddev=0.1)
+  - Scale noise: lognormal(mean=1.0, stddev=0.05)
 - This allows testing of bidding strategies under conditions where predicted win rates don't perfectly match actual win rates
 
 **5. Debugging Information**:
@@ -361,17 +400,21 @@ The system uses sigmoid functions to model win probability in auctions:
 
 **Key functions**:
 - `get_probability(bid)`: Returns win probability for a given bid
-- Formula: `1.0 / (1 + exp(-(bid - offset) * scale))`
+  - Formula: `1.0 / (1 + exp(-(bid - offset) * scale))`
 - `m(bid)`: Marginal utility of spend at a given bid
+  - Formula: `(value * scale * (1 - s(bid))) / (scale * bid * (1 - s(bid)) + 1)`
+  - Where `s(bid) = get_probability(bid)`
 - `m_prime(bid)`: Derivative of marginal utility (rate of change)
-- `marginal_utility_of_spend_inverse(y_target)`: Finds the bid that achieves a target marginal utility
-  - Uses Newton-Raphson method with damping and backtracking for stability
-  - Falls back to `marginal_utility_of_spend_inverse_numerical_2` if Newton-Raphson fails
+  - Formula: `-value * scale² * (1 - s(bid)) / (scale * bid * (1 - s(bid)) + 1)²`
 - `marginal_utility_of_spend_inverse_numerical_2(y_target, min_x)`: Numerical inverse using bisection
-  - Uses bisection method between `min_x` and `100.0` to find the root of `m(x) = y_target`
+  - Uses bisection method to find the root of `m(x) = y_target`
+  - Searches between `min_x` and an expanding upper bound (starts at 1000.0)
+  - Handles edge cases (both bounds negative, both positive, etc.)
   - Ensures the result respects the minimum bid constraint (`min_x`, typically the floor price)
-  - More robust than Newton-Raphson for edge cases
   - Returns `None` if no solution found in the search range
+- `max_margin_bid_bisection(full_price, min_x)`: Finds bid that maximizes expected margin
+  - Solves for bid where derivative of margin is zero: `scale * (1 - P(bid)) * (full_price - bid) - 1 = 0`
+  - Uses bisection method between `min_x` and `full_price`
 
 ### Optimal Bidding Algorithm
 
@@ -380,10 +423,11 @@ Optimal bidding uses the following process:
 1. Calculate marginal utility of spend from pacing: `marginal_utility = 1.0 / pacing`
 2. Calculate impression value: `value = seller_boost_factor × impression.value`
 3. Initialize sigmoid with competition parameters and value
-4. Find optimal bid: `bid = sigmoid.marginal_utility_of_spend_inverse_numerical_2(marginal_utility, floor_cpm)`
+4. Find optimal bid: `bid = sigmoid.marginal_utility_of_spend_inverse_numerical_2(marginal_utility, floor_cpm.max(0.0))`
    - Uses bisection method with `floor_cpm` as the minimum bid constraint
+   - Handles edge cases (both bounds negative, both positive, etc.)
    - Ensures bids respect floor prices
-5. Return bid (or `None` if calculation fails)
+5. Return bid (or `None` if calculation fails or bid is below floor)
 
 This approach ensures campaigns bid optimally given their budget constraints and competition, while respecting minimum bid requirements.
 
@@ -419,6 +463,8 @@ With optimal pacing assumed, researchers can focus on:
 - How do campaign objectives (impressions vs. budget) affect bidding?
 - How does optimal bidding compare to multiplicative pacing?
 - What is the impact of strategic bidding (cheating) on marketplace outcomes?
+- How does ALB (Auction Level Bid) perform compared to other strategies?
+- How do max margin and optimal bidding compare (they appear to be equivalent)?
 
 **Marketplace Design**:
 - How do floors and competing demand thresholds affect outcomes?
@@ -448,10 +494,10 @@ The framework explicitly does **not** study:
 2. **Define Demand**: Create campaigns with objectives (impressions or budget) and bidding strategies
 3. **Generate Supply**: Create impressions with valuations, floors, and competition data
 4. **Initialize Convergence**: 
-   - Campaign pacing starts at 1.0 (true value)
-   - Seller boost factors start at 1.0 (no boost) or specified default
+   - Campaign pacing starts at 1.0 for proportional controllers, or at specified default for constant controllers
+   - Seller boost factors start at 1.0 for proportional controllers, or at specified default for constant controllers
    - `SimulationConverge` encapsulates marketplace and initial controller states
-   - `CampaignControllerStates` and `SellerControllerStates` are created to track controller state
+   - `CampaignControllerStates` and `SellerControllerStates` are created via `create_controller_state()` for each campaign/seller
 
 ### Convergence Phase
 
@@ -503,11 +549,11 @@ The system includes a scenario framework for structured experimentation:
 - When running multiple iterations, each scenario completes all its iterations before moving to the next scenario
 
 **Example Scenarios**:
-- `s_one.rs`: Basic marketplace dynamics with multiple campaigns and sellers
-- `s_mrg_boost.rs`: Effect of seller boost factors on marketplace outcomes
-- `s_mrg_dynamic_boost.rs`: Comparison of fixed vs. dynamic boost strategies
-- `s_optimal.rs`: Comparison of multiplicative pacing, optimal bidding, cheater, and max margin strategies
-- `s_maxmargin_equality.rs`: Comparison of Optimal Bidding and Max Margin strategies (formerly `s_experiment.rs`). This scenario proves the equality of Max Margin and Optimal Bidding strategies.
+- `HBabundance` (from `s_one.rs`): Basic marketplace dynamics with multiple campaigns and sellers, comparing scarce vs. abundant supply scenarios
+- `MRGboost` (from `s_mrg_boost.rs`): Effect of seller boost factors on marketplace outcomes
+- `MRGdynamicboost` (from `s_mrg_dynamic_boost.rs`): Comparison of fixed vs. dynamic boost strategies
+- `various` (from `s_various.rs`): Comparison of all bidding strategies (multiplicative pacing, optimal bidding, cheater, max margin, ALB)
+- `maxmargin_equality` (from `s_maxmargin_equality.rs`): Comparison of Optimal Bidding and Max Margin strategies. This scenario demonstrates that Max Margin and Optimal Bidding appear to be equivalent when configured correctly.
 
 ---
 
@@ -587,28 +633,7 @@ This allows fine-grained control over what gets logged where, enabling detailed 
 
 ## Visualization and Analysis
 
-### Chart Generation
-
-The system includes comprehensive chart generation capabilities:
-
-**Histogram Generation** (`charts.rs`):
-- Generates histograms for impression parameters (base value, floors, competing bids)
-- Generates histograms for competition parameters (sigmoid offsets/scales)
-- Creates side-by-side comparisons (prediction vs. actual)
-- Saves charts to `charts/` directory
-- High-resolution output (1600x1200 or 2400x1200)
-
-**Sigmoid Visualization**:
-- Visualizes sigmoid functions: `get_probability()`, `m()`, `m_prime()`
-- Visualizes inverse marginal utility: `marginal_utility_of_spend_inverse()`
-- Marks critical points (offset, error regions)
-- Helps debug optimal bidding calculations
-
-**Chart Features**:
-- Scaled titles and legends
-- Mean lines (vertical, black)
-- Consistent color schemes
-- Professional presentation
+There are some development-time tools an visualizations in charts.rs. They can be mostly ignored.
 
 ---
 
@@ -618,18 +643,24 @@ The system includes comprehensive chart generation capabilities:
 
 The system separates:
 - **Impression and auction logic** (`impressions.rs`): Core auction mechanics, impression generation, winner determination
-- **Campaign logic** (`campaigns.rs`): Campaign types, bidding strategies, campaign convergence targets
-- **Seller logic** (`sellers.rs`): Seller types, pricing models, seller convergence targets
+- **Campaign logic** (`campaigns.rs`): Campaign trait, `CampaignGeneral` structure, campaign container
+- **Campaign bidding strategies** (`campaign_bidders.rs`): Bidding strategy implementations (multiplicative, optimal, max margin, cheater, ALB)
+- **Campaign convergence targets** (`campaign_targets.rs`): Campaign convergence target implementations
+- **Seller logic** (`sellers.rs`): Seller trait, `SellerGeneral` structure, seller container
+- **Seller charging strategies** (`seller_chargers.rs`): Pricing model implementations (first-price, fixed-price)
+- **Seller convergence targets** (`seller_targets.rs`): Seller convergence target implementations
 - **Simulation execution** (`simulationrun.rs`): Running auctions, calculating statistics, marketplace structure
 - **Convergence logic** (`converge.rs`): Finding optimal pacing and boost factors, convergence targets, controller state management
-- **Controller logic** (`controllers.rs`): Controller implementations (proportional, constant), controller state types
+- **Controller logic** (`controllers.rs`): Controller implementations (proportional, constant), unified controller state types
 - **Competition generation** (`competition.rs`): Generating competition data for impressions
 - **Floor generation** (`floors.rs`): Generating floor prices for impressions
 - **Sigmoid functions** (`sigmoid.rs`): Win probability and marginal utility calculations
 - **Visualization** (`charts.rs`): Chart and histogram generation
 - **Scenarios** (`s_*.rs`): Experimental setups and validations
+- **Scenario framework** (`scenarios.rs`): Scenario registration and catalog system
 - **Initialization** (`main.rs`): Setting up experiments and scenario execution
 - **Logging** (`logger.rs`): Structured logging with multiple receivers
+- **Utilities** (`utils.rs`): Random number generation, distributions, helper functions
 
 This allows each component to be understood, tested, and modified independently.
 
@@ -648,14 +679,16 @@ This design choice prioritizes simplicity and performance over flexibility.
 The system uses Rust traits for extensibility:
 - `CampaignTrait`: Defines campaign interface (bidding, convergence, statistics)
 - `SellerTrait`: Defines seller interface (pricing, impression generation, convergence)
+- `CampaignBidder`: Trait for bidding strategies (used by `CampaignGeneral`)
+- `SellerCharger`: Trait for pricing models (used by `SellerGeneral`)
 - `ConvergeTargetAny<T>`: Generic convergence target trait parameterized by statistic type
 - `ConvergeController`: Trait for controlling convergence behavior
-- `ControllerState`: Trait for controller state representation
+- `ControllerState`: Trait for controller state representation (unified for campaigns and sellers)
 - `CompetitionGeneratorTrait`: Extensible competition generation
 - `FloorGeneratorTrait`: Extensible floor generation
 - Dynamic dispatch via trait objects enables different implementations while maintaining uniform interfaces
 
-This allows new campaign and seller types to be added without modifying core simulation logic.
+This allows new bidding strategies, pricing models, convergence targets, and controllers to be added without modifying core simulation logic.
 
 ### Strategy Pattern for Convergence
 
@@ -685,16 +718,15 @@ This enables reproducible research and controlled experimentation.
 The framework is designed to be extended without modifying core logic:
 
 ### New Bidding Strategies
-- Implement `CampaignTrait` with new bid calculation methods
-- Add campaign-specific bidding logic
-- Experiment with strategic bidding
-- Examples: `CampaignGeneral` (used for all campaign types with different bidders), `CampaignCheaterLastLook` (deprecated, now uses `CampaignGeneral`)
+- Implement `CampaignBidder` trait with new bid calculation methods
+- Add the new bidder to `CampaignType` enum and `Campaigns::add()` method
+- Examples: All campaigns use `CampaignGeneral` with different `CampaignBidder` implementations
 
 ### New Pricing Models
-- Add new seller types beyond fixed cost and first-price
-- Implement second-price auctions
-- Add marketplace fees or discounts
-- Extend boost factor strategies
+- Implement `SellerCharger` trait with new pricing logic
+- Add the new charger to `SellerType` enum and `Sellers::add()` method
+- Examples: All sellers use `SellerGeneral` with different `SellerCharger` implementations
+- Future possibilities: second-price auctions, marketplace fees or discounts
 
 ### New Convergence Strategies
 - Implement `ConvergeTargetAny<T>` for new convergence targets
