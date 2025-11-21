@@ -39,7 +39,7 @@ fn prepare_simulationconverge(hb_impressions: usize, campaign_type: CampaignType
     campaigns.add(
         "Campaign 0".to_string(),  // campaign_name
         campaign_type,  // campaign_type - either multiplicative pacing, ALB, or max margin
-        ConvergeTarget::TOTAL_BUDGET { target_total_budget: 10.0 },  // converge_target
+        ConvergeTarget::TOTAL_BUDGET { target_total_budget: 30.0 },  // converge_target
     );
 
     // Add seller (ID is automatically set to match Vec index)
@@ -74,7 +74,7 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
     logln!(logger, LogEvent::Scenario, "=== Scenario: ALB Comparison with Low Impressions (5000) ===");
     
     // Scenario 1: Low impressions (5000) - ALB should work worse than multiplicative
-    let num_impressions_low = 5000;
+    let num_impressions_low = 4000;
     
     // Run with max margin bidding
     let simulation_converge_maxmargin_low = prepare_simulationconverge(
@@ -85,7 +85,7 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
         "Running with max margin bidding (low impressions)", 
         scenario_name, 
         "max-margin-low", 
-        100, 
+        200, 
         logger
     );
     
@@ -94,11 +94,12 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
         num_impressions_low,
         CampaignType::ALB,
     );
+    // TODO figure out better controller to not need 2500 here
     let stats_alb_low = simulation_converge_alb_low.run_variant(
         "Running with ALB bidding (low impressions)", 
         scenario_name, 
         "alb-low", 
-        100, 
+        2500, 
         logger
     );
     
@@ -111,7 +112,7 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
         "Running with multiplicative pacing (low impressions)", 
         scenario_name, 
         "multiplicative-low", 
-        100, 
+        2500, 
         logger
     );
     

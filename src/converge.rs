@@ -266,31 +266,6 @@ impl SimulationConverge {
         
         self.marketplace.printout(logger);
         
-        // Log impression data
-        /*
-        for impression in &self.marketplace.impressions.impressions {
-            if let Some(comp) = &impression.competition {
-                logln!(logger, LogEvent::Impression,
-                    "base_value={:.4}, campaign_0_value={:.4}, floor={:.4}, comp_bid={:.4}, pred_offset={:.4}, pred_scale={:.4}, actual_offset={:.4}, actual_scale={:.4}",
-                    impression.base_impression_value,
-                    impression.value_to_campaign_id[0],
-                    impression.floor_cpm,
-                    comp.bid_cpm,
-                    comp.win_rate_prediction_sigmoid_offset,
-                    comp.win_rate_prediction_sigmoid_scale,
-                    comp.win_rate_actual_sigmoid_offset,
-                    comp.win_rate_actual_sigmoid_scale
-                );
-            } else {
-                logln!(logger, LogEvent::Impression,
-                    "base_value={:.4}, campaign_0_value={:.4}, floor={:.4}, no_competition",
-                    impression.base_impression_value,
-                    impression.value_to_campaign_id[0],
-                    impression.floor_cpm
-                );
-            }
-        }
-        */
         // Run simulation loop with pacing adjustments
         let (_final_simulation_run, stats, final_campaign_controller_states, final_seller_controller_states) = self.run(max_iterations, scenario_name, variant_name, logger);
         

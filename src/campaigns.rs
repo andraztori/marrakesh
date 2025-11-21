@@ -125,12 +125,16 @@ pub use crate::campaign_bidders::{CampaignBidderMultiplicative, CampaignBidderOp
 /// Uses trait objects to support different campaign types
 pub struct Campaigns {
     pub campaigns: Vec<Box<dyn CampaignTrait>>,
+    pub value_groups: Vec<Vec<usize>>,
+    pub campaign_to_value_group_mapping: Vec<usize>,
 }
 
 impl Campaigns {
     pub fn new() -> Self {
         Self {
             campaigns: Vec::new(),
+            value_groups: Vec::new(),
+            campaign_to_value_group_mapping: Vec::new(),
         }
     }
 
@@ -140,7 +144,10 @@ impl Campaigns {
     /// * `campaign_name` - Name of the campaign
     /// * `campaign_type` - Type of campaign (bidding strategy)
     /// * `converge_target` - Target for convergence
-    pub fn add(&mut self, campaign_name: String, campaign_type: CampaignType, converge_target: ConvergeTarget) {
+    /// 
+    /// # Returns
+    /// The campaign_id of the just added campaign
+    pub fn add(&mut self, campaign_name: String, campaign_type: CampaignType, converge_target: ConvergeTarget) -> usize {
         if self.campaigns.len() >= MAX_CAMPAIGNS {
             panic!(
                 "Cannot add campaign: maximum number of campaigns ({}) exceeded. Current count: {}",
@@ -227,6 +234,73 @@ impl Campaigns {
                     converge_controller,
                     bidder,
                 }));
+            }
+        }
+        
+        campaign_id
+    }
+    
+    /// Create a value group by appending a vector of campaign IDs
+    /// 
+    /// # Arguments
+    /// * `campaign_ids` - Vector of campaign IDs to add as a group
+    /// 
+    /// # Panics
+    /// Panics if any campaign_id is invalid (not between 0 and num_campaigns) or
+    /// if any campaign is already in another group
+    pub fn create_value_group(&mut self, campaign_ids: Vec<usize>) {
+        let num_campaigns = self.campaigns.len();
+        
+        // Check that all campaign IDs are valid
+        for &campaign_id in &campaign_ids {
+            if campaign_id >= num_campaigns {
+                panic!(
+                    "Invalid campaign_id {}: must be between 0 and {} (num_campaigns)",
+                    campaign_id, num_campaigns
+                );
+            }
+        }
+        
+        // Check that no campaign is already in any group
+        for &campaign_id in &campaign_ids {
+            for group in &self.value_groups {
+                if group.contains(&campaign_id) {
+                    panic!(
+                        "Campaign {} is already in a value group. Cannot add it to another group.",
+                        campaign_id
+                    );
+                }
+            }
+        }
+        
+        self.value_groups.push(campaign_ids);
+    }
+    
+    /// Finalize group mappings for all campaigns
+    /// 
+    /// For each campaign:
+    /// - If it is in any group, write that group index to campaign_to_value_group_mapping
+    /// - If it is not in any group, assign a new group mapping starting with indexes of all groups + 1
+    pub fn finalize_groups(&mut self) {
+        let num_groups = self.value_groups.len();
+        let num_campaigns = self.campaigns.len();
+        
+        // Initialize mapping with a sentinel value to track unassigned campaigns
+        self.campaign_to_value_group_mapping = vec![usize::MAX; num_campaigns];
+        
+        // First pass: assign campaigns that are in groups
+        for (group_index, group) in self.value_groups.iter().enumerate() {
+            for &campaign_id in group {
+                self.campaign_to_value_group_mapping[campaign_id] = group_index;
+            }
+        }
+        
+        // Second pass: assign new group indices to campaigns not in any group
+        let mut next_new_group_index = num_groups;
+        for campaign_id in 0..num_campaigns {
+            if self.campaign_to_value_group_mapping[campaign_id] == usize::MAX {
+                self.campaign_to_value_group_mapping[campaign_id] = next_new_group_index;
+                next_new_group_index += 1;
             }
         }
     }
@@ -382,12 +456,18 @@ mod tests {
         // Test that ConvergeNone works correctly
         // Test create_controller_state returns the default pacing
         let converge_vars = campaign.create_controller_state();
-        let pacing = campaign.converge_controller.get_control_variable(converge_vars.as_ref());
-        assert_eq!(pacing, 0.75);
+        // Use ControllerStateSingleVariable to extract the pacing value
+        if let Some(state) = converge_vars.as_any().downcast_ref::<crate::controllers::ControllerStateSingleVariable>() {
+            assert_eq!(state.converging_variable, 0.75);
+        } else {
+            panic!("Expected ControllerStateSingleVariable");
+        }
 
         // Test that next_controller_state always returns false (no convergence)
         let campaign_stat = crate::simulationrun::CampaignStat {
             impressions_obtained: 100,
+            total_supply_cost: 0.0,
+            total_virtual_cost: 0.0,
             total_buyer_charge: 50.0,
             total_value: 200.0,
         };
@@ -396,8 +476,11 @@ mod tests {
         assert_eq!(converged, false);
 
         // Test that pacing remains unchanged after next_controller_state
-        let pacing_after = campaign.converge_controller.get_control_variable(next_state.as_ref());
-        assert_eq!(pacing_after, 0.75);
+        if let Some(state) = next_state.as_any().downcast_ref::<crate::controllers::ControllerStateSingleVariable>() {
+            assert_eq!(state.converging_variable, 0.75);
+        } else {
+            panic!("Expected ControllerStateSingleVariable");
+        }
 
         // Test that bidding works correctly with fixed pacing
         let mut value_to_campaign_id = [0.0; MAX_CAMPAIGNS];
@@ -421,6 +504,207 @@ mod tests {
         let mut logger = crate::logger::Logger::new();
         let bid = campaign.get_bid(&impression, converge_vars.as_ref(), 1.0, &mut logger);
         assert_eq!(bid, Some(22.5));
+    }
+
+    #[test]
+    fn test_create_value_group_success() {
+        let mut campaigns = Campaigns::new();
+        
+        // Add some campaigns
+        campaigns.add("Campaign 0".to_string(), CampaignType::MULTIPLICATIVE_PACING, ConvergeTarget::NONE { default_pacing: 1.0 });
+        campaigns.add("Campaign 1".to_string(), CampaignType::MULTIPLICATIVE_PACING, ConvergeTarget::NONE { default_pacing: 1.0 });
+        campaigns.add("Campaign 2".to_string(), CampaignType::MULTIPLICATIVE_PACING, ConvergeTarget::NONE { default_pacing: 1.0 });
+        
+        // Create a value group with campaigns 0 and 1
+        campaigns.create_value_group(vec![0, 1]);
+        
+        assert_eq!(campaigns.value_groups.len(), 1);
+        assert_eq!(campaigns.value_groups[0], vec![0, 1]);
+    }
+
+    #[test]
+    #[should_panic(expected = "Invalid campaign_id")]
+    fn test_create_value_group_invalid_campaign_id() {
+        let mut campaigns = Campaigns::new();
+        
+        // Add only one campaign (ID 0)
+        campaigns.add("Campaign 0".to_string(), CampaignType::MULTIPLICATIVE_PACING, ConvergeTarget::NONE { default_pacing: 1.0 });
+        
+        // Try to create a group with invalid campaign_id (1 doesn't exist)
+        campaigns.create_value_group(vec![0, 1]);
+    }
+
+    #[test]
+    #[should_panic(expected = "already in a value group")]
+    fn test_create_value_group_duplicate_campaign() {
+        let mut campaigns = Campaigns::new();
+        
+        // Add campaigns
+        campaigns.add("Campaign 0".to_string(), CampaignType::MULTIPLICATIVE_PACING, ConvergeTarget::NONE { default_pacing: 1.0 });
+        campaigns.add("Campaign 1".to_string(), CampaignType::MULTIPLICATIVE_PACING, ConvergeTarget::NONE { default_pacing: 1.0 });
+        campaigns.add("Campaign 2".to_string(), CampaignType::MULTIPLICATIVE_PACING, ConvergeTarget::NONE { default_pacing: 1.0 });
+        
+        // Create first group with campaign 0
+        campaigns.create_value_group(vec![0]);
+        
+        // Try to create another group with campaign 0 (should panic)
+        campaigns.create_value_group(vec![0, 1]);
+    }
+
+    #[test]
+    fn test_create_value_group_multiple_groups() {
+        let mut campaigns = Campaigns::new();
+        
+        // Add 5 campaigns
+        for i in 0..5 {
+            campaigns.add(
+                format!("Campaign {}", i),
+                CampaignType::MULTIPLICATIVE_PACING,
+                ConvergeTarget::NONE { default_pacing: 1.0 }
+            );
+        }
+        
+        // Create multiple groups
+        campaigns.create_value_group(vec![0, 1]);
+        campaigns.create_value_group(vec![2, 3]);
+        
+        assert_eq!(campaigns.value_groups.len(), 2);
+        assert_eq!(campaigns.value_groups[0], vec![0, 1]);
+        assert_eq!(campaigns.value_groups[1], vec![2, 3]);
+    }
+
+    #[test]
+    fn test_finalize_groups_with_grouped_campaigns() {
+        let mut campaigns = Campaigns::new();
+        
+        // Add 4 campaigns
+        for i in 0..4 {
+            campaigns.add(
+                format!("Campaign {}", i),
+                CampaignType::MULTIPLICATIVE_PACING,
+                ConvergeTarget::NONE { default_pacing: 1.0 }
+            );
+        }
+        
+        // Create groups: [0, 1] and [2]
+        campaigns.create_value_group(vec![0, 1]);
+        campaigns.create_value_group(vec![2]);
+        
+        // Finalize groups
+        campaigns.finalize_groups();
+        
+        // Check mappings:
+        // Campaign 0 -> group 0
+        // Campaign 1 -> group 0
+        // Campaign 2 -> group 1
+        // Campaign 3 -> group 2 (new group, since num_groups = 2, starts at 2)
+        assert_eq!(campaigns.campaign_to_value_group_mapping.len(), 4);
+        assert_eq!(campaigns.campaign_to_value_group_mapping[0], 0);
+        assert_eq!(campaigns.campaign_to_value_group_mapping[1], 0);
+        assert_eq!(campaigns.campaign_to_value_group_mapping[2], 1);
+        assert_eq!(campaigns.campaign_to_value_group_mapping[3], 2);
+    }
+
+    #[test]
+    fn test_finalize_groups_with_no_groups() {
+        let mut campaigns = Campaigns::new();
+        
+        // Add 3 campaigns but don't create any groups
+        for i in 0..3 {
+            campaigns.add(
+                format!("Campaign {}", i),
+                CampaignType::MULTIPLICATIVE_PACING,
+                ConvergeTarget::NONE { default_pacing: 1.0 }
+            );
+        }
+        
+        // Finalize groups (no groups exist, so all should get new indices starting from 0)
+        campaigns.finalize_groups();
+        
+        // Check mappings: all campaigns should get new group indices starting from 0
+        assert_eq!(campaigns.campaign_to_value_group_mapping.len(), 3);
+        assert_eq!(campaigns.campaign_to_value_group_mapping[0], 0);
+        assert_eq!(campaigns.campaign_to_value_group_mapping[1], 1);
+        assert_eq!(campaigns.campaign_to_value_group_mapping[2], 2);
+    }
+
+    #[test]
+    fn test_finalize_groups_mixed() {
+        let mut campaigns = Campaigns::new();
+        
+        // Add 6 campaigns
+        for i in 0..6 {
+            campaigns.add(
+                format!("Campaign {}", i),
+                CampaignType::MULTIPLICATIVE_PACING,
+                ConvergeTarget::NONE { default_pacing: 1.0 }
+            );
+        }
+        
+        // Create groups: [0, 1] and [2, 3]
+        campaigns.create_value_group(vec![0, 1]);
+        campaigns.create_value_group(vec![2, 3]);
+        // Campaigns 4 and 5 are not in any group
+        
+        // Finalize groups
+        campaigns.finalize_groups();
+        
+        // Check mappings:
+        // Campaign 0 -> group 0
+        // Campaign 1 -> group 0
+        // Campaign 2 -> group 1
+        // Campaign 3 -> group 1
+        // Campaign 4 -> group 2 (new group, since num_groups = 2, starts at 2)
+        // Campaign 5 -> group 3 (new group)
+        assert_eq!(campaigns.campaign_to_value_group_mapping.len(), 6);
+        assert_eq!(campaigns.campaign_to_value_group_mapping[0], 0);
+        assert_eq!(campaigns.campaign_to_value_group_mapping[1], 0);
+        assert_eq!(campaigns.campaign_to_value_group_mapping[2], 1);
+        assert_eq!(campaigns.campaign_to_value_group_mapping[3], 1);
+        assert_eq!(campaigns.campaign_to_value_group_mapping[4], 2);
+        assert_eq!(campaigns.campaign_to_value_group_mapping[5], 3);
+    }
+
+    #[test]
+    fn test_finalize_groups_empty_campaigns() {
+        let mut campaigns = Campaigns::new();
+        
+        // Don't add any campaigns
+        
+        // Finalize groups
+        campaigns.finalize_groups();
+        
+        // Mapping should be empty
+        assert_eq!(campaigns.campaign_to_value_group_mapping.len(), 0);
+    }
+
+    #[test]
+    fn test_finalize_groups_single_campaign_in_group() {
+        let mut campaigns = Campaigns::new();
+        
+        // Add 3 campaigns
+        for i in 0..3 {
+            campaigns.add(
+                format!("Campaign {}", i),
+                CampaignType::MULTIPLICATIVE_PACING,
+                ConvergeTarget::NONE { default_pacing: 1.0 }
+            );
+        }
+        
+        // Create a group with just campaign 1
+        campaigns.create_value_group(vec![1]);
+        
+        // Finalize groups
+        campaigns.finalize_groups();
+        
+        // Check mappings:
+        // Campaign 0 -> group 1 (new group, since num_groups = 1, starts at 1)
+        // Campaign 1 -> group 0
+        // Campaign 2 -> group 2 (new group)
+        assert_eq!(campaigns.campaign_to_value_group_mapping.len(), 3);
+        assert_eq!(campaigns.campaign_to_value_group_mapping[0], 1);
+        assert_eq!(campaigns.campaign_to_value_group_mapping[1], 0);
+        assert_eq!(campaigns.campaign_to_value_group_mapping[2], 2);
     }
 }
 
