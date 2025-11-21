@@ -103,11 +103,6 @@ To see available scenarios, run an invalid scenario name:
 cargo run -- invalid_scenario
 ```
 
-Common scenarios include:
-- `s_one`: Basic marketplace dynamics
-- `s_mrg_boost`: Effect of seller boost factors
-- `s_mrg_dynamic_boost`: Fixed vs. dynamic boost strategies
-- `s_maxmargin_equality`: Optimal Bidding vs. Max Margin comparison
 
 ### Performance
 
