@@ -85,23 +85,28 @@ fn main() {
     
     // Check if "test" argument is provided
     if args.len() > 1 && args[1] == "test" {
-        use campaigns::{CampaignOptimalBidding, CampaignMaxMargin, ConvergeNone, CampaignTrait, MAX_CAMPAIGNS};
+        use campaigns::{CampaignGeneral, ConvergeNone, CampaignTrait, MAX_CAMPAIGNS};
         use impressions::Impression;
         use competition::ImpressionCompetition;
         
         // Setup shared resources
-        let campaign_optimal = CampaignOptimalBidding {
+        use campaigns::{CampaignBidderOptimal, BidderMaxMargin};
+        let bidder_optimal = Box::new(CampaignBidderOptimal) as Box<dyn campaigns::CampaignBidder>;
+        let campaign_optimal = CampaignGeneral {
             campaign_id: 0,
             campaign_name: "Optimal".to_string(),
             converge_target: Box::new(ConvergeNone),
             converge_controller: Box::new(crate::controllers::ConvergeControllerConstant::new(0.8298)),
+            bidder: bidder_optimal,
         };
         
-        let campaign_max_margin = CampaignMaxMargin {
+        let bidder_max_margin = Box::new(BidderMaxMargin) as Box<dyn campaigns::CampaignBidder>;
+        let campaign_max_margin = CampaignGeneral {
             campaign_id: 0,
             campaign_name: "MaxMargin".to_string(),
             converge_target: Box::new(ConvergeNone),
             converge_controller: Box::new(crate::controllers::ConvergeControllerConstant::new(0.8298)),
+            bidder: bidder_max_margin,
         };
         
         let converge_vars = campaign_optimal.create_controller_state();

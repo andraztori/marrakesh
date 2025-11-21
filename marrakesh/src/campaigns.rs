@@ -1,13 +1,23 @@
 use crate::impressions::Impression;
 pub use crate::converge::ConvergeTargetAny;
 use crate::sigmoid::Sigmoid;
-use crate::logger::{Logger, LogEvent};
+use crate::logger::LogEvent;
 use crate::warnln;
 pub use crate::controllers::ConvergeController;
 
 
 /// Maximum number of campaigns supported (determines size of value_to_campaign_id array)
 pub const MAX_CAMPAIGNS: usize = 10;
+
+/// Trait for campaign bidding strategies
+pub trait CampaignBidder: Send + Sync {
+    /// Calculate the bid for this campaign given an impression, controller state, converge controller, and seller boost factor
+    /// Returns None if bid cannot be calculated (logs warning via logger)
+    fn get_bid(&self, campaign_id: usize, impression: &Impression, controller_state: &dyn crate::controllers::ControllerState, converge_controller: &dyn crate::controllers::ConvergeController, seller_boost_factor: f64, logger: &mut crate::logger::Logger) -> Option<f64>;
+    
+    /// Get a string representation of the bidding type
+    fn get_bidding_type(&self) -> String;
+}
 
 /// Campaign type determining the bidding strategy
 #[allow(non_camel_case_types)]
@@ -119,15 +129,31 @@ pub trait CampaignTrait {
 
 }
 
-/// Campaign with multiplicative pacing
-pub struct CampaignMultiplicativePacing {
+/// Bidder for multiplicative pacing strategy
+pub struct BidderMultiplicativePacing;
+
+impl CampaignBidder for BidderMultiplicativePacing {
+    fn get_bid(&self, campaign_id: usize, impression: &Impression, controller_state: &dyn crate::controllers::ControllerState, converge_controller: &dyn crate::controllers::ConvergeController, seller_boost_factor: f64, _logger: &mut crate::logger::Logger) -> Option<f64> {
+        let pacing = converge_controller.get_control_variable(controller_state);
+        Some(pacing * impression.value_to_campaign_id[campaign_id] * seller_boost_factor)
+    }
+    
+    fn get_bidding_type(&self) -> String {
+        "Multiplicative pacing".to_string()
+    }
+}
+
+
+/// General campaign structure that can use any bidding strategy
+pub struct CampaignGeneral {
     pub campaign_id: usize,
     pub campaign_name: String,
     pub converge_target: Box<dyn ConvergeTargetAny<crate::simulationrun::CampaignStat>>,
     pub converge_controller: Box<dyn crate::controllers::ConvergeController>,
+    pub bidder: Box<dyn CampaignBidder>,
 }
 
-impl CampaignTrait for CampaignMultiplicativePacing {
+impl CampaignTrait for CampaignGeneral {
     fn campaign_id(&self) -> usize {
         self.campaign_id
     }
@@ -136,9 +162,8 @@ impl CampaignTrait for CampaignMultiplicativePacing {
         &self.campaign_name
     }
     
-    fn get_bid(&self, impression: &Impression, controller_state: &dyn crate::controllers::ControllerState, seller_boost_factor: f64, _logger: &mut crate::logger::Logger) -> Option<f64> {
-        let pacing = self.converge_controller.get_control_variable(controller_state);
-        Some(pacing * impression.value_to_campaign_id[self.campaign_id] * seller_boost_factor)
+    fn get_bid(&self, impression: &Impression, controller_state: &dyn crate::controllers::ControllerState, seller_boost_factor: f64, logger: &mut crate::logger::Logger) -> Option<f64> {
+        self.bidder.get_bid(self.campaign_id, impression, controller_state, self.converge_controller.as_ref(), seller_boost_factor, logger)
     }
     
     fn next_controller_state(&self, previous_state: &dyn crate::controllers::ControllerState, next_state: &mut dyn crate::controllers::ControllerState, campaign_stat: &crate::simulationrun::CampaignStat) -> bool {
@@ -147,7 +172,7 @@ impl CampaignTrait for CampaignMultiplicativePacing {
     }
     
     fn type_target_and_controller_state_string(&self, controller_state: &dyn crate::controllers::ControllerState) -> String {
-        format!("Multiplicative pacing ({}, {})", self.converge_target.converge_target_string(), self.converge_controller.controller_string(controller_state))
+        format!("{} ({}, {})", self.bidder.get_bidding_type(), self.converge_target.converge_target_string(), self.converge_controller.controller_string(controller_state))
     }
     
     fn create_controller_state(&self) -> Box<dyn crate::controllers::ControllerState> {
@@ -155,33 +180,18 @@ impl CampaignTrait for CampaignMultiplicativePacing {
     }
 }
 
-/// Campaign with fixed budget target using optimal bidding
+/// Bidder for optimal bidding strategy
 /// Optimal bidding means that all bids are made at the same marginal utility of spend
 /// That gives an optimal total expected value for the total expected budget
 /// This is achieved by using a sigmoid function to model the win probability and then using the Newton-Raphson method to find the bid that maximizes the marginal utility of spend
 /// The sigmoid function is initialized with the competition parameters and the value of the impression
 /// The Newton-Raphson method is used to find the bid that keeps the marginal utility of spend constant 
 /// The quantity of the marginal utility of spend is what needs to converge (for example based on target impressions or budget)
-/// 
+pub struct CampaignBidderOptimal;
 
-pub struct CampaignOptimalBidding {
-    pub campaign_id: usize,
-    pub campaign_name: String,
-    pub converge_target: Box<dyn ConvergeTargetAny<crate::simulationrun::CampaignStat>>,
-    pub converge_controller: Box<dyn crate::controllers::ConvergeController>,
-}
-
-impl CampaignTrait for CampaignOptimalBidding {
-    fn campaign_id(&self) -> usize {
-        self.campaign_id
-    }
-    
-    fn campaign_name(&self) -> &str {
-        &self.campaign_name
-    }
-    
-    fn get_bid(&self, impression: &Impression, controller_state: &dyn crate::controllers::ControllerState, seller_boost_factor: f64, logger: &mut Logger) -> Option<f64> {
-        let pacing = self.converge_controller.get_control_variable(controller_state);
+impl CampaignBidder for CampaignBidderOptimal {
+    fn get_bid(&self, campaign_id: usize, impression: &Impression, controller_state: &dyn crate::controllers::ControllerState, converge_controller: &dyn crate::controllers::ConvergeController, seller_boost_factor: f64, logger: &mut crate::logger::Logger) -> Option<f64> {
+        let pacing = converge_controller.get_control_variable(controller_state);
         
         // Handle zero or very small pacing to avoid division by zero
         if pacing <= 1e-10 {
@@ -196,7 +206,7 @@ impl CampaignTrait for CampaignOptimalBidding {
         let marginal_utility_of_spend = 1.0 / pacing;
         
         // b) Calculate value as multiplication between seller_boost_factor and impression value to campaign id
-        let value = seller_boost_factor * impression.value_to_campaign_id[self.campaign_id];
+        let value = seller_boost_factor * impression.value_to_campaign_id[campaign_id];
         
         // Get competition data (required for optimal bidding)
         let competition = match &impression.competition {
@@ -229,13 +239,12 @@ impl CampaignTrait for CampaignOptimalBidding {
                     sigmoid.scale,
                     sigmoid.value,
                     marginal_utility_of_spend,
-                    competition.bid_cpm
-                );
+                    competition.bid_cpm);
                 return None;
             }
         };
 //        println!("optimal bid: {:.4}", bid);
-        if bid  < impression.floor_cpm.max(0.0) { 
+        if bid < impression.floor_cpm.max(0.0) { 
             return None;
         }
   //      let bid = impression.floor_cpm.max(bid);
@@ -243,42 +252,21 @@ impl CampaignTrait for CampaignOptimalBidding {
         Some(bid)
     }
     
-    fn next_controller_state(&self, previous_state: &dyn crate::controllers::ControllerState, next_state: &mut dyn crate::controllers::ControllerState, campaign_stat: &crate::simulationrun::CampaignStat) -> bool {
-        let (actual, target) = self.converge_target.get_actual_and_target(campaign_stat);
-        self.converge_controller.next_controller_state(previous_state, next_state, actual, target)
-    }
-    
-    fn type_target_and_controller_state_string(&self, controller_state: &dyn crate::controllers::ControllerState) -> String {
-        format!("Optimal bidding ({}, {})", self.converge_target.converge_target_string(), self.converge_controller.controller_string(controller_state))
-    }
-    
-    fn create_controller_state(&self) -> Box<dyn crate::controllers::ControllerState> {
-        self.converge_controller.create_controller_state()
+    fn get_bidding_type(&self) -> String {
+        "Optimal bidding".to_string()
     }
 }
 
-/// Campaign with max margin bidding - finds bid that maximizes expected margin
-pub struct CampaignMaxMargin {
-    pub campaign_id: usize,
-    pub campaign_name: String,
-    pub converge_target: Box<dyn ConvergeTargetAny<crate::simulationrun::CampaignStat>>,
-    pub converge_controller: Box<dyn crate::controllers::ConvergeController>,
-}
 
-impl CampaignTrait for CampaignMaxMargin {
-    fn campaign_id(&self) -> usize {
-        self.campaign_id
-    }
-    
-    fn campaign_name(&self) -> &str {
-        &self.campaign_name
-    }
-    
-    fn get_bid(&self, impression: &Impression, controller_state: &dyn crate::controllers::ControllerState, seller_boost_factor: f64, logger: &mut Logger) -> Option<f64> {
-        let pacing = self.converge_controller.get_control_variable(controller_state);
+/// Bidder for max margin bidding strategy
+pub struct BidderMaxMargin;
+
+impl CampaignBidder for BidderMaxMargin {
+    fn get_bid(&self, campaign_id: usize, impression: &Impression, controller_state: &dyn crate::controllers::ControllerState, converge_controller: &dyn crate::controllers::ConvergeController, seller_boost_factor: f64, logger: &mut crate::logger::Logger) -> Option<f64> {
+        let pacing = converge_controller.get_control_variable(controller_state);
         
         // Calculate full_price (maximum we're willing to pay)
-        let full_price = pacing * seller_boost_factor * impression.value_to_campaign_id[self.campaign_id];
+        let full_price = pacing * seller_boost_factor * impression.value_to_campaign_id[campaign_id];
        // println!("full_price: {:.4}", full_price);
         // Get competition data (required for max margin bidding)
         let competition = match &impression.competition {
@@ -303,42 +291,21 @@ impl CampaignTrait for CampaignMaxMargin {
         sigmoid.max_margin_bid_bisection(full_price, min_bid)
     }
     
-    fn next_controller_state(&self, previous_state: &dyn crate::controllers::ControllerState, next_state: &mut dyn crate::controllers::ControllerState, campaign_stat: &crate::simulationrun::CampaignStat) -> bool {
-        let (actual, target) = self.converge_target.get_actual_and_target(campaign_stat);
-        self.converge_controller.next_controller_state(previous_state, next_state, actual, target)
-    }
-    
-    fn type_target_and_controller_state_string(&self, controller_state: &dyn crate::controllers::ControllerState) -> String {
-        format!("Max margin bidding ({}, {})", self.converge_target.converge_target_string(), self.converge_controller.controller_string(controller_state))
-    }
-    
-    fn create_controller_state(&self) -> Box<dyn crate::controllers::ControllerState> {
-        self.converge_controller.create_controller_state()
+    fn get_bidding_type(&self) -> String {
+        "Max margin bidding".to_string()
     }
 }
 
-/// Campaign with fixed budget target using cheater bidding
-pub struct CampaignCheaterLastLook {
-    pub campaign_id: usize,
-    pub campaign_name: String,
-    pub converge_target: Box<dyn ConvergeTargetAny<crate::simulationrun::CampaignStat>>,
-    pub converge_controller: Box<dyn crate::controllers::ConvergeController>,
-}
 
-impl CampaignTrait for CampaignCheaterLastLook {
-    fn campaign_id(&self) -> usize {
-        self.campaign_id
-    }
-    
-    fn campaign_name(&self) -> &str {
-        &self.campaign_name
-    }
-    
-    fn get_bid(&self, impression: &Impression, controller_state: &dyn crate::controllers::ControllerState, seller_boost_factor: f64, _logger: &mut Logger) -> Option<f64> {
-        let pacing = self.converge_controller.get_control_variable(controller_state);
+/// Bidder for cheater/last look bidding strategy
+pub struct BidderCheaterLastLook;
+
+impl CampaignBidder for BidderCheaterLastLook {
+    fn get_bid(&self, campaign_id: usize, impression: &Impression, controller_state: &dyn crate::controllers::ControllerState, converge_controller: &dyn crate::controllers::ConvergeController, seller_boost_factor: f64, _logger: &mut crate::logger::Logger) -> Option<f64> {
+        let pacing = converge_controller.get_control_variable(controller_state);
         
         // Calculate value as multiplication between seller_boost_factor and impression value to campaign id
-        let max_affordable_bid = pacing * seller_boost_factor * impression.value_to_campaign_id[self.campaign_id];
+        let max_affordable_bid = pacing * seller_boost_factor * impression.value_to_campaign_id[campaign_id];
         
         // Calculate minimum winning bid as minimum of floor and competing bid, plus 0.00001
         let mut minimum_winning_bid = impression.floor_cpm;
@@ -356,13 +323,40 @@ impl CampaignTrait for CampaignCheaterLastLook {
         Some(minimum_winning_bid)
     }
     
+    fn get_bidding_type(&self) -> String {
+        "Cheater - last look/2nd price".to_string()
+    }
+}
+
+/// Campaign with fixed budget target using cheater bidding
+pub struct CampaignCheaterLastLook {
+    pub campaign_id: usize,
+    pub campaign_name: String,
+    pub converge_target: Box<dyn ConvergeTargetAny<crate::simulationrun::CampaignStat>>,
+    pub converge_controller: Box<dyn crate::controllers::ConvergeController>,
+    pub bidder: Box<dyn CampaignBidder>,
+}
+
+impl CampaignTrait for CampaignCheaterLastLook {
+    fn campaign_id(&self) -> usize {
+        self.campaign_id
+    }
+    
+    fn campaign_name(&self) -> &str {
+        &self.campaign_name
+    }
+    
+    fn get_bid(&self, impression: &Impression, controller_state: &dyn crate::controllers::ControllerState, seller_boost_factor: f64, logger: &mut crate::logger::Logger) -> Option<f64> {
+        self.bidder.get_bid(self.campaign_id, impression, controller_state, self.converge_controller.as_ref(), seller_boost_factor, logger)
+    }
+    
     fn next_controller_state(&self, previous_state: &dyn crate::controllers::ControllerState, next_state: &mut dyn crate::controllers::ControllerState, campaign_stat: &crate::simulationrun::CampaignStat) -> bool {
         let (actual, target) = self.converge_target.get_actual_and_target(campaign_stat);
         self.converge_controller.next_controller_state(previous_state, next_state, actual, target)
     }
     
     fn type_target_and_controller_state_string(&self, controller_state: &dyn crate::controllers::ControllerState) -> String {
-        format!("Cheater - last look/2nd price ({}, {})", self.converge_target.converge_target_string(), self.converge_controller.controller_string(controller_state))
+        format!("{} ({}, {})", self.bidder.get_bidding_type(), self.converge_target.converge_target_string(), self.converge_controller.controller_string(controller_state))
     }
     
     fn create_controller_state(&self) -> Box<dyn crate::controllers::ControllerState> {
@@ -428,35 +422,43 @@ impl Campaigns {
         // Create campaign based on campaign_type
         match campaign_type {
             CampaignType::MULTIPLICATIVE_PACING => {
-                self.campaigns.push(Box::new(CampaignMultiplicativePacing {
+                let bidder = Box::new(BidderMultiplicativePacing) as Box<dyn CampaignBidder>;
+                self.campaigns.push(Box::new(CampaignGeneral {
                     campaign_id,
                     campaign_name,
                     converge_target: converge_target_box,
                     converge_controller,
+                    bidder,
                 }));
             }
             CampaignType::OPTIMAL => {
-                self.campaigns.push(Box::new(CampaignOptimalBidding {
+                let bidder = Box::new(CampaignBidderOptimal) as Box<dyn CampaignBidder>;
+                self.campaigns.push(Box::new(CampaignGeneral {
                     campaign_id,
                     campaign_name,
                     converge_target: converge_target_box,
                     converge_controller,
+                    bidder,
                 }));
             }
             CampaignType::CHEATER => {
+                let bidder = Box::new(BidderCheaterLastLook) as Box<dyn CampaignBidder>;
                 self.campaigns.push(Box::new(CampaignCheaterLastLook {
                     campaign_id,
                     campaign_name,
                     converge_target: converge_target_box,
                     converge_controller,
+                    bidder,
                 }));
             }
             CampaignType::MAX_MARGIN => {
-                self.campaigns.push(Box::new(CampaignMaxMargin {
+                let bidder = Box::new(BidderMaxMargin) as Box<dyn CampaignBidder>;
+                self.campaigns.push(Box::new(CampaignGeneral {
                     campaign_id,
                     campaign_name,
                     converge_target: converge_target_box,
                     converge_controller,
+                    bidder,
                 }));
             }
         }
@@ -471,13 +473,15 @@ mod tests {
     #[test]
     fn test_get_bid() {
         // Create a campaign with campaign_id = 2
-        let campaign = CampaignMultiplicativePacing {
+        let bidder = Box::new(BidderMultiplicativePacing) as Box<dyn CampaignBidder>;
+        let campaign = CampaignGeneral {
             campaign_id: 2,
             campaign_name: "Test Campaign".to_string(),
             converge_target: Box::new(ConvergeTargetTotalImpressions {
                 total_impressions_target: 1000,
             }),
             converge_controller: Box::new(crate::controllers::ConvergeControllerConstant::new(1.0)),
+            bidder,
         };
 
         // Create a campaign converge with pacing = 0.5
@@ -512,13 +516,15 @@ mod tests {
     #[test]
     fn test_get_bid_with_different_campaign_id() {
         // Create a campaign with campaign_id = 0
-        let campaign = CampaignMultiplicativePacing {
+        let bidder = Box::new(BidderMultiplicativePacing) as Box<dyn CampaignBidder>;
+        let campaign = CampaignGeneral {
             campaign_id: 0,
             campaign_name: "Test Campaign".to_string(),
             converge_target: Box::new(ConvergeTargetTotalBudget {
                 total_budget_target: 5000.0,
             }),
             converge_controller: Box::new(crate::controllers::ConvergeControllerConstant::new(1.0)),
+            bidder,
         };
 
         // Create a campaign converge with pacing = 1.0
@@ -553,13 +559,15 @@ mod tests {
     #[test]
     fn test_get_bid_with_zero_pacing() {
         // Create a campaign with campaign_id = 1
-        let campaign = CampaignMultiplicativePacing {
+        let bidder = Box::new(BidderMultiplicativePacing) as Box<dyn CampaignBidder>;
+        let campaign = CampaignGeneral {
             campaign_id: 1,
             campaign_name: "Test Campaign".to_string(),
             converge_target: Box::new(ConvergeTargetTotalImpressions {
                 total_impressions_target: 1000,
             }),
             converge_controller: Box::new(crate::controllers::ConvergeControllerConstant::new(1.0)),
+            bidder,
         };
 
         // Create a campaign converge with pacing = 0.0
