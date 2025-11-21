@@ -4,7 +4,6 @@ use rand_distr::Distribution;
 use crate::impressions::Impression;
 use crate::competition::{CompetitionGeneratorLogNormal, CompetitionGeneratorTrait};
 use crate::floors::{FloorGeneratorLogNormal, FloorGeneratorTrait};
-use crate::campaigns::MAX_CAMPAIGNS;
 use crate::utils::lognormal_dist;
 use plotters::prelude::*;
 use std::fs;
@@ -35,18 +34,15 @@ fn generate_all_impressions() -> Vec<Impression> {
         // Generate floor
         let floor_cpm = floor_generator.generate_floor(base_impression_value, &mut rng);
         
-        // Generate value_to_campaign_id array
-        let mut value_to_campaign_id = [0.0; MAX_CAMPAIGNS];
-        for i in 0..MAX_CAMPAIGNS {
-            let multiplier = Distribution::sample(&value_to_campaign_multiplier_dist, &mut rng);
-            value_to_campaign_id[i] = base_impression_value * multiplier;
-        }
+        // Generate value_to_campaign_group (single group for chart generation)
+        let multiplier = Distribution::sample(&value_to_campaign_multiplier_dist, &mut rng);
+        let value_to_campaign_group = vec![base_impression_value * multiplier];
         
         impressions.push(Impression {
             seller_id: 0,
             competition,
             floor_cpm,
-            value_to_campaign_id,
+            value_to_campaign_group,
             base_impression_value,
         });
     }
@@ -114,7 +110,7 @@ fn generate_floor_histogram(impressions: &[Impression]) -> Result<(), Box<dyn st
 /// Generate histogram for base impression values
 fn generate_base_impression_value_histogram(impressions: &[Impression]) -> Result<(), Box<dyn std::error::Error>> {
     let values: Vec<f64> = impressions.iter()
-        .map(|imp| imp.value_to_campaign_id[0])
+        .map(|imp| if !imp.value_to_campaign_group.is_empty() { imp.value_to_campaign_group[0] } else { 0.0 })
         .collect();
     
     create_single_histogram(

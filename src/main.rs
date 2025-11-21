@@ -29,7 +29,6 @@ mod s_alb;
 use sellers::{SellerType, SellerConvergeStrategy, Sellers};
 use campaigns::{CampaignType, ConvergeTarget, Campaigns};
 use converge::SimulationConverge;
-use impressions::Impressions;
 use competition::{CompetitionGeneratorLogNormal, CompetitionGeneratorNone};
 use floors::{FloorGeneratorFixed, FloorGeneratorLogNormal};
 use logger::{Logger, LogEvent, ConsoleReceiver, FileReceiver, sanitize_filename};
@@ -90,7 +89,7 @@ fn main() {
     
     // Check if "test" argument is provided
     if args.len() > 1 && args[1] == "test" {
-        use campaigns::{CampaignGeneral, ConvergeNone, CampaignTrait, MAX_CAMPAIGNS};
+        use campaigns::{CampaignGeneral, ConvergeNone, CampaignTrait};
         use impressions::Impression;
         use competition::ImpressionCompetition;
         
@@ -148,8 +147,7 @@ fn main() {
         for test_case in test_cases {
             println!("\n--- {} ---", test_case.name);
             
-            let mut value_to_campaign_id = [0.0; MAX_CAMPAIGNS];
-            value_to_campaign_id[0] = test_case.value;
+            let value_to_campaign_group = vec![test_case.value];
             
             let impression = Impression {
                 seller_id: 0,
@@ -161,14 +159,14 @@ fn main() {
                     win_rate_prediction_sigmoid_scale: test_case.sigmoid_scale,
                 }),
                 floor_cpm: test_case.floor_cpm,
-                value_to_campaign_id,
+                value_to_campaign_group,
                 base_impression_value: test_case.value,
             };
             
             println!("{}: {:#?}", test_case.name, impression);
             
-            let bid_optimal = campaign_optimal.get_bid(&impression, converge_vars.as_ref(), 1.0, &mut logger);
-            let bid_max_margin = campaign_max_margin.get_bid(&impression, converge_vars.as_ref(), 1.0, &mut logger);
+            let bid_optimal = campaign_optimal.get_bid(&impression, converge_vars.as_ref(), 1.0, test_case.value, &mut logger);
+            let bid_max_margin = campaign_max_margin.get_bid(&impression, converge_vars.as_ref(), 1.0, test_case.value, &mut logger);
             
             println!("Optimal Bid (pacing=0.8298): {:?}", bid_optimal);
             println!("Max Margin Bid (pacing=0.8298): {:?}", bid_max_margin);
@@ -335,19 +333,14 @@ fn main() {
             FloorGeneratorLogNormal::new(0.2, 3.0),  // floor_generator
         );
 
-        // Create impressions for all sellers using default parameters
+        // Create impressions parameters
         let impressions_params = impressions::ImpressionsParam::new(
             utils::lognormal_dist(10.0, 3.0),  // base_impression_value_dist
             utils::lognormal_dist(1.0, 0.2),   // value_to_campaign_multiplier_dist
         );
-        let impressions = Impressions::new(&sellers, &impressions_params);
 
         // Create marketplace containing campaigns, sellers, and impressions
-        let marketplace = simulationrun::Marketplace {
-            campaigns,
-            sellers,
-            impressions,
-        };
+        let marketplace = simulationrun::Marketplace::new(campaigns, sellers, &impressions_params);
         
         let mut logger = Logger::new();
         logger.add_receiver(ConsoleReceiver::new(vec![LogEvent::Simulation, LogEvent::Convergence, LogEvent::Variant]));

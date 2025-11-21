@@ -4,8 +4,6 @@ pub use crate::controllers::ConvergeController;
 pub use crate::campaign_bidders::CampaignBidder;
 
 
-/// Maximum number of campaigns supported (determines size of value_to_campaign_id array)
-pub const MAX_CAMPAIGNS: usize = 10;
 
 /// Campaign type determining the bidding strategy
 #[allow(non_camel_case_types)]
@@ -47,9 +45,9 @@ pub trait CampaignTrait {
     fn campaign_name(&self) -> &str;
     
     /// Calculate the bid for this campaign given an impression, convergence parameter, and seller boost factor
-    /// Bid = converge.pacing() * impression.value_to_campaign_id[campaign_id] * seller_boost_factor
+    /// Bid = converge.pacing() * value_to_campaign * seller_boost_factor
     /// Returns None if bid cannot be calculated (logs warning via logger)
-    fn get_bid(&self, impression: &Impression, controller_state: &dyn crate::controllers::ControllerState, seller_boost_factor: f64, logger: &mut crate::logger::Logger) -> Option<f64>;
+    fn get_bid(&self, impression: &Impression, controller_state: &dyn crate::controllers::ControllerState, seller_boost_factor: f64, value_to_campaign: f64, logger: &mut crate::logger::Logger) -> Option<f64>;
     
 
     
@@ -99,9 +97,10 @@ impl CampaignTrait for CampaignGeneral {
         &self.campaign_name
     }
     
-    fn get_bid(&self, impression: &Impression, controller_state: &dyn crate::controllers::ControllerState, seller_boost_factor: f64, logger: &mut crate::logger::Logger) -> Option<f64> {
+    fn get_bid(&self, impression: &Impression, controller_state: &dyn crate::controllers::ControllerState, seller_boost_factor: f64, value_to_campaign: f64, logger: &mut crate::logger::Logger) -> Option<f64> {
         let pacing = self.converge_controller.get_control_variable(controller_state);
-        self.bidder.get_bid(self.campaign_id, impression, pacing, seller_boost_factor, logger)
+        // Pass the value_to_campaign to the bidder
+        self.bidder.get_bid(value_to_campaign, impression, pacing, seller_boost_factor, logger)
     }
     
     fn next_controller_state(&self, previous_state: &dyn crate::controllers::ControllerState, next_state: &mut dyn crate::controllers::ControllerState, campaign_stat: &crate::simulationrun::CampaignStat) -> bool {
@@ -148,13 +147,7 @@ impl Campaigns {
     /// # Returns
     /// The campaign_id of the just added campaign
     pub fn add(&mut self, campaign_name: String, campaign_type: CampaignType, converge_target: ConvergeTarget) -> usize {
-        if self.campaigns.len() >= MAX_CAMPAIGNS {
-            panic!(
-                "Cannot add campaign: maximum number of campaigns ({}) exceeded. Current count: {}",
-                MAX_CAMPAIGNS,
-                self.campaigns.len()
-            );
-        }
+        // No limit on number of campaigns
         let campaign_id = self.campaigns.len();
         
         // Create converge_target and converge_controller based on converge_target
@@ -282,7 +275,6 @@ impl Campaigns {
     /// - If it is in any group, write that group index to campaign_to_value_group_mapping
     /// - If it is not in any group, assign a new group mapping starting with indexes of all groups + 1
     pub fn finalize_groups(&mut self) {
-        let num_groups = self.value_groups.len();
         let num_campaigns = self.campaigns.len();
         
         // Initialize mapping with a sentinel value to track unassigned campaigns
@@ -296,11 +288,13 @@ impl Campaigns {
         }
         
         // Second pass: assign new group indices to campaigns not in any group
-        let mut next_new_group_index = num_groups;
+        // Also create new groups in value_groups for each ungrouped campaign
         for campaign_id in 0..num_campaigns {
             if self.campaign_to_value_group_mapping[campaign_id] == usize::MAX {
-                self.campaign_to_value_group_mapping[campaign_id] = next_new_group_index;
-                next_new_group_index += 1;
+                // Create a new group containing just this campaign
+                self.value_groups.push(vec![campaign_id]);
+                // The group index is the last index in value_groups (length - 1)
+                self.campaign_to_value_group_mapping[campaign_id] = self.value_groups.len() - 1;
             }
         }
     }
@@ -330,9 +324,8 @@ mod tests {
             converging_variable: 0.5,
         });
 
-        // Create an impression with value_to_campaign_id[2] = 20.0
-        let mut value_to_campaign_id = [0.0; MAX_CAMPAIGNS];
-        value_to_campaign_id[2] = 20.0;
+        // Create an impression with value_to_campaign_group[0] = 20.0
+        let value_to_campaign_group = vec![20.0];
 
         let impression = Impression {
             seller_id: 0,
@@ -344,13 +337,13 @@ mod tests {
                 win_rate_prediction_sigmoid_scale: 0.0,
             }),
             floor_cpm: 0.0,
-            value_to_campaign_id,
+            value_to_campaign_group,
             base_impression_value: 10.0,
         };
 
         // Expected bid = 0.5 * 20.0 * 1.0 = 10.0
         let mut logger = crate::logger::Logger::new();
-        let bid = campaign.get_bid(&impression, campaign_converge.as_ref(), 1.0, &mut logger);
+        let bid = campaign.get_bid(&impression, campaign_converge.as_ref(), 1.0, 20.0, &mut logger);
         assert_eq!(bid, Some(10.0));
     }
 
@@ -373,9 +366,8 @@ mod tests {
             converging_variable: 1.0,
         });
 
-        // Create an impression with value_to_campaign_id[0] = 15.0
-        let mut value_to_campaign_id = [0.0; MAX_CAMPAIGNS];
-        value_to_campaign_id[0] = 15.0;
+        // Create an impression with value_to_campaign_group[0] = 15.0
+        let value_to_campaign_group = vec![15.0];
 
         let impression = Impression {
             seller_id: 1,
@@ -387,13 +379,13 @@ mod tests {
                 win_rate_prediction_sigmoid_scale: 0.0,
             }),
             floor_cpm: 0.0,
-            value_to_campaign_id,
+            value_to_campaign_group,
             base_impression_value: 10.0,
         };
 
         // Expected bid = 1.0 * 15.0 * 1.0 = 15.0
         let mut logger = crate::logger::Logger::new();
-        let bid = campaign.get_bid(&impression, campaign_converge.as_ref(), 1.0, &mut logger);
+        let bid = campaign.get_bid(&impression, campaign_converge.as_ref(), 1.0, 15.0, &mut logger);
         assert_eq!(bid, Some(15.0));
     }
 
@@ -416,9 +408,8 @@ mod tests {
             converging_variable: 0.0,
         });
 
-        // Create an impression with value_to_campaign_id[1] = 100.0
-        let mut value_to_campaign_id = [0.0; MAX_CAMPAIGNS];
-        value_to_campaign_id[1] = 100.0;
+        // Create an impression with value_to_campaign_group[0] = 100.0
+        let value_to_campaign_group = vec![100.0];
 
         let impression = Impression {
             seller_id: 0,
@@ -430,13 +421,13 @@ mod tests {
                 win_rate_prediction_sigmoid_scale: 0.0,
             }),
             floor_cpm: 0.0,
-            value_to_campaign_id,
+            value_to_campaign_group,
             base_impression_value: 10.0,
         };
 
         // Expected bid = 0.0 * 100.0 * 1.0 = 0.0
         let mut logger = crate::logger::Logger::new();
-        let bid = campaign.get_bid(&impression, campaign_converge.as_ref(), 1.0, &mut logger);
+        let bid = campaign.get_bid(&impression, campaign_converge.as_ref(), 1.0, 100.0, &mut logger);
         assert_eq!(bid, Some(0.0));
     }
 
@@ -483,8 +474,7 @@ mod tests {
         }
 
         // Test that bidding works correctly with fixed pacing
-        let mut value_to_campaign_id = [0.0; MAX_CAMPAIGNS];
-        value_to_campaign_id[0] = 30.0;
+        let value_to_campaign_group = vec![30.0];
 
         let impression = Impression {
             seller_id: 0,
@@ -496,13 +486,13 @@ mod tests {
                 win_rate_prediction_sigmoid_scale: 0.0,
             }),
             floor_cpm: 0.0,
-            value_to_campaign_id,
+            value_to_campaign_group,
             base_impression_value: 10.0,
         };
 
         // Expected bid = 0.75 * 30.0 * 1.0 = 22.5
         let mut logger = crate::logger::Logger::new();
-        let bid = campaign.get_bid(&impression, converge_vars.as_ref(), 1.0, &mut logger);
+        let bid = campaign.get_bid(&impression, converge_vars.as_ref(), 1.0, 30.0, &mut logger);
         assert_eq!(bid, Some(22.5));
     }
 
@@ -626,6 +616,12 @@ mod tests {
         assert_eq!(campaigns.campaign_to_value_group_mapping[0], 0);
         assert_eq!(campaigns.campaign_to_value_group_mapping[1], 1);
         assert_eq!(campaigns.campaign_to_value_group_mapping[2], 2);
+        
+        // Verify that new groups were added to value_groups
+        assert_eq!(campaigns.value_groups.len(), 3);
+        assert_eq!(campaigns.value_groups[0], vec![0]);
+        assert_eq!(campaigns.value_groups[1], vec![1]);
+        assert_eq!(campaigns.value_groups[2], vec![2]);
     }
 
     #[test]
@@ -663,6 +659,13 @@ mod tests {
         assert_eq!(campaigns.campaign_to_value_group_mapping[3], 1);
         assert_eq!(campaigns.campaign_to_value_group_mapping[4], 2);
         assert_eq!(campaigns.campaign_to_value_group_mapping[5], 3);
+        
+        // Verify that new groups were added to value_groups
+        assert_eq!(campaigns.value_groups.len(), 4); // 2 existing + 2 new
+        assert_eq!(campaigns.value_groups[0], vec![0, 1]);
+        assert_eq!(campaigns.value_groups[1], vec![2, 3]);
+        assert_eq!(campaigns.value_groups[2], vec![4]);
+        assert_eq!(campaigns.value_groups[3], vec![5]);
     }
 
     #[test]
@@ -705,6 +708,12 @@ mod tests {
         assert_eq!(campaigns.campaign_to_value_group_mapping[0], 1);
         assert_eq!(campaigns.campaign_to_value_group_mapping[1], 0);
         assert_eq!(campaigns.campaign_to_value_group_mapping[2], 2);
+        
+        // Verify that new groups were added to value_groups
+        assert_eq!(campaigns.value_groups.len(), 3); // 1 existing + 2 new
+        assert_eq!(campaigns.value_groups[0], vec![1]);
+        assert_eq!(campaigns.value_groups[1], vec![0]);
+        assert_eq!(campaigns.value_groups[2], vec![2]);
     }
 }
 

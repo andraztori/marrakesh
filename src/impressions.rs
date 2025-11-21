@@ -1,7 +1,7 @@
 use rand::{rngs::StdRng, SeedableRng};
 use rand_distr::Distribution;
 use crate::sellers::{Sellers, SellerTrait};
-use crate::campaigns::{Campaigns, MAX_CAMPAIGNS};
+use crate::campaigns::Campaigns;
 use crate::converge::CampaignControllerStates;
 use crate::competition::ImpressionCompetition;
 use crate::logger::LogEvent;
@@ -77,7 +77,7 @@ pub struct Impression {
     pub seller_id: usize,
     pub competition: Option<ImpressionCompetition>,
     pub floor_cpm: f64,
-    pub value_to_campaign_id: [f64; MAX_CAMPAIGNS],
+    pub value_to_campaign_group: Vec<f64>,
     pub base_impression_value: f64,  // Store base value for logging
 }
 
@@ -102,8 +102,11 @@ impl Impression {
         for campaign in &campaigns.campaigns {
             let campaign_id = campaign.campaign_id();
             let campaign_converge = &campaign_controller_states.campaign_controller_states[campaign_id];
+            // Resolve value_to_campaign at call site using campaign's group ID
+            let group_id = campaigns.campaign_to_value_group_mapping[campaign_id];
+            let value_to_campaign = self.value_to_campaign_group[group_id];
             // Use the trait method for get_bid
-            if let Some(bid) = campaign.get_bid(self, campaign_converge.as_ref(), seller_boost_factor, logger) {
+            if let Some(bid) = campaign.get_bid(self, campaign_converge.as_ref(), seller_boost_factor, value_to_campaign, logger) {
                 // Check if bid is below zero
                 if bid < 0.0 {
                     errln!(logger, LogEvent::Simulation, "Bid below zero: {:.4} from campaign_id: {}", bid, campaign_id);
@@ -201,8 +204,9 @@ impl Impression {
             let bid_map: std::collections::HashMap<usize, f64> = all_bids.iter().cloned().collect();
             
             for campaign_id in 0..campaigns.campaigns.len() {
-                // campaign value
-                csv_fields.push(format!("{:.4}", self.value_to_campaign_id[campaign_id]));
+                // campaign value - get from campaign's group
+                let group_index = campaigns.campaign_to_value_group_mapping[campaign_id];
+                csv_fields.push(format!("{:.4}", self.value_to_campaign_group[group_index]));
                 
                 // campaign bid (empty if no bid)
                 if let Some(bid) = bid_map.get(&campaign_id) {
@@ -229,15 +233,23 @@ pub struct Impressions {
 
 impl Impressions {
     /// Create a new Impressions container and populate it from sellers
-    pub fn new(sellers: &Sellers, params: &ImpressionsParam) -> Self {
+    /// Note: campaign groups must be finalized before calling this function
+    pub fn new(sellers: &Sellers, params: &ImpressionsParam, campaigns: &Campaigns) -> Self {
+        // Calculate total number of impressions ahead of time
+        let total_impressions: usize = sellers.sellers.iter()
+            .map(|seller| seller.get_impressions_on_offer())
+            .sum();
+        
+        // Get number of campaign groups directly from value_groups length
+        let num_campaign_groups = campaigns.value_groups.len();
+        // Pre-allocate impressions vector with calculated capacity
+        let mut impressions = Vec::with_capacity(total_impressions);
+        
         // Use deterministic seed for reproducible results
         let mut rng_base_value = StdRng::seed_from_u64(get_seed(1991));
         let mut rng_competition = StdRng::seed_from_u64(get_seed(2992));
         let mut rng_floor = StdRng::seed_from_u64(get_seed(3993));
         let mut rng_campaigns_multiplier = StdRng::seed_from_u64(get_seed(4994));
-
-        let mut impressions = Vec::new();
-
         for seller in &sellers.sellers {
             for _ in 0..seller.get_impressions_on_offer() {
                 // First calculate base impression value (needed for floor generation)
@@ -248,25 +260,27 @@ impl Impressions {
                     &mut rng_floor,
                 );
 
-                // Then generate values for each campaign by multiplying base value with campaign-specific multiplier
-                let mut value_to_campaign_id = [0.0; MAX_CAMPAIGNS];
+                // Generate values for each campaign group by multiplying base value with campaign-specific multiplier
+                let mut value_to_campaign_group = Vec::with_capacity(num_campaign_groups);
 
-                for i in 0..MAX_CAMPAIGNS {
+                for _ in 0..num_campaign_groups {
                     let multiplier = params.value_to_campaign_multiplier_dist.sample(&mut rng_campaigns_multiplier);
-                    value_to_campaign_id[i] = base_impression_value * multiplier;
+                    let value = base_impression_value * multiplier;
+                    value_to_campaign_group.push(value);
                 }
-
                 impressions.push(Impression {
                     seller_id: seller.seller_id(),
                     competition,
                     floor_cpm,
-                    value_to_campaign_id,
+                    value_to_campaign_group,
                     base_impression_value,
                 });
             }
         }
 
-        Self { impressions }
+        Self { 
+            impressions,
+        }
     }
 }
 

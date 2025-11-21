@@ -13,7 +13,7 @@ use crate::simulationrun::Marketplace;
 use crate::sellers::{SellerType, SellerConvergeStrategy, Sellers};
 use crate::campaigns::{CampaignType, ConvergeTarget, Campaigns};
 use crate::converge::SimulationConverge;
-use crate::impressions::{Impressions, ImpressionsParam};
+use crate::impressions::ImpressionsParam;
 use crate::competition::CompetitionGeneratorLogNormal;
 use crate::floors;
 use crate::utils;
@@ -51,19 +51,14 @@ fn prepare_simulationconverge(hb_impressions: usize, campaign_type: CampaignType
         floors::FloorGeneratorLogNormal::new(1.0, 3.0),
     );
 
-    // Create impressions for all sellers using default parameters
+    // Create impressions parameters
     let impressions_params = ImpressionsParam::new(
         utils::lognormal_dist(10.0, 3.0),  // base_impression_value_dist
         utils::lognormal_dist(1.0, 2.0),   // value_to_campaign_multiplier_dist
     );
-    let impressions = Impressions::new(&sellers, &impressions_params);
 
     // Create marketplace containing campaigns, sellers, and impressions
-    let marketplace = Marketplace {
-        campaigns,
-        sellers,
-        impressions,
-    };
+    let marketplace = Marketplace::new(campaigns, sellers, &impressions_params);
 
     // Create simulation converge instance (initializes campaign and seller converges internally)
     SimulationConverge::new(marketplace)

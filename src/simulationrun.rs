@@ -1,4 +1,4 @@
-use crate::impressions::{AuctionResult, Winner};
+use crate::impressions::{AuctionResult, Winner, Impressions, ImpressionsParam};
 use crate::sellers::Sellers;
 use crate::campaigns::Campaigns;
 use crate::converge::{CampaignControllerStates, SellerControllerStates};
@@ -14,6 +14,19 @@ pub struct Marketplace {
 }
 
 impl Marketplace {
+    /// Create a new Marketplace
+    /// Automatically finalizes campaign groups and creates impressions
+    pub fn new(mut campaigns: Campaigns, sellers: Sellers, impressions_params: &ImpressionsParam) -> Self {
+        // Finalize campaign groups before creating impressions
+        campaigns.finalize_groups();
+        let impressions = Impressions::new(&sellers, impressions_params, &campaigns);
+        Self {
+            campaigns,
+            sellers,
+            impressions,
+        }
+    }
+    
     /// Print initialization information about the marketplace
     pub fn printout(&self, logger: &mut Logger) {
         
@@ -33,7 +46,6 @@ impl SimulationRun {
     /// Create a new SimulationRun container and run auctions for all impressions
     pub fn new(marketplace: &Marketplace, campaign_controller_states: &CampaignControllerStates, seller_controller_states: &SellerControllerStates, logger: &mut Logger) -> Self {
         let mut results = Vec::with_capacity(marketplace.impressions.impressions.len());
-        
         for impression in &marketplace.impressions.impressions {
             // Get the seller and seller_converge for this impression
             let seller = marketplace.sellers.sellers[impression.seller_id].as_ref();
@@ -141,7 +153,8 @@ impl SimulationStat {
                     overall_stat.total_supply_cost += result.supply_cost;
                     overall_stat.total_virtual_cost += virtual_cost;
                     overall_stat.total_buyer_charge += buyer_charge;
-                    overall_stat.total_value += impression.value_to_campaign_id[campaign_id] / 1000.0;
+                    let group_id = marketplace.campaigns.campaign_to_value_group_mapping[campaign_id];
+                    overall_stat.total_value += impression.value_to_campaign_group[group_id] / 1000.0;
 
                     // Update seller statistics
                     let seller_stat = &mut seller_stats[seller_id];
@@ -149,7 +162,8 @@ impl SimulationStat {
                     seller_stat.total_supply_cost += result.supply_cost;
                     seller_stat.total_virtual_cost += virtual_cost;
                     seller_stat.total_buyer_charge += buyer_charge;
-                    seller_stat.total_provided_value += impression.value_to_campaign_id[campaign_id] / 1000.0;
+                    let group_id = marketplace.campaigns.campaign_to_value_group_mapping[campaign_id];
+                    seller_stat.total_provided_value += impression.value_to_campaign_group[group_id] / 1000.0;
 
                     // Update campaign statistics
                     let campaign_stat = &mut campaign_stats[campaign_id];
@@ -157,7 +171,8 @@ impl SimulationStat {
                     campaign_stat.total_supply_cost += result.supply_cost;
                     campaign_stat.total_virtual_cost += virtual_cost;
                     campaign_stat.total_buyer_charge += buyer_charge;
-                    campaign_stat.total_value += impression.value_to_campaign_id[campaign_id] / 1000.0;
+                    let group_id = marketplace.campaigns.campaign_to_value_group_mapping[campaign_id];
+                    campaign_stat.total_value += impression.value_to_campaign_group[group_id] / 1000.0;
                 }
             }
         }
