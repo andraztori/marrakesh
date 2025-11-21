@@ -25,6 +25,7 @@ mod s_mrg_boost;
 mod s_mrg_dynamic_boost;
 mod s_maxmargin_equality;
 mod s_alb;
+mod s_value_groups;
 
 use sellers::{SellerType, SellerConvergeStrategy, Sellers};
 use campaigns::{CampaignType, ConvergeTarget, Campaigns};

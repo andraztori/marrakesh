@@ -242,6 +242,12 @@ impl Impressions {
         
         // Get number of campaign groups directly from value_groups length
         let num_campaign_groups = campaigns.value_groups.len();
+        
+        // Check that campaigns have been finalized
+        if num_campaign_groups == 0 {
+            panic!("Campaigns have to be finalized before calling impressions::new()");
+        }
+        
         // Pre-allocate impressions vector with calculated capacity
         let mut impressions = Vec::with_capacity(total_impressions);
         
