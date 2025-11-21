@@ -20,7 +20,7 @@ mod controllers;
 
 // Include scenario files so their constructors run
 mod s_one;
-mod s_optimal;
+mod s_various;
 mod s_mrg_boost;
 mod s_mrg_dynamic_boost;
 mod s_maxmargin_equality;

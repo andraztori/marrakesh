@@ -15,6 +15,7 @@ pub enum CampaignType {
     OPTIMAL,
     CHEATER,
     MAX_MARGIN,
+    ALB,
 }
 
 /// Convergence target determining what the campaign converges on
@@ -118,7 +119,7 @@ impl CampaignTrait for CampaignGeneral {
 }
 
 // Re-export bidder types for convenience
-pub use crate::campaign_bidders::{CampaignBidderMultiplicativePacing, CampaignBidderOptimal, BidderMaxMargin, CampaignBidderCheaterLastLook};
+pub use crate::campaign_bidders::{CampaignBidderMultiplicative, CampaignBidderOptimal, BidderMaxMargin, CampaignBidderCheaterLastLook};
 
 /// Container for campaigns with methods to add campaigns
 /// Uses trait objects to support different campaign types
@@ -178,7 +179,7 @@ impl Campaigns {
         // Create campaign based on campaign_type
         match campaign_type {
             CampaignType::MULTIPLICATIVE_PACING => {
-                let bidder = Box::new(CampaignBidderMultiplicativePacing) as Box<dyn CampaignBidder>;
+                let bidder = Box::new(CampaignBidderMultiplicative) as Box<dyn CampaignBidder>;
                 self.campaigns.push(Box::new(CampaignGeneral {
                     campaign_id,
                     campaign_name,
@@ -217,6 +218,16 @@ impl Campaigns {
                     bidder,
                 }));
             }
+            CampaignType::ALB => {
+                let bidder = Box::new(crate::campaign_bidders::CampaignBidderALB) as Box<dyn CampaignBidder>;
+                self.campaigns.push(Box::new(CampaignGeneral {
+                    campaign_id,
+                    campaign_name,
+                    converge_target: converge_target_box,
+                    converge_controller,
+                    bidder,
+                }));
+            }
         }
     }
 }
@@ -229,7 +240,7 @@ mod tests {
     #[test]
     fn test_get_bid() {
         // Create a campaign with campaign_id = 2
-        let bidder = Box::new(CampaignBidderMultiplicativePacing) as Box<dyn CampaignBidder>;
+        let bidder = Box::new(CampaignBidderMultiplicative) as Box<dyn CampaignBidder>;
         let campaign = CampaignGeneral {
             campaign_id: 2,
             campaign_name: "Test Campaign".to_string(),
@@ -272,7 +283,7 @@ mod tests {
     #[test]
     fn test_get_bid_with_different_campaign_id() {
         // Create a campaign with campaign_id = 0
-        let bidder = Box::new(CampaignBidderMultiplicativePacing) as Box<dyn CampaignBidder>;
+        let bidder = Box::new(CampaignBidderMultiplicative) as Box<dyn CampaignBidder>;
         let campaign = CampaignGeneral {
             campaign_id: 0,
             campaign_name: "Test Campaign".to_string(),
@@ -315,7 +326,7 @@ mod tests {
     #[test]
     fn test_get_bid_with_zero_pacing() {
         // Create a campaign with campaign_id = 1
-        let bidder = Box::new(CampaignBidderMultiplicativePacing) as Box<dyn CampaignBidder>;
+        let bidder = Box::new(CampaignBidderMultiplicative) as Box<dyn CampaignBidder>;
         let campaign = CampaignGeneral {
             campaign_id: 1,
             campaign_name: "Test Campaign".to_string(),

@@ -11,6 +11,8 @@
 /// - Variant C: Optimal bidding (optimizes marginal utility of spend)
 ///
 /// - Variant D: Multiplicative pacing (baseline)
+///
+/// - Variant E: ALB (Auction Level Bid) bidding
 
 
 #[allow(unused_imports)]
@@ -28,7 +30,7 @@ use crate::errln;
 
 // Register this scenario in the catalog
 inventory::submit!(crate::scenarios::ScenarioEntry {
-    short_name: "optimal",
+    short_name: "various",
     run,
 });
 
@@ -42,7 +44,7 @@ fn prepare_simulationconverge(hb_impressions: usize, campaign_type: CampaignType
     campaigns.add(
         "Campaign 0".to_string(),  // campaign_name
         campaign_type,  // campaign_type - either multiplicative pacing or optimal bidding
-        ConvergeTarget::TOTAL_BUDGET { target_total_budget: 20.0 },  // converge_target
+        ConvergeTarget::TOTAL_BUDGET { target_total_budget: 50.0 },  // converge_target
     );
 
     // Add seller (ID is automatically set to match Vec index)
@@ -97,12 +99,19 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
     );
     let stats_c = simulation_converge_c.run_variant("Running with optimal bidding", scenario_name, "optimal", 100, logger);
     
-    // Run variant D with multiplicative pacing
+    // Run variant D with ALB bidding
     let simulation_converge_d = prepare_simulationconverge(
+        num_impressions,
+        CampaignType::ALB,
+    );
+    let stats_d = simulation_converge_d.run_variant("Running with ALB bidding", scenario_name, "alb", 100, logger);
+    
+    // Run variant E with multiplicative pacing
+    let simulation_converge_e = prepare_simulationconverge(
         num_impressions,
         CampaignType::MULTIPLICATIVE_PACING,
     );
-    let stats_d = simulation_converge_d.run_variant("Running with multiplicative pacing", scenario_name, "multiplicative", 100, logger);
+    let stats_e = simulation_converge_e.run_variant("Running with multiplicative pacing", scenario_name, "multiplicative", 100, logger);
     
     // Validate expected marketplace behavior
     // Variant A (cheater bidding) uses CHEATER with TOTAL_BUDGET
@@ -140,13 +149,33 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
         errln!(logger, LogEvent::Scenario, "✗ {}", msg);
     }
     
-    // Check: Variant C (optimal) obtained value > Variant D (multiplicative pacing) obtained value
+    // Check: Variant B (max margin) and Variant C (optimal) obtained values are roughly equal
+    let value_diff = (stats_b.overall_stat.total_value - stats_c.overall_stat.total_value).abs();
+    let avg_value = (stats_b.overall_stat.total_value + stats_c.overall_stat.total_value) / 2.0;
+    let relative_diff = if avg_value > 0.0 { value_diff / avg_value } else { 0.0 };
+    let tolerance = 0.1; // 10% tolerance
     let msg = format!(
-        "Variant C (Optimal bidding) obtained value is greater than Variant D (Multiplicative pacing): {:.2} > {:.2}",
+        "Variant B (Max margin) and Variant C (Optimal bidding) obtained values are roughly equal: {:.2} vs {:.2} (diff: {:.2}%, tolerance: {:.0}%)",
+        stats_b.overall_stat.total_value,
         stats_c.overall_stat.total_value,
-        stats_d.overall_stat.total_value
+        relative_diff * 100.0,
+        tolerance * 100.0
     );
-    if stats_c.overall_stat.total_value > stats_d.overall_stat.total_value {
+    if relative_diff <= tolerance {
+        logln!(logger, LogEvent::Scenario, "✓ {}", msg);
+    } else {
+        errors.push(msg.clone());
+        errln!(logger, LogEvent::Scenario, "✗ {}", msg);
+    }
+    
+    // Check: Variant D (ALB) obtained value > Variant E (multiplicative pacing) obtained value
+    // Note: This validation is true only when operating in regime of low fill rates
+    let msg = format!(
+        "Variant D (ALB bidding) obtained value is greater than Variant E (Multiplicative pacing): {:.2} > {:.2} (Note: true only in low fill rate regime)",
+        stats_d.overall_stat.total_value,
+        stats_e.overall_stat.total_value
+    );
+    if stats_d.overall_stat.total_value > stats_e.overall_stat.total_value {
         logln!(logger, LogEvent::Scenario, "✓ {}", msg);
     } else {
         errors.push(msg.clone());

@@ -18,11 +18,19 @@ pub trait CampaignBidder {
 }
 
 /// Bidder for multiplicative pacing strategy
-pub struct CampaignBidderMultiplicativePacing;
+pub struct CampaignBidderMultiplicative;
 
-impl CampaignBidder for CampaignBidderMultiplicativePacing {
+impl CampaignBidder for CampaignBidderMultiplicative {
     fn get_bid(&self, campaign_id: usize, impression: &Impression, pacing: f64, seller_boost_factor: f64, _logger: &mut Logger) -> Option<f64> {
-        Some(pacing * impression.value_to_campaign_id[campaign_id] * seller_boost_factor)
+        let bid = pacing * impression.value_to_campaign_id[campaign_id] * seller_boost_factor;
+        let floor = impression.floor_cpm;
+        
+        // Don't bid if bid is below floor
+        if bid < floor {
+            return None;
+        }
+        
+        Some(bid)
     }
     
     fn get_bidding_type(&self) -> String {
@@ -92,7 +100,7 @@ impl CampaignBidder for CampaignBidderOptimal {
             }
         };
         
-        if bid < impression.floor_cpm.max(0.0) { 
+        if bid < impression.floor_cpm { 
             return None;
         }
         
@@ -110,7 +118,7 @@ pub struct BidderMaxMargin;
 impl CampaignBidder for BidderMaxMargin {
     fn get_bid(&self, campaign_id: usize, impression: &Impression, pacing: f64, seller_boost_factor: f64, logger: &mut Logger) -> Option<f64> {
         // Calculate full_price (maximum we're willing to pay)
-        let full_price = pacing * seller_boost_factor * impression.value_to_campaign_id[campaign_id];
+        let boosted_price = pacing * seller_boost_factor * impression.value_to_campaign_id[campaign_id];
         
         // Get competition data (required for max margin bidding)
         let competition = match &impression.competition {
@@ -129,11 +137,8 @@ impl CampaignBidder for BidderMaxMargin {
             1.0,  // Using normalized value of 1.0
         );
         
-        // Find the bid that maximizes margin = P(win) * (full_price - bid)
-        let min_bid = impression.floor_cpm.max(0.0);
-      //  println!("min_bid: {:.4}, full_price: {:.4}", min_bid, full_price);
 
-        sigmoid.max_margin_bid_bisection(full_price, min_bid)
+        sigmoid.max_margin_bid_bisection(boosted_price, impression.floor_cpm)
     }
     
     fn get_bidding_type(&self) -> String {
@@ -167,6 +172,51 @@ impl CampaignBidder for CampaignBidderCheaterLastLook {
     
     fn get_bidding_type(&self) -> String {
         "Cheater - last look/2nd price".to_string()
+    }
+}
+
+/// Bidder for ALB (Auction Level Bid) strategy
+/// Uses multiplicative pacing, but if the bid is above the predicted offset point,
+/// bids with the predicted offset point instead. Otherwise, does not bid.
+/// Interesting observation from this research:
+/// ALB improves vs. multiplicative bidding when there is abundance of impressions
+/// ALB is worse than multiplicative bidding when there is scarcity of impressions and we have high fill rates
+pub struct CampaignBidderALB;
+
+impl CampaignBidder for CampaignBidderALB {
+    fn get_bid(&self, campaign_id: usize, impression: &Impression, pacing: f64, seller_boost_factor: f64, logger: &mut Logger) -> Option<f64> {
+        // Calculate multiplicative pacing bid
+        let pacing_bid = pacing * impression.value_to_campaign_id[campaign_id] * seller_boost_factor;
+        
+        // Get competition data (required for ALB bidding)
+        let competition = match &impression.competition {
+            Some(comp) => comp,
+            None => {
+                warnln!(logger, LogEvent::Simulation, 
+                    "ALB bidding requires competition data. This impression has no competition data.");
+                return None;
+            }
+        };
+        
+        // Get the predicted offset point
+        let predicted_offset = competition.win_rate_prediction_sigmoid_offset;
+        //println!("actual offset: {:.4}, predicted offset: {:.4}", competition.win_rate_actual_sigmoid_offset, competition.win_rate_prediction_sigmoid_offset);
+        // Only bid if pacing bid is above predicted offset point
+        if pacing_bid <= predicted_offset {
+            return None;
+        }
+        
+        // If floor is above predicted_offset but below pacing_bid, bid with floor
+        if impression.floor_cpm > predicted_offset && impression.floor_cpm < pacing_bid {
+            return Some(impression.floor_cpm);
+        }
+        
+        // Otherwise, bid with predicted offset
+        Some(predicted_offset)
+    }
+    
+    fn get_bidding_type(&self) -> String {
+        "ALB (Auction Level Bid)".to_string()
     }
 }
 

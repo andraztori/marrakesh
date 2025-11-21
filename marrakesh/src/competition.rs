@@ -71,7 +71,7 @@ impl CompetitionGeneratorLogNormal {
             // With current parameters, we end up with 0.3% of impressions at zero bid
             // actual_offset_dist: lognormal_dist(value_base, 3.0),
             actual_scale_dist: lognormal_dist(1.5, 1.0),
-            noise_offset_dist: lognormal_dist(1.0, 0.05),
+            noise_offset_dist: lognormal_dist(1.0, 0.1),
             noise_scale_dist: lognormal_dist(1.0, 0.05),
         })
     }
