@@ -64,7 +64,7 @@ The system uses iterative feedback loops to find optimal pacing and boost factor
 cargo run --release HBabundance
 
 # Run a scenario multiple times with different seeds
-cargo run --release s_one 10
+cargo run --release HBabundance 10
 
 # Run all scenarios
 cargo run --release all
