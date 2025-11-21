@@ -114,7 +114,7 @@ Sellers that use first-price auctions generate competition data; fixed-cost sell
 **Competition Generation**:
 - Uses `CompetitionGeneratorTrait` for extensible competition modeling
 - `CompetitionGeneratorNone`: No competition (for fixed-price sellers)
-- `CompetitionGeneratorParametrizedLogNormal`: Generates realistic competition using lognormal distributions
+- `CompetitionGeneratorLogNormal`: Generates realistic competition using lognormal distributions
 - Implements rejection sampling to ensure realistic sigmoid parameters (win probability at zero bid < 5%)
 - Uses `base_impression_value` as the sigmoid offset for realistic modeling
 
@@ -225,8 +225,9 @@ The system uses an **iterative feedback loop** to find optimal pacing and boost 
 
 **Campaign Convergence**:
 - Campaigns converge their pacing multipliers to meet impression or budget targets
-- Uses `ControllerProportional` for smooth adjustments
-- Each convergence strategy (`ConvergeTotalImpressions`, `ConvergeTotalBudget`) has its own convergence logic
+- Uses `ConvergeControllerProportional` (which wraps `ControllerProportional`) for smooth adjustments
+- Each convergence target (`ConvergeTargetTotalImpressions`, `ConvergeTargetTotalBudget`) defines what to converge to
+- The controller (`ConvergeControllerProportional`) handles how to converge
 - Convergence tracks the number of iterations taken to converge, stored in `SimulationStat`
 
 **Seller Convergence**:
@@ -240,30 +241,39 @@ This is not a pacing algorithm to be studied—it's a **simulation calibration t
 
 The system uses a **strategy pattern** for convergence with trait-based dynamic dispatch:
 
-**Core Traits**:
-- `ConvergingVariables`: Unified trait for convergence parameters (used by both campaigns and sellers)
-- `ConvergeAny<T>`: Generic trait for convergence strategies, parameterized by statistic type
-  - Methods: `converge_iteration`, `get_converging_variable`, `create_converging_variables`, `converge_target_string`
-  - `get_converging_variable` has a default implementation that delegates to the controller
+**Core Traits and Types**:
+- `ControllerState`: Trait for controller state (replaces `ConvergingVariables`)
+- `ControllerStateSingleVariable`: Concrete type storing a single `f64` value (pacing or boost)
+- `ConvergeTargetAny<T>`: Generic trait for convergence targets, parameterized by statistic type
+  - Methods: `get_actual_and_target`, `converge_target_string`
+  - Provides the target value and actual value for convergence calculations
+- `ConvergeController`: Trait for controlling convergence behavior
+  - Methods: `next_controller_state`, `get_control_variable`, `create_controller_state`, `controller_string`
+  - Handles the actual convergence logic and state management
 
-**Convergence Parameters**:
-- `ConvergingSingleVariable`: Concrete type storing a single `f64` value (pacing or boost)
-- All current implementations use `ConvergingSingleVariable` for their convergence parameters
+**Controller Implementations**:
+- `ConvergeControllerConstant`: Constant controller that maintains a fixed value
+- `ConvergeControllerProportional`: Proportional controller that adjusts based on error between target and actual
+  - Uses `ControllerProportional` internally for the control algorithm
 
-**Campaign Convergence Strategies**:
-- `ConvergeTotalImpressions`: Converges pacing to meet impression targets
-- `ConvergeTotalBudget`: Converges pacing to meet budget targets
+**Campaign Convergence Targets**:
+- `ConvergeTargetTotalImpressions`: Target is total impressions obtained
+- `ConvergeTargetTotalBudget`: Target is total budget spent
+- `ConvergeTargetNone`: No target (constant pacing)
 
+**Seller Convergence Targets**:
+- `ConvergeTargetNone`: No target (constant boost factor)
+- `ConvergeTargetTotalCost`: Target is total cost (supply cost)
 
-**Seller Convergence Strategies**:
-- `ConvergeNone`: No convergence, maintains constant boost factor
-- `ConvergeTotalCost`: Converges boost factor to meet total cost targets
+**State Containers**:
+- `CampaignControllerStates`: Container for campaign controller states
+- `SellerControllerStates`: Container for seller controller states
 
 **Design Benefits**:
-- Separation of concerns: Campaign/seller logic separate from convergence logic
-- Extensibility: New convergence strategies can be added without modifying campaign/seller code
-- Flexibility: Same convergence strategy can work with different campaign/seller types
-- Uniform interface: All convergence strategies work with `ConvergingVariables` trait objects
+- Clear separation: Convergence targets define what to converge to, controllers define how to converge
+- Extensibility: New convergence targets and controllers can be added independently
+- Flexibility: Any combination of target and controller can be used
+- Uniform interface: All campaigns and sellers work with `ControllerState` trait objects
 
 ---
 
@@ -292,7 +302,7 @@ Competition data models external competing demand. The system uses trait-based c
 
 **Implementations**:
 - `CompetitionGeneratorNone`: Always returns `None` (no competition)
-- `CompetitionGeneratorParametrizedLogNormal`: Generates realistic competition data
+- `CompetitionGeneratorLogNormal`: Generates realistic competition data
   - Samples competing bid from lognormal distribution
   - Generates sigmoid parameters for win probability modeling
   - Uses rejection sampling to ensure realistic parameters (win probability at zero bid < 5%)
@@ -300,7 +310,7 @@ Competition data models external competing demand. The system uses trait-based c
 
 #### Building Realistic Competitive Markets
 
-The `CompetitionGeneratorParametrizedLogNormal` implementation uses several key considerations to generate competition that resembles real-world auction dynamics:
+The `CompetitionGeneratorLogNormal` implementation uses several key considerations to generate competition that resembles real-world auction dynamics:
 
 **1. Base Value as 50% Win Rate Point**:
 - The `impression_base_value` parameter is used as the value at which 50% win rate occurs
@@ -349,16 +359,11 @@ The system uses sigmoid functions to model win probability in auctions:
 - `scale`: Controls the steepness of the sigmoid curve
 - `value`: The value of the impression to the campaign
 
-**Win Probability**:
+**Key functions**:
 - `get_probability(bid)`: Returns win probability for a given bid
 - Formula: `1.0 / (1 + exp(-(bid - offset) * scale))`
-
-**Marginal Utility**:
 - `m(bid)`: Marginal utility of spend at a given bid
 - `m_prime(bid)`: Derivative of marginal utility (rate of change)
-- Used in optimal bidding to find the bid that maximizes utility
-
-**Inverse Marginal Utility**:
 - `marginal_utility_of_spend_inverse(y_target)`: Finds the bid that achieves a target marginal utility
   - Uses Newton-Raphson method with damping and backtracking for stability
   - Falls back to `marginal_utility_of_spend_inverse_numerical_2` if Newton-Raphson fails
@@ -445,18 +450,20 @@ The framework explicitly does **not** study:
 4. **Initialize Convergence**: 
    - Campaign pacing starts at 1.0 (true value)
    - Seller boost factors start at 1.0 (no boost) or specified default
-   - `SimulationConverge` encapsulates marketplace and initial convergence state
+   - `SimulationConverge` encapsulates marketplace and initial controller states
+   - `CampaignControllerStates` and `SellerControllerStates` are created to track controller state
 
 ### Convergence Phase
 
 Iteratively adjust pacing and boost factors until campaigns and sellers meet their targets:
-- Run full auction simulation with current convergence parameters
+- Run full auction simulation with current controller states
 - Calculate performance metrics for campaigns and sellers
-- Adjust campaign pacing based on impression/budget targets
-- Adjust seller boost factors based on cost balance (for dynamic boost sellers)
+- Use `next_controller_state()` to calculate new controller states based on targets
+- Adjust campaign pacing based on impression/budget targets using `ConvergeControllerProportional`
+- Adjust seller boost factors based on cost balance (for dynamic boost sellers) using `ConvergeControllerProportional`
 - Repeat until convergence (no changes in an iteration)
 
-This phase ensures campaigns and sellers operate optimally before observation begins. The `SimulationConverge` struct manages this process, encapsulating the marketplace and convergence state.
+This phase ensures campaigns and sellers operate optimally before observation begins. The `SimulationConverge` struct manages this process, encapsulating the marketplace and controller states.
 
 ### Observation Phase
 
@@ -611,10 +618,11 @@ The system includes comprehensive chart generation capabilities:
 
 The system separates:
 - **Impression and auction logic** (`impressions.rs`): Core auction mechanics, impression generation, winner determination
-- **Campaign logic** (`campaigns.rs`): Campaign types, bidding strategies, campaign convergence
-- **Seller logic** (`sellers.rs`): Seller types, pricing models, seller convergence
+- **Campaign logic** (`campaigns.rs`): Campaign types, bidding strategies, campaign convergence targets
+- **Seller logic** (`sellers.rs`): Seller types, pricing models, seller convergence targets
 - **Simulation execution** (`simulationrun.rs`): Running auctions, calculating statistics, marketplace structure
-- **Convergence logic** (`converge.rs`): Finding optimal pacing and boost factors, convergence strategies
+- **Convergence logic** (`converge.rs`): Finding optimal pacing and boost factors, convergence targets, controller state management
+- **Controller logic** (`controllers.rs`): Controller implementations (proportional, constant), controller state types
 - **Competition generation** (`competition.rs`): Generating competition data for impressions
 - **Floor generation** (`floors.rs`): Generating floor prices for impressions
 - **Sigmoid functions** (`sigmoid.rs`): Win probability and marginal utility calculations
@@ -640,7 +648,9 @@ This design choice prioritizes simplicity and performance over flexibility.
 The system uses Rust traits for extensibility:
 - `CampaignTrait`: Defines campaign interface (bidding, convergence, statistics)
 - `SellerTrait`: Defines seller interface (pricing, impression generation, convergence)
-- `ConvergeAny<T>`: Generic convergence strategy trait parameterized by statistic type
+- `ConvergeTargetAny<T>`: Generic convergence target trait parameterized by statistic type
+- `ConvergeController`: Trait for controlling convergence behavior
+- `ControllerState`: Trait for controller state representation
 - `CompetitionGeneratorTrait`: Extensible competition generation
 - `FloorGeneratorTrait`: Extensible floor generation
 - Dynamic dispatch via trait objects enables different implementations while maintaining uniform interfaces
@@ -649,12 +659,15 @@ This allows new campaign and seller types to be added without modifying core sim
 
 ### Strategy Pattern for Convergence
 
-The convergence system uses the strategy pattern:
-- Campaigns and sellers hold a `Box<dyn ConvergeAny<T>>` converger
-- Convergence logic is separated from campaign/seller logic
-- New convergence strategies can be added independently
-- All strategies work with `ConvergingVariables` trait objects for uniform interface
-- Enables flexible combination of campaign/seller types with convergence strategies
+The convergence system uses the strategy pattern with two layers:
+- **Convergence Targets** (`ConvergeTargetAny<T>`): Define what to converge to (e.g., total impressions, total budget)
+  - Campaigns and sellers hold a `Box<dyn ConvergeTargetAny<T>>` to define their convergence target
+  - Provides `get_actual_and_target()` to compare current state with target
+- **Convergence Controllers** (`ConvergeController`): Define how to converge (e.g., proportional control, constant)
+  - Campaigns and sellers hold a `Box<dyn ConvergeController>` to control convergence behavior
+  - Handles state management and adjustment logic
+- All controllers work with `ControllerState` trait objects for uniform interface
+- Enables flexible combination of targets and controllers (e.g., proportional control for budget targets, constant control for fixed pacing)
 
 ### Deterministic Execution
 
@@ -684,9 +697,10 @@ The framework is designed to be extended without modifying core logic:
 - Extend boost factor strategies
 
 ### New Convergence Strategies
-- Implement `ConvergeAny<T>` for new convergence logic
+- Implement `ConvergeTargetAny<T>` for new convergence targets
+- Implement `ConvergeController` for new control algorithms
 - Add new constraint types (time-based, inventory-based)
-- Experiment with different control algorithms
+- Experiment with different control algorithms (PID, adaptive, etc.)
 
 ### New Competition/Floor Models
 - Implement `CompetitionGeneratorTrait` for new competition models
