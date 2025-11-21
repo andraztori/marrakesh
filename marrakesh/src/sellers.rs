@@ -20,36 +20,10 @@ pub enum SellerConvergeStrategy {
     TOTAL_COST { target_total_cost: f64 },
 }
 
-/// Convergence strategy for sellers that don't converge (no boost adjustment)
-pub struct ConvergeNone;
-
-impl ConvergeTargetAny<crate::simulationrun::SellerStat> for ConvergeNone {
-    fn get_actual_and_target(&self, _seller_stat: &crate::simulationrun::SellerStat) -> (f64, f64) {
-        // No convergence, so no target or actual values
-        (0.0, 0.0)
-    }
-    
-    fn converge_target_string(&self) -> String {
-        "No convergence".to_string()
-    }
-}
-
-/// Convergence strategy for sellers that converge boost to match target cost
-pub struct ConvergeTargetTotalCost {
-    pub target_cost: f64,
-}
-
-impl ConvergeTargetAny<crate::simulationrun::SellerStat> for ConvergeTargetTotalCost {
-    fn get_actual_and_target(&self, seller_stat: &crate::simulationrun::SellerStat) -> (f64, f64) {
-        let actual = seller_stat.total_virtual_cost;
-        let target = self.target_cost;
-        (actual, target)
-    }
-    
-    fn converge_target_string(&self) -> String {
-        format!("Converge target cost: {:.2}", self.target_cost)
-    }
-}
+// Re-export convergence target types for convenience
+pub use crate::seller_targets::{ConvergeNone, ConvergeTargetTotalCost};
+// Re-export charger types for convenience
+pub use crate::seller_chargers::{SellerCharger, SellerChargerFirstPrice, SellerChargerFixedPrice};
 
 /// Trait for sellers participating in auctions
 pub trait SellerTrait {
@@ -63,8 +37,6 @@ pub trait SellerTrait {
     fn get_impressions_on_offer(&self) -> usize;
     
     /// Get the supply cost in CPM for a given buyer winning bid CPM
-    /// For fixed cost sellers, returns the fixed_cost_cpm
-    /// For first price sellers, returns the buyer_win_cpm
     fn get_supply_cost_cpm(&self, buyer_win_cpm: f64) -> f64;
     
     /// Generate impression parameters (Option<ImpressionCompetition>, floor_cpm) using the provided distributions
@@ -97,8 +69,8 @@ pub trait SellerTrait {
     
 }
 
-/// Seller with first price auction
-pub struct SellerFirstPrice {
+/// General seller structure that can use any charging strategy
+pub struct SellerGeneral {
     pub seller_id: usize,
     pub seller_name: String,
     pub impressions_on_offer: usize,
@@ -106,15 +78,16 @@ pub struct SellerFirstPrice {
     pub converge_controller: Box<dyn ConvergeController>,
     pub competition_generator: Box<dyn CompetitionGeneratorTrait>,
     pub floor_generator: Box<dyn FloorGeneratorTrait>,
+    pub seller_charger: Box<dyn SellerCharger>,
 }
 
-impl SellerTrait for SellerFirstPrice {
+impl SellerTrait for SellerGeneral {
     fn seller_id(&self) -> usize { self.seller_id }
     fn seller_name(&self) -> &str { &self.seller_name }
     fn get_impressions_on_offer(&self) -> usize { self.impressions_on_offer }
     
     fn get_supply_cost_cpm(&self, buyer_win_cpm: f64) -> f64 {
-        buyer_win_cpm
+        self.seller_charger.get_supply_cost_cpm(buyer_win_cpm)
     }
     
     fn generate_impression(&self, base_value: f64, rng_competition: &mut StdRng, rng_floor: &mut StdRng) -> (Option<ImpressionCompetition>, f64) {
@@ -124,48 +97,7 @@ impl SellerTrait for SellerFirstPrice {
     }
     
     fn type_target_and_controller_state_string(&self, controller_state: &dyn crate::controllers::ControllerState) -> String {
-        format!("First price ({}, {})", self.converge_target.converge_target_string(), self.converge_controller.controller_string(controller_state))
-    }
-    
-    fn create_controller_state(&self) -> Box<dyn crate::controllers::ControllerState> {
-        self.converge_controller.create_controller_state()
-    }
-    
-    fn next_controller_state(&self, previous_state: &dyn crate::controllers::ControllerState, next_state: &mut dyn crate::controllers::ControllerState, seller_stat: &crate::simulationrun::SellerStat) -> bool {
-        let (actual, target) = self.converge_target.get_actual_and_target(seller_stat);
-        self.converge_controller.next_controller_state(previous_state, next_state, actual, target)
-    }
-}
-
-/// Seller with fixed price (cost per mille)
-pub struct SellerFixedPrice {
-    pub seller_id: usize,
-    pub seller_name: String,
-    pub fixed_cost_cpm: f64,
-    pub impressions_on_offer: usize,
-    pub converge_target: Box<dyn ConvergeTargetAny<crate::simulationrun::SellerStat>>,
-    pub converge_controller: Box<dyn ConvergeController>,
-    pub competition_generator: Box<dyn CompetitionGeneratorTrait>,
-    pub floor_generator: Box<dyn FloorGeneratorTrait>,
-}
-
-impl SellerTrait for SellerFixedPrice {
-    fn seller_id(&self) -> usize { self.seller_id }
-    fn seller_name(&self) -> &str { &self.seller_name }
-    fn get_impressions_on_offer(&self) -> usize { self.impressions_on_offer }
-    
-    fn get_supply_cost_cpm(&self, _buyer_win_cpm: f64) -> f64 {
-        self.fixed_cost_cpm
-    }
-    
-    fn generate_impression(&self, base_value: f64, rng_competition: &mut StdRng, rng_floor: &mut StdRng) -> (Option<ImpressionCompetition>, f64) {
-        let competition = self.competition_generator.generate_competition(base_value, rng_competition);
-        let floor_cpm = self.floor_generator.generate_floor(base_value, rng_floor);
-        (competition, floor_cpm)
-    }
-    
-    fn type_target_and_controller_state_string(&self, controller_state: &dyn crate::controllers::ControllerState) -> String {
-        format!("Fixed price CPM: {:.2} ({}, {})", self.fixed_cost_cpm, self.converge_target.converge_target_string(), self.converge_controller.controller_string(controller_state))
+        format!("{} ({}, {})", self.seller_charger.get_charging_type(), self.converge_target.converge_target_string(), self.converge_controller.controller_string(controller_state))
     }
     
     fn create_controller_state(&self) -> Box<dyn crate::controllers::ControllerState> {
@@ -224,7 +156,8 @@ impl Sellers {
         // Create seller based on seller_type
         match seller_type {
             SellerType::FIRST_PRICE => {
-                self.sellers.push(Box::new(SellerFirstPrice {
+                let seller_charger = Box::new(SellerChargerFirstPrice) as Box<dyn SellerCharger>;
+                self.sellers.push(Box::new(SellerGeneral {
                     seller_id,
                     seller_name,
                     impressions_on_offer,
@@ -232,18 +165,22 @@ impl Sellers {
                     converge_controller,
                     competition_generator,
                     floor_generator,
+                    seller_charger,
                 }));
             }
             SellerType::FIXED_PRICE { fixed_cost_cpm } => {
-                self.sellers.push(Box::new(SellerFixedPrice {
+                let seller_charger = Box::new(SellerChargerFixedPrice {
+                    fixed_cost_cpm,
+                }) as Box<dyn SellerCharger>;
+                self.sellers.push(Box::new(SellerGeneral {
                     seller_id,
                     seller_name,
-                    fixed_cost_cpm,
                     impressions_on_offer,
                     converge_target,
                     converge_controller,
                     competition_generator,
                     floor_generator,
+                    seller_charger,
                 }));
             }
         }

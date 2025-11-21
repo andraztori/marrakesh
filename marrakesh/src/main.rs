@@ -8,6 +8,8 @@ mod campaigns;
 mod campaign_targets;
 mod campaign_bidders;
 mod sellers;
+mod seller_targets;
+mod seller_chargers;
 mod scenarios;
 mod logger;
 mod charts;
@@ -152,10 +154,10 @@ fn main() {
                 seller_id: 0,
                 competition: Some(ImpressionCompetition {
                     bid_cpm: test_case.bid_cpm,
-                    win_rate_prediction_sigmoid_offset: test_case.sigmoid_offset,
-                    win_rate_prediction_sigmoid_scale: test_case.sigmoid_scale,
                     win_rate_actual_sigmoid_offset: test_case.sigmoid_offset,
                     win_rate_actual_sigmoid_scale: test_case.sigmoid_scale,
+                    win_rate_prediction_sigmoid_offset: test_case.sigmoid_offset,
+                    win_rate_prediction_sigmoid_scale: test_case.sigmoid_scale,
                 }),
                 floor_cpm: test_case.floor_cpm,
                 value_to_campaign_id,

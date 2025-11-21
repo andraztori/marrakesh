@@ -91,7 +91,7 @@ impl ControllerProportional {
 }
 
 /// Trait for controlling convergence behavior in campaigns
-pub trait ConvergeController: Send + Sync {
+pub trait ConvergeController {
     /// Calculate the next controller state
     /// 
     /// # Arguments

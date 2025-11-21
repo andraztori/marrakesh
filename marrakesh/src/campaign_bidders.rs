@@ -8,7 +8,7 @@ use crate::warnln;
 // one can implement a full CampaignTrait
 
 /// Trait for campaign bidding strategies
-pub trait CampaignBidder: Send + Sync {
+pub trait CampaignBidder {
     /// Calculate the bid for this campaign given an impression, pacing, and seller boost factor
     /// Returns None if bid cannot be calculated (logs warning via logger)
     fn get_bid(&self, campaign_id: usize, impression: &Impression, pacing: f64, seller_boost_factor: f64, logger: &mut Logger) -> Option<f64>;
@@ -43,7 +43,7 @@ impl CampaignBidder for CampaignBidderOptimal {
     fn get_bid(&self, campaign_id: usize, impression: &Impression, pacing: f64, seller_boost_factor: f64, logger: &mut Logger) -> Option<f64> {
         // Handle zero or very small pacing to avoid division by zero
         if pacing <= 1e-10 {
-            println!("Pacing is too small, returning 0.0");
+            warnln!(logger, LogEvent::Simulation, "Pacing is too small, returning 0.0");
             return Some(0.0);
         }
         
@@ -91,12 +91,11 @@ impl CampaignBidder for CampaignBidderOptimal {
                 return None;
             }
         };
-//        println!("optimal bid: {:.4}", bid);
+        
         if bid < impression.floor_cpm.max(0.0) { 
             return None;
         }
-  //      let bid = impression.floor_cpm.max(bid);
-//        println!("bid: {:.4}", bid);
+        
         Some(bid)
     }
     
@@ -112,7 +111,7 @@ impl CampaignBidder for BidderMaxMargin {
     fn get_bid(&self, campaign_id: usize, impression: &Impression, pacing: f64, seller_boost_factor: f64, logger: &mut Logger) -> Option<f64> {
         // Calculate full_price (maximum we're willing to pay)
         let full_price = pacing * seller_boost_factor * impression.value_to_campaign_id[campaign_id];
-       // println!("full_price: {:.4}", full_price);
+        
         // Get competition data (required for max margin bidding)
         let competition = match &impression.competition {
             Some(comp) => comp,
@@ -133,6 +132,7 @@ impl CampaignBidder for BidderMaxMargin {
         // Find the bid that maximizes margin = P(win) * (full_price - bid)
         let min_bid = impression.floor_cpm.max(0.0);
       //  println!("min_bid: {:.4}, full_price: {:.4}", min_bid, full_price);
+
         sigmoid.max_margin_bid_bisection(full_price, min_bid)
     }
     

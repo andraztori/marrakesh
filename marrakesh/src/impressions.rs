@@ -215,11 +215,6 @@ impl Impression {
             logln!(logger, LogEvent::Auction, "{}", csv_fields.join(","));
         }
 
-        // Format first campaign value
-        /*if all_bids.len() > 0 {
-            let values_str = format!("{:.2} {:.4}, {:.4}", self.competition.as_ref().unwrap().win_rate_actual_sigmoid_offset,self.value_to_campaign_id[0], all_bids[0].1);
-            logln!(logger, LogEvent::Auction, "{}", values_str);
-        }*/
         AuctionResult {
             winner,
             supply_cost,
@@ -252,17 +247,13 @@ impl Impressions {
                     &mut rng_competition,
                     &mut rng_floor,
                 );
-                //println!("Base impression value: {:.4}", base_impression_value);
+
                 // Then generate values for each campaign by multiplying base value with campaign-specific multiplier
                 let mut value_to_campaign_id = [0.0; MAX_CAMPAIGNS];
-                //println!("Base impression value: {}", base_impression_value);
+
                 for i in 0..MAX_CAMPAIGNS {
                     let multiplier = params.value_to_campaign_multiplier_dist.sample(&mut rng_campaigns_multiplier);
-                    //multiplier = 1.0;
-                //    println!("Campaign {} multiplier: {:.4}", i, multiplier);
                     value_to_campaign_id[i] = base_impression_value * multiplier;
-//                    println!("Campaign {} value: {:.4}", i, value_to_campaign_id[i]);
-                //    println!("     {}", value_to_campaign_id[i])
                 }
 
                 impressions.push(Impression {

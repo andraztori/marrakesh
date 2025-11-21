@@ -21,7 +21,7 @@ pub enum LogEvent {
 }
 
 /// Trait for log receivers that can receive log messages
-pub trait LogReceiver: Send {
+pub trait LogReceiver {
     /// Check if this receiver should handle the given log event
     fn should_log(&self, event: LogEvent) -> bool;
     
