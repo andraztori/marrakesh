@@ -4,13 +4,13 @@
 ///
 /// Its four variants test different bidding approaches:
 ///
-/// - Variant A: Multiplicative pacing (baseline)
+/// - Variant A: Cheater bidding (has perfect information about competition)
 ///
-/// - Variant B: Optimal bidding (optimizes marginal utility of spend)
+/// - Variant B: Max margin bidding (optimizes expected margin)
 ///
-/// - Variant C: Cheater bidding (has perfect information about competition)
+/// - Variant C: Optimal bidding (optimizes marginal utility of spend)
 ///
-/// - Variant D: Max margin bidding (optimizes expected margin)
+/// - Variant D: Multiplicative pacing (baseline)
 
 
 #[allow(unused_imports)]
@@ -75,91 +75,78 @@ fn prepare_simulationconverge(hb_impressions: usize, campaign_type: CampaignType
 }
 
 pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::error::Error>> {
-    // Run variant A with multiplicative pacing
+    // Run variant A with cheater bidding
     let num_impressions = 10000;
     let simulation_converge_a = prepare_simulationconverge(
         num_impressions,
-        CampaignType::MULTIPLICATIVE_PACING,
-    );
-    let stats_a = simulation_converge_a.run_variant("Running with multiplicative pacing", scenario_name, "multiplicative", 100, logger);
-    
-    // Run variant B with optimal bidding
-    let simulation_converge_b = prepare_simulationconverge(
-        num_impressions,
-        CampaignType::OPTIMAL,
-    );
-    let stats_b = simulation_converge_b.run_variant("Running with optimal bidding", scenario_name, "optimal", 100, logger);
-    
-    // Run variant C with cheater bidding
-    let simulation_converge_c = prepare_simulationconverge(
-        num_impressions,
         CampaignType::CHEATER,
     );
-    let stats_c = simulation_converge_c.run_variant("Running with cheater bidding", scenario_name, "cheater", 100, logger);
+    let stats_a = simulation_converge_a.run_variant("Running with cheater bidding", scenario_name, "cheater", 100, logger);
     
-    // Run variant D with max margin bidding
-    let simulation_converge_d = prepare_simulationconverge(
+    // Run variant B with max margin bidding
+    let simulation_converge_b = prepare_simulationconverge(
         num_impressions,
         CampaignType::MAX_MARGIN,
     );
-    let stats_d = simulation_converge_d.run_variant("Running with max margin bidding", scenario_name, "max-margin", 100, logger);
+    let stats_b = simulation_converge_b.run_variant("Running with max margin bidding", scenario_name, "max-margin", 100, logger);
+    
+    // Run variant C with optimal bidding
+    let simulation_converge_c = prepare_simulationconverge(
+        num_impressions,
+        CampaignType::OPTIMAL,
+    );
+    let stats_c = simulation_converge_c.run_variant("Running with optimal bidding", scenario_name, "optimal", 100, logger);
+    
+    // Run variant D with multiplicative pacing
+    let simulation_converge_d = prepare_simulationconverge(
+        num_impressions,
+        CampaignType::MULTIPLICATIVE_PACING,
+    );
+    let stats_d = simulation_converge_d.run_variant("Running with multiplicative pacing", scenario_name, "multiplicative", 100, logger);
     
     // Validate expected marketplace behavior
-    // Variant A (multiplicative pacing) uses MULTIPLICATIVE_PACING with TOTAL_BUDGET
-    // Variant B (optimal bidding) uses OPTIMAL with TOTAL_BUDGET
-    // Variant C (cheater bidding) uses CHEATER with TOTAL_BUDGET
-    // Variant D (max margin bidding) uses MAX_MARGIN with TOTAL_BUDGET
+    // Variant A (cheater bidding) uses CHEATER with TOTAL_BUDGET
+    // Variant B (max margin bidding) uses MAX_MARGIN with TOTAL_BUDGET
+    // Variant C (optimal bidding) uses OPTIMAL with TOTAL_BUDGET
+    // Variant D (multiplicative pacing) uses MULTIPLICATIVE_PACING with TOTAL_BUDGET
     
     logln!(logger, LogEvent::Scenario, "");
     
     let mut errors: Vec<String> = Vec::new();
     
-    // Check: Variant C (cheater) obtained value > Variant B (optimal) obtained value
+    // Check: Variant A (cheater) obtained value > Variant B (max margin) obtained value
     let msg = format!(
-        "Variant C (Cheater) obtained value is greater than Variant B (Optimal bidding): {:.2} > {:.2}",
-        stats_c.overall_stat.total_value,
+        "Variant A (Cheater) obtained value is greater than Variant B (Max margin): {:.2} > {:.2}",
+        stats_a.overall_stat.total_value,
         stats_b.overall_stat.total_value
     );
-    if stats_c.overall_stat.total_value > stats_b.overall_stat.total_value {
+    if stats_a.overall_stat.total_value > stats_b.overall_stat.total_value {
         logln!(logger, LogEvent::Scenario, "✓ {}", msg);
     } else {
         errors.push(msg.clone());
         errln!(logger, LogEvent::Scenario, "✗ {}", msg);
     }
     
-    // Check: Variant B (optimal) obtained value > Variant A (multiplicative pacing) obtained value
+    // Check: Variant A (cheater) obtained value > Variant C (optimal) obtained value
     let msg = format!(
-        "Variant B (Optimal bidding) obtained value is greater than Variant A (Multiplicative pacing): {:.2} > {:.2}",
-        stats_b.overall_stat.total_value,
-        stats_a.overall_stat.total_value
+        "Variant A (Cheater) obtained value is greater than Variant C (Optimal bidding): {:.2} > {:.2}",
+        stats_a.overall_stat.total_value,
+        stats_c.overall_stat.total_value
     );
-    if stats_b.overall_stat.total_value > stats_a.overall_stat.total_value {
+    if stats_a.overall_stat.total_value > stats_c.overall_stat.total_value {
         logln!(logger, LogEvent::Scenario, "✓ {}", msg);
     } else {
         errors.push(msg.clone());
         errln!(logger, LogEvent::Scenario, "✗ {}", msg);
     }
     
-    // Check: Variant C (cheater) obtained value > Variant D (max margin) obtained value
+    // Check: Variant C (optimal) obtained value > Variant D (multiplicative pacing) obtained value
     let msg = format!(
-        "Variant C (Cheater) obtained value is greater than Variant D (Max margin): {:.2} > {:.2}",
+        "Variant C (Optimal bidding) obtained value is greater than Variant D (Multiplicative pacing): {:.2} > {:.2}",
         stats_c.overall_stat.total_value,
         stats_d.overall_stat.total_value
     );
     if stats_c.overall_stat.total_value > stats_d.overall_stat.total_value {
-        logln!(logger, LogEvent::Scenario, "✓ {}", msg);
-    } else {
-        errors.push(msg.clone());
-        errln!(logger, LogEvent::Scenario, "✗ {}", msg);
-    }
-    
-    // Check: Variant D (max margin) obtained value > Variant A (multiplicative pacing) obtained value
-    let msg = format!(
-        "Variant D (Max margin) obtained value is greater than Variant A (Multiplicative pacing): {:.2} > {:.2}",
-        stats_d.overall_stat.total_value,
-        stats_a.overall_stat.total_value
-    );
-    if stats_d.overall_stat.total_value > stats_a.overall_stat.total_value {
         logln!(logger, LogEvent::Scenario, "✓ {}", msg);
     } else {
         errors.push(msg.clone());

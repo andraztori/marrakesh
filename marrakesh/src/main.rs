@@ -182,13 +182,6 @@ fn main() {
             1
         };
         
-        // Set up logger with console and validation file receivers
-        let mut logger = Logger::new();
-        logger.add_receiver(ConsoleReceiver::new(vec![LogEvent::Validation]));
-        
-        // Add validation receiver (for validation events)
-        let summary_receiver_id = logger.add_receiver(FileReceiver::new(&PathBuf::from("log/summary.log"), vec![LogEvent::Validation]));
-        
         // Get all scenarios from the catalog
         let all_scenarios = get_scenario_catalog();
         
@@ -210,6 +203,18 @@ fn main() {
                 }
             }
         };
+        
+        // Set up logger with console and validation file receivers
+        // When running a specific scenario (not "all"), also enable Scenario logging to show individual validations
+        let mut logger = Logger::new();
+        if scenario_arg == "all" {
+            logger.add_receiver(ConsoleReceiver::new(vec![LogEvent::Validation]));
+        } else {
+            logger.add_receiver(ConsoleReceiver::new(vec![LogEvent::Validation, LogEvent::Scenario]));
+        }
+        
+        // Add validation receiver (for validation events)
+        let summary_receiver_id = logger.add_receiver(FileReceiver::new(&PathBuf::from("log/summary.log"), vec![LogEvent::Validation]));
         
         // Log appropriate message
         if scenario_arg == "all" {
