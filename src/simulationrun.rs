@@ -9,7 +9,12 @@ use crate::logln;
 #[derive(Debug, Clone, PartialEq)]
 pub enum SimulationType {
     Standard,
-    FractionalInternalAuction,
+    /// Fractional auction with temperature parameter for softmax
+    /// Temperature controls the sharpness of the distribution:
+    /// - Lower values (< 1.0) make the distribution sharper (more concentrated on highest bid)
+    /// - Higher values (> 1.0) make the distribution smoother (more uniform)
+    /// - Default: 1.0 (standard softmax)
+    FractionalInternalAuction { softmax_temperature: f64 },
 }
 
 /// Marketplace containing campaigns, sellers, and impressions
@@ -27,6 +32,8 @@ impl Marketplace {
     pub fn new(mut campaigns: Campaigns, sellers: Sellers, impressions_params: &ImpressionsParam, simulation_type: SimulationType) -> Self {
         // Finalize campaign groups before creating impressions
         campaigns.finalize_groups();
+        // Generally all simulations run perfectly well with fractional auctions...
+//        let simulation_type = SimulationType::FractionalInternalAuction { softmax_temperature: 0.5 };
         let impressions = Impressions::new(&sellers, impressions_params, &campaigns);
         Self {
             campaigns,
@@ -69,8 +76,8 @@ impl SimulationRun {
             let result = impression.run_auction(&marketplace.campaigns, campaign_controller_states, seller, seller_converge, logger);
             results.push(result);
         }
-                SimulationType::FractionalInternalAuction => {
-                    let result_fractional = impression.run_fractional_auction(&marketplace.campaigns, campaign_controller_states, seller, seller_converge, logger);
+                SimulationType::FractionalInternalAuction { softmax_temperature } => {
+                    let result_fractional = impression.run_fractional_auction(&marketplace.campaigns, campaign_controller_states, seller, seller_converge, softmax_temperature, logger);
                     results_fractional.push(result_fractional);
                 }
             }
@@ -200,7 +207,7 @@ impl SimulationStat {
                         }
                     }
                 }
-                SimulationType::FractionalInternalAuction => {
+                SimulationType::FractionalInternalAuction { .. } => {
                     let result_fractional = &simulation_run.results_fractional[index];
 
                     // Update overall statistics based on fractional winners

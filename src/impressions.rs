@@ -250,7 +250,12 @@ impl Impression {
 
     /// Run a fractional auction for this impression with the given campaigns, campaign converges, seller, and seller convergence parameters
     /// Returns the fractional auction result
-    pub fn run_fractional_auction(&self, campaigns: &Campaigns, campaign_controller_states: &CampaignControllerStates, seller: &dyn SellerTrait, seller_converge: &dyn crate::controllers::ControllerState, logger: &mut crate::logger::Logger) -> FractionalAuctionResult {
+    /// 
+    /// `softmax_temperature`: Temperature parameter for softmax calculation
+    /// - Lower values (< 1.0) make the distribution sharper (more concentrated on highest bid)
+    /// - Higher values (> 1.0) make the distribution smoother (more uniform)
+    /// - Default: 1.0 (standard softmax)
+    pub fn run_fractional_auction(&self, campaigns: &Campaigns, campaign_controller_states: &CampaignControllerStates, seller: &dyn SellerTrait, seller_converge: &dyn crate::controllers::ControllerState, softmax_temperature: f64, logger: &mut crate::logger::Logger) -> FractionalAuctionResult {
         // Calculate minimum CPM needed to win this impression
         // Must be at least the floor, and if competition exists, must beat the competing bid
         let minimum_cpm_to_win = if let Some(competition) = &self.competition {
@@ -299,17 +304,17 @@ impl Impression {
             // If get_bid returns None, skip this campaign (warning already logged)
         }
 
-        // Calculate win_fraction using softmax based on bid_cpm
-        // Why softmax? Well it has the main properties, but might not be the best choice.
+        // Calculate win_fraction using softmax based on bid_cpm with temperature
+        // Temperature controls the sharpness: lower = sharper (more concentrated on highest bid), higher = smoother (more uniform)
         if !fractional_winners.is_empty() {
             // Find maximum bid for numerical stability (log-sum-exp trick)
             let max_bid = fractional_winners.iter()
                 .map(|w| w.bid_cpm)
                 .fold(f64::NEG_INFINITY, f64::max);
             
-            // Calculate exp(bid_cpm - max_bid) for each winner
+            // Calculate exp((bid_cpm - max_bid) / temperature) for each winner
             let exp_values: Vec<f64> = fractional_winners.iter()
-                .map(|w| (w.bid_cpm - max_bid).exp())
+                .map(|w| ((w.bid_cpm - max_bid) / softmax_temperature).exp())
                 .collect();
             
             // Calculate sum of exp values

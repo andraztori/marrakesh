@@ -91,16 +91,41 @@ The auction uses a **first-price sealed-bid** model with additional constraints:
 - Bids must exceed competing external demand (`bid_cpm` from `ImpressionCompetition`) - if competition data exists
 - Highest valid bid wins
 
-The auction logic checks constraints in order:
-1. **BELOW_FLOOR**: Bid is below seller's floor price
-2. **OTHER_DEMAND**: Bid is below competing external demand (if competition data exists)
-3. **Campaign wins**: Valid bid that passes all checks
-4. **NO_DEMAND**: No campaigns participated
+The auction outcomes:
+1. **LOST**: Bid is below seller's floor price or below competing external demand
+2. **Campaign wins**: Valid bid that passes all checks
+3. **NO_DEMAND**: No campaigns participated
 
 This models realistic marketplace constraints where campaigns compete not just with each other, but also with:
 - External demand sources (modeled via `ImpressionCompetition`)
 - Seller minimum price requirements
 - Platform rules and policies
+
+### Fractional Auctions
+
+Marrakesh supports two auction types: **Standard** and **Fractional Internal Auction**. Fractional auctions are a simulation mechanism designed to improve convergence stability and speed.
+
+**How Fractional Auctions Work**:
+- Instead of a single winner taking the entire impression, multiple campaigns can win fractions of an impression
+- All campaigns with bids above the minimum CPM threshold (floor or competition) are considered winners
+- Win fractions are calculated using a softmax function based on bid CPM values: `win_fraction_i = exp(bid_cpm_i) / Σ exp(bid_cpm_j)`
+- Each fractional winner receives a proportional share of the impression based on their win fraction
+- Supply costs, virtual costs, and buyer charges are weighted by win fractions when aggregating statistics
+
+**Benefits of Fractional Auctions**:
+- **Improved Convergence Stability**: By allowing multiple campaigns to share impressions, the system reduces the impact of discrete auction outcomes on convergence. Small changes in pacing don't cause dramatic shifts in win/loss patterns.
+- **Faster Convergence**: The smoother gradient provided by fractional allocations helps the convergence algorithm find optimal pacing values more quickly, reducing the number of iterations needed.
+- **Better Evaluation of Equivalent Configurations**: Fractional auctions enable more accurate comparison of equivalent campaign setups. For example, in the `s_value_groups` scenario, fractional auctions demonstrate that two campaigns with half budget each behave equivalently to one campaign with double budget when they share the same value group. This equivalence would be harder to observe with standard auctions due to discrete win/loss outcomes.
+
+**When to Use Fractional Auctions**:
+- Scenarios where multiple campaigns compete for the same supply and value that supply equally and you want to evaluate their equivalence
+- Cases where convergence stability is important and you want to reduce oscillation in pacing adjustments
+- Research questions that benefit from smoother gradients in the optimization space
+
+**When to Use Standard Auctions**:
+- Scenarios that need to model realistic discrete auction outcomes
+- Cases where you want to study the impact of discrete win/loss patterns on campaign behavior
+- Research questions focused on auction mechanics rather than convergence behavior
 
 ### Impression Competition
 
