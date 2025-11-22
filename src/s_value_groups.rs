@@ -102,7 +102,7 @@ fn prepare_simulationconverge(variant: VariantConfig) -> SimulationConverge {
 
     // Create marketplace containing campaigns, sellers, and impressions
     // Note: Marketplace::new() automatically calls finalize_groups()
-    let marketplace = Marketplace::new(campaigns, sellers, &impressions_params, SimulationType::Standard);
+    let marketplace = Marketplace::new(campaigns, sellers, &impressions_params, SimulationType::FractionalInternalAuction);
 
     // Create simulation converge instance
     SimulationConverge::new(marketplace)
