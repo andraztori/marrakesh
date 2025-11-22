@@ -134,9 +134,10 @@ impl Impression {
             let value_to_campaign = self.value_to_campaign_group[group_id];
             // Use the trait method for get_bid
             if let Some(bid) = campaign.get_bid(self, campaign_converge.as_ref(), seller_boost_factor, value_to_campaign, logger) {
-                // Check if bid is below zero
+                // Check if bid is below zero - skip negative bids
                 if bid < 0.0 {
-                    errln!(logger, LogEvent::Simulation, "Bid below zero: {:.4} from campaign_id: {}", bid, campaign_id);
+                    errln!(logger, LogEvent::Simulation, "Bid below zero: {:.4} from campaign_id: {}, skipping", bid, campaign_id);
+                    continue;
                 }
                 if let Some(bids) = &mut all_bids {
                     bids.push((campaign_id, bid));
@@ -281,9 +282,10 @@ impl Impression {
             // Use the trait method for get_bid
             if let Some(bid) = campaign.get_bid(self, campaign_converge.as_ref(), seller_boost_factor, value_to_campaign, logger) {
                 any_bids_made = true;
-                // Check if bid is below zero
+                // Check if bid is below zero - skip negative bids
                 if bid < 0.0 {
-                    errln!(logger, LogEvent::Simulation, "Bid below zero: {:.4} from campaign_id: {}", bid, campaign_id);
+                    errln!(logger, LogEvent::Simulation, "Bid below zero: {:.4} from campaign_id: {}, skipping", bid, campaign_id);
+                    continue;
                 }
                 
                 // If bid is above minimum_cpm_to_win, add to winners list

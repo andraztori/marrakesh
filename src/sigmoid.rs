@@ -155,6 +155,12 @@ impl Sigmoid {
         // Initial search bounds (use separate variable for bisection that can be modified)
         let mut max_x = 1000.0;
         
+        // Avoid division by zero if y_target is 0
+        if y_target.abs() < 1e-10 {
+            // If y_target is effectively zero, return min_x as the solution
+            return Some(min_x);
+        }
+        
         if min_x > 1.0 / y_target * self.value {
             return Some(1.0 / y_target * self.value); // this is below floor
         }

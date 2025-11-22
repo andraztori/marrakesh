@@ -56,7 +56,7 @@ impl ControllerProportional {
         let next_state_mut = next_state.as_any_mut().downcast_mut::<ControllerStateSingleVariable>().unwrap();
         
         let tolerance = target * self.tolerance_fraction;
-        
+        // target is never zero
         if actual < target - tolerance {
             // Below target - increase pacing
             let error_ratio = (target - actual) / target;
