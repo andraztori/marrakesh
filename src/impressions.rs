@@ -137,7 +137,6 @@ impl Impression {
                 // Check if bid is below zero
                 if bid < 0.0 {
                     errln!(logger, LogEvent::Simulation, "Bid below zero: {:.4} from campaign_id: {}", bid, campaign_id);
-                    panic!("Bid below zero: {:.4} from campaign_id: {}", bid, campaign_id);
                 }
                 if let Some(bids) = &mut all_bids {
                     bids.push((campaign_id, bid));
@@ -280,7 +279,6 @@ impl Impression {
                 // Check if bid is below zero
                 if bid < 0.0 {
                     errln!(logger, LogEvent::Simulation, "Bid below zero: {:.4} from campaign_id: {}", bid, campaign_id);
-                    panic!("Bid below zero: {:.4} from campaign_id: {}", bid, campaign_id);
                 }
                 
                 // If bid is above minimum_cpm_to_win, add to winners list
