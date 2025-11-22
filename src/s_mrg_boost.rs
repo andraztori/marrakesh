@@ -6,7 +6,7 @@
 /// - The second one where MRG seller forces higher valuation of its supply by demand and thus
 ///   gets higher prices and market balances/becomes profitable
 
-use crate::simulationrun::Marketplace;
+use crate::simulationrun::{Marketplace, SimulationType};
 use crate::sellers::{SellerType, SellerConvergeStrategy, Sellers};
 use crate::campaigns::{CampaignType, ConvergeTarget, Campaigns};
 use crate::converge::SimulationConverge;
@@ -71,7 +71,7 @@ fn prepare_simulationconverge(mrg_boost_factor: f64) -> SimulationConverge {
     );
 
     // Create marketplace containing campaigns, sellers, and impressions
-    let marketplace = Marketplace::new(campaigns, sellers, &impressions_params);
+    let marketplace = Marketplace::new(campaigns, sellers, &impressions_params, SimulationType::Standard);
 
     // Create simulation converge instance (initializes campaign and seller converges internally)
     let simulation_converge = SimulationConverge::new(marketplace);

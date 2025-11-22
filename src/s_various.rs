@@ -16,7 +16,7 @@
 
 
 #[allow(unused_imports)]
-use crate::simulationrun::Marketplace;
+use crate::simulationrun::{Marketplace, SimulationType};
 use crate::sellers::{SellerType, SellerConvergeStrategy, Sellers};
 use crate::campaigns::{CampaignType, ConvergeTarget, Campaigns};
 use crate::converge::SimulationConverge;
@@ -65,7 +65,7 @@ fn prepare_simulationconverge(hb_impressions: usize, campaign_type: CampaignType
     );
 
     // Create marketplace containing campaigns, sellers, and impressions
-    let marketplace = Marketplace::new(campaigns, sellers, &impressions_params);
+    let marketplace = Marketplace::new(campaigns, sellers, &impressions_params, SimulationType::Standard);
 
     // Create simulation converge instance (initializes campaign and seller converges internally)
     SimulationConverge::new(marketplace)

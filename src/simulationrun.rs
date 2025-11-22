@@ -1,9 +1,16 @@
-use crate::impressions::{AuctionResult, Winner, Impressions, ImpressionsParam};
+use crate::impressions::{AuctionResult, FractionalAuctionResult, FractionalWinners, Winner, Impressions, ImpressionsParam};
 use crate::sellers::Sellers;
 use crate::campaigns::Campaigns;
 use crate::converge::{CampaignControllerStates, SellerControllerStates};
 use crate::logger::{Logger, LogEvent};
 use crate::logln;
+
+/// Simulation type determining the auction mechanism
+#[derive(Debug, Clone, PartialEq)]
+pub enum SimulationType {
+    Standard,
+    FractionalInternalAuction,
+}
 
 /// Marketplace containing campaigns, sellers, and impressions
 /// This groups together the three main components of the marketplace simulation
@@ -11,12 +18,13 @@ pub struct Marketplace {
     pub campaigns: crate::campaigns::Campaigns,
     pub sellers: crate::sellers::Sellers,
     pub impressions: crate::impressions::Impressions,
+    pub simulation_type: SimulationType,
 }
 
 impl Marketplace {
     /// Create a new Marketplace
     /// Automatically finalizes campaign groups and creates impressions
-    pub fn new(mut campaigns: Campaigns, sellers: Sellers, impressions_params: &ImpressionsParam) -> Self {
+    pub fn new(mut campaigns: Campaigns, sellers: Sellers, impressions_params: &ImpressionsParam, simulation_type: SimulationType) -> Self {
         // Finalize campaign groups before creating impressions
         campaigns.finalize_groups();
         let impressions = Impressions::new(&sellers, impressions_params, &campaigns);
@@ -24,6 +32,7 @@ impl Marketplace {
             campaigns,
             sellers,
             impressions,
+            simulation_type,
         }
     }
     
@@ -40,27 +49,41 @@ impl Marketplace {
 /// Note: SimulationRun results are matched to Impressions by index in the vectors
 pub struct SimulationRun {
     pub results: Vec<AuctionResult>,
+    pub results_fractional: Vec<FractionalAuctionResult>,
 }
 
 impl SimulationRun {
     /// Create a new SimulationRun container and run auctions for all impressions
     pub fn new(marketplace: &Marketplace, campaign_controller_states: &CampaignControllerStates, seller_controller_states: &SellerControllerStates, logger: &mut Logger) -> Self {
         let mut results = Vec::with_capacity(marketplace.impressions.impressions.len());
+        let mut results_fractional = Vec::with_capacity(marketplace.impressions.impressions.len());
+        
         for impression in &marketplace.impressions.impressions {
             // Get the seller and seller_converge for this impression
             let seller = marketplace.sellers.sellers[impression.seller_id].as_ref();
             let seller_converge = seller_controller_states.seller_controller_states[seller.seller_id()].as_ref();
-            let result = impression.run_auction(&marketplace.campaigns, campaign_controller_states, seller, seller_converge, logger);
-            results.push(result);
+            
+            // Check simulation type and call appropriate auction method
+            match marketplace.simulation_type {
+                SimulationType::Standard => {
+                    let result = impression.run_auction(&marketplace.campaigns, campaign_controller_states, seller, seller_converge, logger);
+                    results.push(result);
+                }
+                SimulationType::FractionalInternalAuction => {
+                    let result_fractional = impression.run_fractional_auction(&marketplace.campaigns, campaign_controller_states, seller, seller_converge, logger);
+                    results_fractional.push(result_fractional);
+                }
+            }
         }
         
-        Self { results }
+        Self { results, results_fractional }
     }
 }
 
 /// Statistics for a single campaign
 pub struct CampaignStat {
-    pub impressions_obtained: usize,
+    /// Number of impressions obtained (f64 to support fractional impressions in FractionalInternalAuction)
+    pub impressions_obtained: f64,
     pub total_supply_cost: f64,
     pub total_virtual_cost: f64,
     pub total_buyer_charge: f64,
@@ -107,7 +130,7 @@ impl SimulationStat {
         let num_campaigns = marketplace.campaigns.campaigns.len();
         let mut campaign_stats: Vec<CampaignStat> = (0..num_campaigns)
             .map(|_| CampaignStat {
-                impressions_obtained: 0,
+                impressions_obtained: 0.0,
                 total_supply_cost: 0.0,
                 total_virtual_cost: 0.0,
                 total_buyer_charge: 0.0,
@@ -139,40 +162,92 @@ impl SimulationStat {
         };
 
         // Iterate through impressions once and accumulate all statistics
-            for (index, impression) in marketplace.impressions.impressions.iter().enumerate() {
-            let result = &simulation_run.results[index];
+        for (index, impression) in marketplace.impressions.impressions.iter().enumerate() {
             let seller_id = impression.seller_id;
 
-            // Update overall statistics based on winner
-            match result.winner {
-                Winner::BELOW_FLOOR => overall_stat.below_floor_count += 1,
-                Winner::OTHER_DEMAND => overall_stat.other_demand_count += 1,
-                Winner::NO_DEMAND => overall_stat.no_bids_count += 1,
-                Winner::Campaign { campaign_id, virtual_cost, buyer_charge, .. } => {
-                    // Update overall statistics
-                    overall_stat.total_supply_cost += result.supply_cost;
-                    overall_stat.total_virtual_cost += virtual_cost;
-                    overall_stat.total_buyer_charge += buyer_charge;
-                    let group_id = marketplace.campaigns.campaign_to_value_group_mapping[campaign_id];
-                    overall_stat.total_value += impression.value_to_campaign_group[group_id] / 1000.0;
+            // Condition on simulation type to handle different auction result types
+            match marketplace.simulation_type {
+                SimulationType::Standard => {
+                    let result = &simulation_run.results[index];
 
-                    // Update seller statistics
-                    let seller_stat = &mut seller_stats[seller_id];
-                    seller_stat.impressions_sold += 1;
-                    seller_stat.total_supply_cost += result.supply_cost;
-                    seller_stat.total_virtual_cost += virtual_cost;
-                    seller_stat.total_buyer_charge += buyer_charge;
-                    let group_id = marketplace.campaigns.campaign_to_value_group_mapping[campaign_id];
-                    seller_stat.total_provided_value += impression.value_to_campaign_group[group_id] / 1000.0;
+                    // Update overall statistics based on winner
+                    match result.winner {
+                        Winner::BELOW_FLOOR => overall_stat.below_floor_count += 1,
+                        Winner::OTHER_DEMAND => overall_stat.other_demand_count += 1,
+                        Winner::NO_DEMAND => overall_stat.no_bids_count += 1,
+                        Winner::Campaign { campaign_id, virtual_cost, buyer_charge, .. } => {
+                            // Update overall statistics
+                            overall_stat.total_supply_cost += result.supply_cost;
+                            overall_stat.total_virtual_cost += virtual_cost;
+                            overall_stat.total_buyer_charge += buyer_charge;
+                            let group_id = marketplace.campaigns.campaign_to_value_group_mapping[campaign_id];
+                            overall_stat.total_value += impression.value_to_campaign_group[group_id] / 1000.0;
 
-                    // Update campaign statistics
-                    let campaign_stat = &mut campaign_stats[campaign_id];
-                    campaign_stat.impressions_obtained += 1;
-                    campaign_stat.total_supply_cost += result.supply_cost;
-                    campaign_stat.total_virtual_cost += virtual_cost;
-                    campaign_stat.total_buyer_charge += buyer_charge;
-                    let group_id = marketplace.campaigns.campaign_to_value_group_mapping[campaign_id];
-                    campaign_stat.total_value += impression.value_to_campaign_group[group_id] / 1000.0;
+                            // Update seller statistics
+                            let seller_stat = &mut seller_stats[seller_id];
+                            seller_stat.impressions_sold += 1;
+                            seller_stat.total_supply_cost += result.supply_cost;
+                            seller_stat.total_virtual_cost += virtual_cost;
+                            seller_stat.total_buyer_charge += buyer_charge;
+                            let group_id = marketplace.campaigns.campaign_to_value_group_mapping[campaign_id];
+                            seller_stat.total_provided_value += impression.value_to_campaign_group[group_id] / 1000.0;
+
+                            // Update campaign statistics
+                            let campaign_stat = &mut campaign_stats[campaign_id];
+                            campaign_stat.impressions_obtained += 1.0;
+                            campaign_stat.total_supply_cost += result.supply_cost;
+                            campaign_stat.total_virtual_cost += virtual_cost;
+                            campaign_stat.total_buyer_charge += buyer_charge;
+                            let group_id = marketplace.campaigns.campaign_to_value_group_mapping[campaign_id];
+                            campaign_stat.total_value += impression.value_to_campaign_group[group_id] / 1000.0;
+                        }
+                    }
+                }
+                SimulationType::FractionalInternalAuction => {
+                    let result_fractional = &simulation_run.results_fractional[index];
+
+                    // Update overall statistics based on fractional winners
+                    match &result_fractional.winner {
+                        FractionalWinners::BELOW_FLOOR => overall_stat.below_floor_count += 1,
+                        FractionalWinners::OTHER_DEMAND => overall_stat.other_demand_count += 1,
+                        FractionalWinners::NO_DEMAND => overall_stat.no_bids_count += 1,
+                        FractionalWinners::Campaigns { winners } => {
+                            // Update overall statistics (weighted by win_fraction)
+                            overall_stat.total_supply_cost += result_fractional.supply_cost;
+                            
+                            // Update seller statistics once per impression (impressions_sold is usize, not fractional)
+                            let seller_stat = &mut seller_stats[seller_id];
+                            seller_stat.impressions_sold += 1;
+                            seller_stat.total_supply_cost += result_fractional.supply_cost; // supply cost is not linear 
+                            
+                            // Process each fractional winner
+                            for fractional_winner in winners {
+                                let campaign_id = fractional_winner.campaign_id;
+                                let win_fraction = fractional_winner.win_fraction;
+                                
+                                // Update overall statistics (weighted by win_fraction)
+                                overall_stat.total_virtual_cost += fractional_winner.virtual_cost * win_fraction;
+                                overall_stat.total_buyer_charge += fractional_winner.buyer_charge * win_fraction;
+                                let group_id = marketplace.campaigns.campaign_to_value_group_mapping[campaign_id];
+                                overall_stat.total_value += impression.value_to_campaign_group[group_id] / 1000.0 * win_fraction;
+
+                                // Update seller statistics (weighted by win_fraction)
+                                seller_stat.total_virtual_cost += fractional_winner.virtual_cost * win_fraction;
+                                seller_stat.total_buyer_charge += fractional_winner.buyer_charge * win_fraction;
+                                let group_id = marketplace.campaigns.campaign_to_value_group_mapping[campaign_id];
+                                seller_stat.total_provided_value += impression.value_to_campaign_group[group_id] / 1000.0 * win_fraction;
+
+                                // Update campaign statistics (weighted by win_fraction - fractional counting on buy side)
+                                let campaign_stat = &mut campaign_stats[campaign_id];
+                                campaign_stat.impressions_obtained += win_fraction;
+                                campaign_stat.total_supply_cost += result_fractional.supply_cost * win_fraction;
+                                campaign_stat.total_virtual_cost += fractional_winner.virtual_cost * win_fraction;
+                                campaign_stat.total_buyer_charge += fractional_winner.buyer_charge * win_fraction;
+                                let group_id = marketplace.campaigns.campaign_to_value_group_mapping[campaign_id];
+                                campaign_stat.total_value += impression.value_to_campaign_group[group_id] / 1000.0 * win_fraction;
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -195,7 +270,7 @@ impl SimulationStat {
             
             logln!(logger, event, "\nCampaign {} ({}) - {}", 
                      campaign.campaign_id(), campaign.campaign_name(), type_target_and_controller_string);
-            logln!(logger, event, "  Impressions Obtained: {}", campaign_stat.impressions_obtained);
+            logln!(logger, event, "  Impressions Obtained: {:.2}", campaign_stat.impressions_obtained);
             logln!(logger, event, "  Costs (supply/virtual/buyer): {:.2} / {:.2} / {:.2}", 
                      campaign_stat.total_supply_cost, 
                      campaign_stat.total_virtual_cost, 

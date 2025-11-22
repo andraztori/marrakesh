@@ -10,7 +10,7 @@
 /// - Two $10 campaigns should obtain higher value than one $20 campaign
 /// - But when they are in the same value group, the value will be the same as one $20 campaign
 
-use crate::simulationrun::Marketplace;
+use crate::simulationrun::{Marketplace, SimulationType};
 use crate::sellers::{SellerType, SellerConvergeStrategy, Sellers};
 use crate::campaigns::{CampaignType, ConvergeTarget, Campaigns};
 use crate::converge::SimulationConverge;
@@ -102,7 +102,7 @@ fn prepare_simulationconverge(variant: VariantConfig) -> SimulationConverge {
 
     // Create marketplace containing campaigns, sellers, and impressions
     // Note: Marketplace::new() automatically calls finalize_groups()
-    let marketplace = Marketplace::new(campaigns, sellers, &impressions_params);
+    let marketplace = Marketplace::new(campaigns, sellers, &impressions_params, SimulationType::Standard);
 
     // Create simulation converge instance
     SimulationConverge::new(marketplace)

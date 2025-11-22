@@ -341,7 +341,7 @@ fn main() {
         );
 
         // Create marketplace containing campaigns, sellers, and impressions
-        let marketplace = simulationrun::Marketplace::new(campaigns, sellers, &impressions_params);
+        let marketplace = simulationrun::Marketplace::new(campaigns, sellers, &impressions_params, simulationrun::SimulationType::Standard);
         
         let mut logger = Logger::new();
         logger.add_receiver(ConsoleReceiver::new(vec![LogEvent::Simulation, LogEvent::Convergence, LogEvent::Variant]));

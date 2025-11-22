@@ -7,7 +7,7 @@ pub struct ConvergeTargetTotalImpressions {
 
 impl ConvergeTargetAny<crate::simulationrun::CampaignStat> for ConvergeTargetTotalImpressions {
     fn get_actual_and_target(&self, campaign_stat: &crate::simulationrun::CampaignStat) -> (f64, f64) {
-        (campaign_stat.impressions_obtained as f64, self.total_impressions_target as f64)
+        (campaign_stat.impressions_obtained, self.total_impressions_target as f64)
     }
     
     fn converge_target_string(&self) -> String {

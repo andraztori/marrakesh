@@ -456,7 +456,7 @@ mod tests {
 
         // Test that next_controller_state always returns false (no convergence)
         let campaign_stat = crate::simulationrun::CampaignStat {
-            impressions_obtained: 100,
+            impressions_obtained: 100.0,
             total_supply_cost: 0.0,
             total_virtual_cost: 0.0,
             total_buyer_charge: 50.0,
