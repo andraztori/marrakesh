@@ -30,6 +30,29 @@ impl ConvergeTargetAny<crate::simulationrun::CampaignStat> for ConvergeTargetTot
     }
 }
 
+/// Convergence strategy for average utility target
+/// For example, may be we want viewability to be 80% ...
+pub struct ConvergeTargetAvgUtility {
+    pub target_avg_utility: f64,
+}
+
+impl ConvergeTargetAny<crate::simulationrun::CampaignStat> for ConvergeTargetAvgUtility {
+    fn get_actual_and_target(&self, campaign_stat: &crate::simulationrun::CampaignStat) -> (f64, f64) {
+        // Calculate average utility as total_value / impressions_obtained
+        // If no impressions were obtained, return 0.0 as actual
+        let actual = if campaign_stat.impressions_obtained > 0.0 {
+            campaign_stat.total_value / campaign_stat.impressions_obtained
+        } else {
+            0.0
+        };
+        (actual, self.target_avg_utility)
+    }
+    
+    fn converge_target_string(&self) -> String {
+        format!("Average utility target: {:.4}", self.target_avg_utility)
+    }
+}
+
 /// Convergence strategy for no convergence (fixed pacing)
 pub struct ConvergeNone;
 

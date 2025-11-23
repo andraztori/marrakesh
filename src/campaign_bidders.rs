@@ -3,7 +3,7 @@ use crate::sigmoid::Sigmoid;
 use crate::logger::{Logger, LogEvent};
 use crate::warnln;
 
-// These are bidders that can be used by CampaignGeneral. In theory we could give them more flexibility, but 
+// These are bidders that can be used by CampaignSimple. In theory we could give them more flexibility, but 
 // vast majority of strategies require just one pacing parameter, so if one needs more complex state
 // one can implement a full CampaignTrait
 
@@ -219,4 +219,3 @@ impl CampaignBidder for CampaignBidderALB {
         "ALB (Auction Level Bid)".to_string()
     }
 }
-

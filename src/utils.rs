@@ -1,4 +1,4 @@
-use rand_distr::LogNormal;
+use rand_distr::{LogNormal, Beta};
 use rand::Rng;
 use std::sync::atomic::{AtomicU64, AtomicBool, Ordering};
 
@@ -37,6 +37,12 @@ fn lognormal_from_mean_stddev(mean: f64, stddev: f64) -> (f64, f64) {
 pub fn lognormal_dist(mean: f64, stddev: f64) -> LogNormal<f64> {
     let (mu, sigma) = lognormal_from_mean_stddev(mean, stddev);
     LogNormal::new(mu, sigma).unwrap()
+}
+
+/// Create a beta distribution with given alpha and beta parameters
+/// Returns values in the range [0, 1]
+pub fn beta_dist(alpha: f64, beta: f64) -> Beta<f64> {
+    Beta::new(alpha, beta).unwrap()
 }
 
 

@@ -122,9 +122,8 @@ impl Impression {
             None
         };
 
-        // Get seller_boost_factor from seller convergence parameter
-        let seller_converge_boost = seller_converge.as_any().downcast_ref::<crate::controllers::ControllerStateSingleVariable>().unwrap();
-        let seller_boost_factor = seller_converge_boost.converging_variable;
+        // Get seller_boost_factor from seller using get_control_variable
+        let seller_boost_factor = seller.get_control_variable(seller_converge);
 
         for campaign in &campaigns.campaigns {
             let campaign_id = campaign.campaign_id();
@@ -269,9 +268,8 @@ impl Impression {
         let mut fractional_winners: Vec<FractionalWinner> = Vec::new();
         let mut any_bids_made = false;
 
-        // Get seller_boost_factor from seller convergence parameter
-        let seller_converge_boost = seller_converge.as_any().downcast_ref::<crate::controllers::ControllerStateSingleVariable>().unwrap();
-        let seller_boost_factor = seller_converge_boost.converging_variable;
+        // Get seller_boost_factor from seller using get_control_variable
+        let seller_boost_factor = seller.get_control_variable(seller_converge);
 
         for campaign in &campaigns.campaigns {
             let campaign_id = campaign.campaign_id();

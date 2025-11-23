@@ -16,6 +16,8 @@ mod charts;
 mod floors;
 mod competition;
 mod sigmoid;
+mod controller_state;
+mod controller_core;
 mod controllers;
 
 // Include scenario files so their constructors run
@@ -25,6 +27,7 @@ mod s_mrg_boost;
 mod s_mrg_dynamic_boost;
 mod s_maxmargin_equality;
 mod s_alb;
+mod s_viewability;
 mod s_value_groups;
 
 use sellers::{SellerType, SellerConvergeStrategy, Sellers};
@@ -90,14 +93,14 @@ fn main() {
     
     // Check if "test" argument is provided
     if args.len() > 1 && args[1] == "test" {
-        use campaigns::{CampaignGeneral, ConvergeNone, CampaignTrait};
+        use campaigns::{CampaignSimple, ConvergeNone, CampaignTrait};
         use impressions::Impression;
         use competition::ImpressionCompetition;
         
         // Setup shared resources
         use campaigns::{CampaignBidderOptimal, BidderMaxMargin};
         let bidder_optimal = Box::new(CampaignBidderOptimal) as Box<dyn campaigns::CampaignBidder>;
-        let campaign_optimal = CampaignGeneral {
+        let campaign_optimal = CampaignSimple {
             campaign_id: 0,
             campaign_name: "Optimal".to_string(),
             converge_target: Box::new(ConvergeNone),
@@ -106,7 +109,7 @@ fn main() {
         };
         
         let bidder_max_margin = Box::new(BidderMaxMargin) as Box<dyn campaigns::CampaignBidder>;
-        let campaign_max_margin = CampaignGeneral {
+        let campaign_max_margin = CampaignSimple {
             campaign_id: 0,
             campaign_name: "MaxMargin".to_string(),
             converge_target: Box::new(ConvergeNone),

@@ -7,7 +7,7 @@ use crate::warnln;
 use std::path::PathBuf;
 use crate::utils::VERBOSE_AUCTION;
 use std::sync::atomic::Ordering;
-pub use crate::controllers::ControllerState;
+pub use crate::controller_state::ControllerState;
 
 /// Trait for campaign convergence strategies
 pub trait ConvergeTargetAny<T> {

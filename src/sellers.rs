@@ -67,6 +67,15 @@ pub trait SellerTrait {
     /// `true` if boost_factor was changed, `false` if it remained the same
     fn next_controller_state(&self, previous_state: &dyn crate::controllers::ControllerState, next_state: &mut dyn crate::controllers::ControllerState, seller_stat: &crate::simulationrun::SellerStat) -> bool;
     
+    /// Get the control variable (boost factor) from the controller state
+    /// 
+    /// # Arguments
+    /// * `controller_state` - Controller state to extract the boost factor from
+    /// 
+    /// # Returns
+    /// The control variable value (boost factor)
+    fn get_control_variable(&self, controller_state: &dyn crate::controllers::ControllerState) -> f64;
+    
 }
 
 /// General seller structure that can use any charging strategy
@@ -107,6 +116,10 @@ impl SellerTrait for SellerGeneral {
     fn next_controller_state(&self, previous_state: &dyn crate::controllers::ControllerState, next_state: &mut dyn crate::controllers::ControllerState, seller_stat: &crate::simulationrun::SellerStat) -> bool {
         let (actual, target) = self.converge_target.get_actual_and_target(seller_stat);
         self.converge_controller.next_controller_state(previous_state, next_state, actual, target)
+    }
+    
+    fn get_control_variable(&self, controller_state: &dyn crate::controllers::ControllerState) -> f64 {
+        self.converge_controller.get_control_variable(controller_state)
     }
 }
 
