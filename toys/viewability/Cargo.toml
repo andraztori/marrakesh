@@ -1,0 +1,9 @@
+[package]
+name = "viewability"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+gtk4 = { version = "0.8", package = "gtk4" }
+plotters = { version = "0.3", features = ["bitmap_backend", "evcxr"] }
+plotters-bitmap = "0.3"
