@@ -59,7 +59,7 @@ fn prepare_simulationconverge(hb_impressions: usize, campaign_type: CampaignType
     );
 
     // Create marketplace containing campaigns, sellers, and impressions
-    let marketplace = Marketplace::new(campaigns, sellers, &impressions_params, SimulationType::Standard);
+    let marketplace = Marketplace::new(campaigns, sellers, &impressions_params, SimulationType::FractionalInternalAuction { softmax_temperature: 0.5 });
 
     // Create simulation converge instance (initializes campaign and seller converges internally)
     SimulationConverge::new(marketplace)

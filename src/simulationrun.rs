@@ -255,6 +255,7 @@ impl SimulationStat {
                             // Update overall supply cost (once per impression)
                             overall_stat.total_supply_cost += total_supply_cost;
                             seller_stat.total_supply_cost += total_supply_cost;
+                        }
                     }
                 }
             }
