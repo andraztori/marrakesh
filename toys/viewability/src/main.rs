@@ -1,5 +1,5 @@
 use gtk4::prelude::*;
-use gtk4::{Application, ApplicationWindow, Box, Grid, Label, Scale, Orientation, Picture, Adjustment};
+use gtk4::{Application, ApplicationWindow, Box, Grid, Label, Scale, Orientation, Picture, Adjustment, GestureDrag};
 use plotters::prelude::*;
 use plotters::backend::BitMapBackend;
 use std::sync::{Arc, Mutex};
@@ -253,7 +253,7 @@ fn render_chart1(data: &ComputedData) -> Vec<u8> {
     buffer
 }
 
-fn render_chart3(data: &ComputedData) -> Vec<u8> {
+fn render_chart3(data: &ComputedData, isohypsis_value: f64, yaw: f64, pitch: f64) -> Vec<u8> {
     let width = 600;
     let height = 420;
     let mut buffer = vec![0u8; width * height * 3];
@@ -286,6 +286,14 @@ fn render_chart3(data: &ComputedData) -> Vec<u8> {
             .y_label_area_size(50)
             .build_cartesian_3d(0.0..MAX_CPM, 0.0..MAX_CPM, min_c..max_c)
             .unwrap();
+
+        // Set 3D view with scale to prevent overflow
+        chart.with_projection(|mut pb| {
+            pb.pitch = pitch;
+            pb.yaw = yaw;
+            pb.scale = 0.7; // Scale down to keep content within bounds
+            pb.into_matrix()
+        });
 
         chart.configure_axes().draw().unwrap();
 
@@ -331,12 +339,207 @@ fn render_chart3(data: &ComputedData) -> Vec<u8> {
             }
         }
 
+        // Draw isohypsis contour in CPM A/B/C space
+        // Use the same contour detection method as chart4 - find crossing points along grid edges
+        let mut isohypsis_points = Vec::new();
+        let rows = data.weighted_sum.len();
+        let cols = if rows > 0 { data.weighted_sum[0].len() } else { 0 };
+        let contour_step = 2; // Sample every 2nd row/col for contour finding (balance between accuracy and performance)
+        let max_points = 2000; // Limit total points to prevent performance issues
+        
+        // Find contour crossings along grid edges (same method as chart4)
+        for j in (0..rows.saturating_sub(1)).step_by(contour_step) {
+            for i in (0..cols.saturating_sub(1)).step_by(contour_step) {
+                if isohypsis_points.len() >= max_points {
+                    break;
+                }
+                if !data.valid_mask[j][i] || !data.valid_mask[j][i+1] || 
+                   !data.valid_mask[j+1][i] || !data.valid_mask[j+1][i+1] {
+                    continue;
+                }
+                
+                let v00 = data.weighted_sum[j][i];
+                let v01 = data.weighted_sum[j][i+1];
+                let v10 = data.weighted_sum[j+1][i];
+                let v11 = data.weighted_sum[j+1][i+1];
+                
+                if !v00.is_finite() || !v01.is_finite() || !v10.is_finite() || !v11.is_finite() {
+                    continue;
+                }
+                
+                // Get CPM coordinates for interpolation
+                let x0 = data.cpm_a[j][i];
+                let x1 = data.cpm_a[j][i+1];
+                let y0 = data.cpm_b[j][i];
+                let y1 = data.cpm_b[j+1][i];
+                let z00 = data.cpm_c[j][i];
+                let z01 = data.cpm_c[j][i+1];
+                let z10 = data.cpm_c[j+1][i];
+                let z11 = data.cpm_c[j+1][i+1];
+                
+                // Check each edge for crossing using linear interpolation
+                // Top edge (v00 to v01)
+                if (v00 < isohypsis_value && v01 >= isohypsis_value) || 
+                   (v00 >= isohypsis_value && v01 < isohypsis_value) {
+                    let diff = v01 - v00;
+                    if diff.abs() > 1e-10 {
+                        let t = (isohypsis_value - v00) / diff;
+                        let x = x0 + t * (x1 - x0);
+                        let z = z00 + t * (z01 - z00);
+                        isohypsis_points.push((x, y0, z));
+                    }
+                }
+                
+                // Bottom edge (v10 to v11)
+                if (v10 < isohypsis_value && v11 >= isohypsis_value) || 
+                   (v10 >= isohypsis_value && v11 < isohypsis_value) {
+                    let diff = v11 - v10;
+                    if diff.abs() > 1e-10 {
+                        let t = (isohypsis_value - v10) / diff;
+                        let x = x0 + t * (x1 - x0);
+                        let z = z10 + t * (z11 - z10);
+                        isohypsis_points.push((x, y1, z));
+                    }
+                }
+                
+                // Left edge (v00 to v10)
+                if (v00 < isohypsis_value && v10 >= isohypsis_value) || 
+                   (v00 >= isohypsis_value && v10 < isohypsis_value) {
+                    let diff = v10 - v00;
+                    if diff.abs() > 1e-10 {
+                        let t = (isohypsis_value - v00) / diff;
+                        let y = y0 + t * (y1 - y0);
+                        let z = z00 + t * (z10 - z00);
+                        isohypsis_points.push((x0, y, z));
+                    }
+                }
+                
+                // Right edge (v01 to v11)
+                if (v01 < isohypsis_value && v11 >= isohypsis_value) || 
+                   (v01 >= isohypsis_value && v11 < isohypsis_value) {
+                    let diff = v11 - v01;
+                    if diff.abs() > 1e-10 {
+                        let t = (isohypsis_value - v01) / diff;
+                        let y = y0 + t * (y1 - y0);
+                        let z = z01 + t * (z11 - z01);
+                        isohypsis_points.push((x1, y, z));
+                    }
+                }
+                
+                if isohypsis_points.len() >= max_points {
+                    break;
+                }
+            }
+            if isohypsis_points.len() >= max_points {
+                break;
+            }
+        }
+        
+        // Draw isohypsis points - optimized for performance
+        if !isohypsis_points.is_empty() {
+            // For large point sets, use simpler grouping to avoid O(n²) complexity
+            if isohypsis_points.len() > 500 {
+                // Draw as simple point cloud for large sets
+                chart.draw_series(
+                    PointSeries::of_element(
+                        isohypsis_points,
+                        2,
+                        &RED,
+                        &|c, s, st| {
+                            return EmptyElement::at(c)
+                                + Circle::new((0, 0), s, st.filled());
+                        },
+                    )
+                ).unwrap();
+            } else {
+                // For smaller sets, group into paths (but limit search to avoid O(n²))
+                let mut used = vec![false; isohypsis_points.len()];
+                let mut paths = Vec::new();
+                let max_path_length = 100; // Limit path length
+                
+                for start_idx in 0..isohypsis_points.len() {
+                    if used[start_idx] {
+                        continue;
+                    }
+                    
+                    let mut path = vec![isohypsis_points[start_idx]];
+                    used[start_idx] = true;
+                    
+                    // Try to extend the path (with limited iterations)
+                    for _iter in 0..max_path_length {
+                        let mut found = false;
+                        let current = path[path.len() - 1];
+                        let search_radius_sq = (STEP * 1.5).powi(2);
+                        
+                        // Only search nearby points (within grid distance)
+                        for (idx, &point) in isohypsis_points.iter().enumerate() {
+                            if used[idx] {
+                                continue;
+                            }
+                            
+                            let dist_sq = (current.0 - point.0).powi(2) + (current.1 - point.1).powi(2);
+                            if dist_sq < search_radius_sq {
+                                path.push(point);
+                                used[idx] = true;
+                                found = true;
+                                break;
+                            }
+                        }
+                        
+                        if !found {
+                            break;
+                        }
+                    }
+                    
+                    if path.len() > 1 {
+                        paths.push(path);
+                    }
+                }
+                
+                // Draw paths
+                for path in paths {
+                    chart.draw_series(
+                        PointSeries::of_element(
+                            path,
+                            3,
+                            &RED,
+                            &|c, s, st| {
+                                return EmptyElement::at(c)
+                                    + Circle::new((0, 0), s, st.filled());
+                            },
+                        )
+                    ).unwrap();
+                }
+                
+                // Draw remaining individual points
+                let remaining: Vec<_> = isohypsis_points.iter()
+                    .enumerate()
+                    .filter(|(idx, _)| !used[*idx])
+                    .map(|(_, &p)| p)
+                    .collect();
+                
+                if !remaining.is_empty() {
+                    chart.draw_series(
+                        PointSeries::of_element(
+                            remaining,
+                            2,
+                            &RED,
+                            &|c, s, st| {
+                                return EmptyElement::at(c)
+                                    + Circle::new((0, 0), s, st.filled());
+                            },
+                        )
+                    ).unwrap();
+                }
+            }
+        }
+
         root.present().unwrap();
     }
     buffer
 }
 
-fn render_chart4(data: &ComputedData, isohypsis_value: f64) -> Vec<u8> {
+fn render_chart4(data: &ComputedData, isohypsis_value: f64, yaw: f64, pitch: f64) -> Vec<u8> {
     let width = 600;
     let height = 420;
     let mut buffer = vec![0u8; width * height * 3];
@@ -368,6 +571,14 @@ fn render_chart4(data: &ComputedData, isohypsis_value: f64) -> Vec<u8> {
             .y_label_area_size(50)
             .build_cartesian_3d(0.0..MAX_CPM, 0.0..MAX_CPM, min_ws..max_ws)
             .unwrap();
+
+        // Set 3D view with scale to prevent overflow
+        chart.with_projection(|mut pb| {
+            pb.pitch = pitch;
+            pb.yaw = yaw;
+            pb.scale = 0.7; // Scale down to keep content within bounds
+            pb.into_matrix()
+        });
 
         chart.configure_axes().draw().unwrap();
 
@@ -412,14 +623,19 @@ fn render_chart4(data: &ComputedData, isohypsis_value: f64) -> Vec<u8> {
         }
 
         // Draw isohypsis contour - find crossing points and connect them
-        // Use full resolution for contour to maintain accuracy
+        // Use reduced resolution for performance, but still accurate enough
         let mut contour_segments = Vec::new();
         let rows = data.weighted_sum.len();
         let cols = if rows > 0 { data.weighted_sum[0].len() } else { 0 };
+        let contour_step = 2; // Sample every 2nd row/col for contour finding (balance between accuracy and performance)
+        let max_contour_points = 1000; // Limit contour points to prevent performance issues
         
-        // Find contour crossings along grid edges (use full resolution for accuracy)
-        for j in 0..rows.saturating_sub(1) {
-            for i in 0..cols.saturating_sub(1) {
+        // Find contour crossings along grid edges (reduced resolution for performance)
+        for j in (0..rows.saturating_sub(1)).step_by(contour_step) {
+            for i in (0..cols.saturating_sub(1)).step_by(contour_step) {
+                if contour_segments.len() >= max_contour_points {
+                    break;
+                }
                 if !data.valid_mask[j][i] || !data.valid_mask[j][i+1] || 
                    !data.valid_mask[j+1][i] || !data.valid_mask[j+1][i+1] {
                     continue;
@@ -483,61 +699,23 @@ fn render_chart4(data: &ComputedData, isohypsis_value: f64) -> Vec<u8> {
                         contour_segments.push((x1, y, isohypsis_value));
                     }
                 }
+                if contour_segments.len() >= max_contour_points {
+                    break;
+                }
+            }
+            if contour_segments.len() >= max_contour_points {
+                break;
             }
         }
         
-        // Draw isohypsis contour - connect crossing points into continuous lines
+        // Draw isohypsis contour - optimized for performance
         if !contour_segments.is_empty() {
-            // Group points into connected paths
-            // Simple approach: connect points that are close together
-            let mut used = vec![false; contour_segments.len()];
-            let mut paths = Vec::new();
-            
-            for start_idx in 0..contour_segments.len() {
-                if used[start_idx] {
-                    continue;
-                }
-                
-                let mut path = vec![contour_segments[start_idx]];
-                used[start_idx] = true;
-                
-                // Try to extend the path by finding nearby unused points
-                loop {
-                    let mut found = false;
-                    let current = path[path.len() - 1];
-                    
-                    for (idx, &point) in contour_segments.iter().enumerate() {
-                        if used[idx] {
-                            continue;
-                        }
-                        
-                        let dist = ((current.0 - point.0).powi(2) + (current.1 - point.1).powi(2)).sqrt();
-                        if dist < STEP * 1.5 {
-                            path.push(point);
-                            used[idx] = true;
-                            found = true;
-                            break;
-                        }
-                    }
-                    
-                    if !found {
-                        break;
-                    }
-                }
-                
-                if path.len() > 1 {
-                    paths.push(path);
-                }
-            }
-            
-            // Draw each path as a connected line by drawing points close together
-            // For 3D plots, we'll draw the contour as a series of closely spaced points
-            // that visually form a line
-            for path in paths {
-                // Draw the path as a series of points
+            // For large point sets, use simpler rendering
+            if contour_segments.len() > 300 {
+                // Draw as simple point cloud for large sets
                 chart.draw_series(
                     PointSeries::of_element(
-                        path,
+                        contour_segments,
                         2,
                         &RED,
                         &|c, s, st| {
@@ -546,20 +724,86 @@ fn render_chart4(data: &ComputedData, isohypsis_value: f64) -> Vec<u8> {
                         },
                     )
                 ).unwrap();
+            } else {
+                // For smaller sets, group into paths (with limited iterations)
+                let mut used = vec![false; contour_segments.len()];
+                let mut paths = Vec::new();
+                let max_path_length = 50; // Limit path length
+                
+                for start_idx in 0..contour_segments.len() {
+                    if used[start_idx] {
+                        continue;
+                    }
+                    
+                    let mut path = vec![contour_segments[start_idx]];
+                    used[start_idx] = true;
+                    
+                    // Try to extend the path (with limited iterations)
+                    for _iter in 0..max_path_length {
+                        let mut found = false;
+                        let current = path[path.len() - 1];
+                        let search_radius_sq = (STEP * 2.0).powi(2);
+                        
+                        for (idx, &point) in contour_segments.iter().enumerate() {
+                            if used[idx] {
+                                continue;
+                            }
+                            
+                            let dist_sq = (current.0 - point.0).powi(2) + (current.1 - point.1).powi(2);
+                            if dist_sq < search_radius_sq {
+                                path.push(point);
+                                used[idx] = true;
+                                found = true;
+                                break;
+                            }
+                        }
+                        
+                        if !found {
+                            break;
+                        }
+                    }
+                    
+                    if path.len() > 1 {
+                        paths.push(path);
+                    }
+                }
+                
+                // Draw paths
+                for path in paths {
+                    chart.draw_series(
+                        PointSeries::of_element(
+                            path,
+                            2,
+                            &RED,
+                            &|c, s, st| {
+                                return EmptyElement::at(c)
+                                    + Circle::new((0, 0), s, st.filled());
+                            },
+                        )
+                    ).unwrap();
+                }
+                
+                // Draw remaining individual points
+                let remaining: Vec<_> = contour_segments.iter()
+                    .enumerate()
+                    .filter(|(idx, _)| !used[*idx])
+                    .map(|(_, &p)| p)
+                    .collect();
+                
+                if !remaining.is_empty() {
+                    chart.draw_series(
+                        PointSeries::of_element(
+                            remaining,
+                            2,
+                            &RED,
+                            &|c, s, st| {
+                                return EmptyElement::at(c)
+                                    + Circle::new((0, 0), s, st.filled());
+                            },
+                        )
+                    ).unwrap();
+                }
             }
-            
-            // Also draw individual crossing points for better visibility
-            chart.draw_series(
-                PointSeries::of_element(
-                    contour_segments,
-                    2,
-                    &RED,
-                    &|c, s, st| {
-                        return EmptyElement::at(c)
-                            + Circle::new((0, 0), s, st.filled());
-                    },
-                )
-            ).unwrap();
         }
 
         root.present().unwrap();
@@ -586,6 +830,8 @@ struct MainWindow {
     picture1: Picture,
     picture3: Picture,
     picture4: Picture,
+    rotation3: Arc<Mutex<(f64, f64)>>, // (yaw, pitch) for chart3
+    rotation4: Arc<Mutex<(f64, f64)>>, // (yaw, pitch) for chart4
 }
 
 impl MainWindow {
@@ -631,11 +877,18 @@ impl MainWindow {
 
         box3.append(&charts_grid);
 
+        // Initialize rotation state with sensible 3D perspective
+        // pitch ~0.5 and yaw ~0.5 gives a nice angled view
+        let rotation3 = Arc::new(Mutex::new((0.5, 0.5))); // (yaw, pitch)
+        let rotation4 = Arc::new(Mutex::new((0.5, 0.5)));
+
         // Create update function
         let picture1_clone = picture1.clone();
         let picture3_clone = picture3.clone();
         let picture4_clone = picture4.clone();
         let params_clone = Arc::clone(&parameters);
+        let rot3_clone = Arc::clone(&rotation3);
+        let rot4_clone = Arc::clone(&rotation4);
         
         let update_charts = move || {
             let params = params_clone.lock().unwrap();
@@ -643,9 +896,14 @@ impl MainWindow {
             let isohypsis = params.isohypsis_value;
             drop(params);
 
+            let rot3 = rot3_clone.lock().unwrap();
+            let rot4 = rot4_clone.lock().unwrap();
+
             let buffer1 = render_chart1(&data);
-            let buffer3 = render_chart3(&data);
-            let buffer4 = render_chart4(&data, isohypsis);
+            let buffer3 = render_chart3(&data, isohypsis, rot3.0, rot3.1);
+            let buffer4 = render_chart4(&data, isohypsis, rot4.0, rot4.1);
+            drop(rot3);
+            drop(rot4);
 
             update_picture_from_buffer(&picture1_clone, &buffer1, 600, 420);
             update_picture_from_buffer(&picture3_clone, &buffer3, 600, 420);
@@ -654,9 +912,128 @@ impl MainWindow {
 
         // Initial render
         update_charts();
+        
+        // Add mouse drag handlers for natural 3D rotation
+        let update_charts_3 = {
+            let picture1 = picture1.clone();
+            let picture3 = picture3.clone();
+            let picture4 = picture4.clone();
+            let params_clone2 = Arc::clone(&parameters);
+            let rot3_clone2 = Arc::clone(&rotation3);
+            let rot4_clone2 = Arc::clone(&rotation4);
+            move || {
+                let params = params_clone2.lock().unwrap();
+                let data = setup_data(&params);
+                let isohypsis = params.isohypsis_value;
+                drop(params);
+                
+                let rot3 = rot3_clone2.lock().unwrap();
+                let rot4 = rot4_clone2.lock().unwrap();
+
+                let buffer1 = render_chart1(&data);
+                let buffer3 = render_chart3(&data, isohypsis, rot3.0, rot3.1);
+                let buffer4 = render_chart4(&data, isohypsis, rot4.0, rot4.1);
+                drop(rot3);
+                drop(rot4);
+
+                update_picture_from_buffer(&picture1, &buffer1, 600, 420);
+                update_picture_from_buffer(&picture3, &buffer3, 600, 420);
+                update_picture_from_buffer(&picture4, &buffer4, 600, 420);
+            }
+        };
+        
+        let update_charts_4 = {
+            let picture1 = picture1.clone();
+            let picture3 = picture3.clone();
+            let picture4 = picture4.clone();
+            let params_clone2 = Arc::clone(&parameters);
+            let rot3_clone2 = Arc::clone(&rotation3);
+            let rot4_clone2 = Arc::clone(&rotation4);
+            move || {
+                let params = params_clone2.lock().unwrap();
+                let data = setup_data(&params);
+                let isohypsis = params.isohypsis_value;
+                drop(params);
+                
+                let rot3 = rot3_clone2.lock().unwrap();
+                let rot4 = rot4_clone2.lock().unwrap();
+
+                let buffer1 = render_chart1(&data);
+                let buffer3 = render_chart3(&data, isohypsis, rot3.0, rot3.1);
+                let buffer4 = render_chart4(&data, isohypsis, rot4.0, rot4.1);
+                drop(rot3);
+                drop(rot4);
+
+                update_picture_from_buffer(&picture1, &buffer1, 600, 420);
+                update_picture_from_buffer(&picture3, &buffer3, 600, 420);
+                update_picture_from_buffer(&picture4, &buffer4, 600, 420);
+            }
+        };
+        
+        // Add gesture drag for chart3 - natural rotation
+        let gesture3 = GestureDrag::new();
+        let start_rot3 = Arc::new(Mutex::new((0.0, 0.0)));
+        let rot3_gesture = Arc::clone(&rotation3);
+        let update_fn_3 = Rc::new(RefCell::new(update_charts_3));
+        
+        let rot3_start = Arc::clone(&rotation3);
+        let start_rot3_clone = Arc::clone(&start_rot3);
+        gesture3.connect_drag_begin(move |_gesture, _start_x, _start_y| {
+            let rot = rot3_start.lock().unwrap();
+            *start_rot3_clone.lock().unwrap() = (rot.0, rot.1);
+            drop(rot);
+        });
+        
+        let rot3_update = Arc::clone(&rotation3);
+        let start_rot3_update = Arc::clone(&start_rot3);
+        gesture3.connect_drag_update(move |_gesture, offset_x, offset_y| {
+            let start_rot = start_rot3_update.lock().unwrap();
+            let mut rot = rot3_update.lock().unwrap();
+            
+            // Natural rotation: horizontal drag rotates yaw, vertical drag rotates pitch
+            // Inverted Y for intuitive control (drag up = tilt up)
+            rot.0 = start_rot.0 + offset_x * 0.005; // yaw
+            rot.1 = (start_rot.1 - offset_y * 0.005).max(-1.0).min(1.0); // pitch, clamped
+            
+            drop(rot);
+            drop(start_rot);
+            update_fn_3.borrow_mut()();
+        });
+        picture3.add_controller(gesture3);
+        
+        // Add gesture drag for chart4 - natural rotation
+        let gesture4 = GestureDrag::new();
+        let start_rot4 = Arc::new(Mutex::new((0.0, 0.0)));
+        let update_fn_4 = Rc::new(RefCell::new(update_charts_4));
+        
+        let rot4_start = Arc::clone(&rotation4);
+        let start_rot4_clone = Arc::clone(&start_rot4);
+        gesture4.connect_drag_begin(move |_gesture, _start_x, _start_y| {
+            let rot = rot4_start.lock().unwrap();
+            *start_rot4_clone.lock().unwrap() = (rot.0, rot.1);
+            drop(rot);
+        });
+        
+        let rot4_update = Arc::clone(&rotation4);
+        let start_rot4_update = Arc::clone(&start_rot4);
+        gesture4.connect_drag_update(move |_gesture, offset_x, offset_y| {
+            let start_rot = start_rot4_update.lock().unwrap();
+            let mut rot = rot4_update.lock().unwrap();
+            
+            // Natural rotation: horizontal drag rotates yaw, vertical drag rotates pitch
+            rot.0 = start_rot.0 + offset_x * 0.005; // yaw
+            rot.1 = (start_rot.1 - offset_y * 0.005).max(-1.0).min(1.0); // pitch, clamped
+            
+            drop(rot);
+            drop(start_rot);
+            update_fn_4.borrow_mut()();
+        });
+        picture4.add_controller(gesture4);
 
         // Create sliders with proper callbacks
         let params_for_sliders = Arc::clone(&parameters);
+        let rot3_for_sliders = Arc::clone(&rotation3);
+        let rot4_for_sliders = Arc::clone(&rotation4);
         let update_fn: Rc<RefCell<dyn FnMut()>> = {
             let picture1 = picture1.clone();
             let picture3 = picture3.clone();
@@ -666,10 +1043,15 @@ impl MainWindow {
                 let data = setup_data(&params);
                 let isohypsis = params.isohypsis_value;
                 drop(params);
+                
+                let rot3 = rot3_for_sliders.lock().unwrap();
+                let rot4 = rot4_for_sliders.lock().unwrap();
 
                 let buffer1 = render_chart1(&data);
-                let buffer3 = render_chart3(&data);
-                let buffer4 = render_chart4(&data, isohypsis);
+                let buffer3 = render_chart3(&data, isohypsis, rot3.0, rot3.1);
+                let buffer4 = render_chart4(&data, isohypsis, rot4.0, rot4.1);
+                drop(rot3);
+                drop(rot4);
 
                 update_picture_from_buffer(&picture1, &buffer1, 600, 420);
                 update_picture_from_buffer(&picture3, &buffer3, 600, 420);
@@ -694,6 +1076,8 @@ impl MainWindow {
             picture1,
             picture3,
             picture4,
+            rotation3,
+            rotation4,
         }
     }
 
