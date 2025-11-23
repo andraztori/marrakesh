@@ -253,6 +253,135 @@ fn render_chart1(data: &ComputedData) -> Vec<u8> {
     buffer
 }
 
+fn render_chart2(data: &ComputedData, isohypsis_value: f64) -> Vec<u8> {
+    let width = 600;
+    let height = 420;
+    let mut buffer = vec![0u8; width * height * 3];
+    {
+        let backend = BitMapBackend::with_buffer(&mut buffer, (width as u32, height as u32));
+        let root = backend.into_drawing_area();
+        root.fill(&WHITE).unwrap();
+
+        let mut chart = ChartBuilder::on(&root)
+            .caption("Total Spend vs CPM A (for Isohypsis)", ("sans-serif", 20))
+            .x_label_area_size(40)
+            .y_label_area_size(50)
+            .build_cartesian_2d(0.0..MAX_CPM, 0.0..MAX_CPM * 3.0) // Y-axis: total spend can be up to 3*MAX_CPM
+            .unwrap();
+
+        chart.configure_mesh().draw().unwrap();
+
+        // For each CPM A, find points on the isohypsis and calculate total spend
+        let mut spend_data: Vec<(f64, f64)> = Vec::new(); // (cpm_a, total_spend)
+        let rows = data.weighted_sum.len();
+        let cols = if rows > 0 { data.weighted_sum[0].len() } else { 0 };
+        let tolerance = 0.01;
+        
+        // Collect all points on the isohypsis
+        for j in 0..rows {
+            for i in 0..cols {
+                if data.valid_mask[j][i] {
+                    let ws_val = data.weighted_sum[j][i];
+                    if ws_val.is_finite() && (ws_val - isohypsis_value).abs() < tolerance {
+                        let cpm_a = data.cpm_a[j][i];
+                        let cpm_b = data.cpm_b[j][i];
+                        let cpm_c = data.cpm_c[j][i];
+                        
+                        // Calculate probabilities
+                        let prob_a = data.s_a.get_probability(cpm_a);
+                        let prob_b = data.s_b.get_probability(cpm_b);
+                        let prob_c = data.s_c.get_probability(cpm_c);
+                        
+                        // Calculate total spend
+                        let total_spend = cpm_a * prob_a + cpm_b * prob_b + cpm_c * prob_c;
+                        
+                        spend_data.push((cpm_a, total_spend));
+                    }
+                }
+            }
+        }
+        
+        // Sort by CPM A and group/average for same CPM A values (in case of multiple solutions)
+        spend_data.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+        
+        // Group by CPM A and take average spend (or min/max - let's use average)
+        let mut grouped_data = Vec::new();
+        if !spend_data.is_empty() {
+            let mut current_cpm_a = spend_data[0].0;
+            let mut spends = vec![spend_data[0].1];
+            
+            for &(cpm_a, spend) in spend_data.iter().skip(1) {
+                if (cpm_a - current_cpm_a).abs() < STEP / 2.0 {
+                    // Same CPM A (within tolerance)
+                    spends.push(spend);
+                } else {
+                    // New CPM A - save previous group
+                    let avg_spend = spends.iter().sum::<f64>() / spends.len() as f64;
+                    grouped_data.push((current_cpm_a, avg_spend));
+                    
+                    // Start new group
+                    current_cpm_a = cpm_a;
+                    spends = vec![spend];
+                }
+            }
+            // Don't forget the last group
+            let avg_spend = spends.iter().sum::<f64>() / spends.len() as f64;
+            grouped_data.push((current_cpm_a, avg_spend));
+        }
+        
+        // Draw the line (thin line, no points)
+        if !grouped_data.is_empty() {
+            chart
+                .draw_series(LineSeries::new(
+                    grouped_data.iter().map(|(x, y)| (*x, *y)),
+                    &BLUE,
+                ))
+                .unwrap()
+                .label("Total Spend")
+                .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], &BLUE));
+            
+            // Find the point with minimum Y (lowest total spend)
+            if let Some(min_point) = grouped_data.iter().min_by(|a, b| a.1.partial_cmp(&b.1).unwrap()) {
+                let (min_x, min_y) = *min_point;
+                
+                // Find Y range for vertical line
+                let y_min = grouped_data.iter().map(|(_, y)| *y).fold(f64::INFINITY, f64::min);
+                let y_max = grouped_data.iter().map(|(_, y)| *y).fold(f64::NEG_INFINITY, f64::max);
+                
+                // Draw vertical line at minimum point
+                chart
+                    .draw_series(LineSeries::new(
+                        vec![(min_x, y_min), (min_x, y_max)],
+                        &RED,
+                    ))
+                    .unwrap();
+                
+                // Mark the minimum point with a circle
+                chart
+                    .draw_series(PointSeries::of_element(
+                        vec![(min_x, min_y)],
+                        5,
+                        &RED,
+                        &|c, s, st| {
+                            return EmptyElement::at(c)
+                                + Circle::new((0, 0), s, st.filled());
+                        },
+                    ))
+                    .unwrap();
+            }
+        }
+
+        chart.configure_series_labels()
+            .background_style(&WHITE.mix(0.8))
+            .border_style(&BLACK)
+            .draw()
+            .unwrap();
+
+        root.present().unwrap();
+    }
+    buffer
+}
+
 fn render_chart3(data: &ComputedData, isohypsis_value: f64, yaw: f64, pitch: f64) -> Vec<u8> {
     let width = 600;
     let height = 420;
@@ -828,6 +957,7 @@ struct MainWindow {
     window: ApplicationWindow,
     parameters: Arc<Mutex<Parameters>>,
     picture1: Picture,
+    picture2: Picture,
     picture3: Picture,
     picture4: Picture,
     rotation3: Arc<Mutex<(f64, f64)>>, // (yaw, pitch) for chart3
@@ -860,10 +990,12 @@ impl MainWindow {
         box2.append(&label);
 
         let picture1 = Picture::new();
+        let picture2 = Picture::new();
         let picture3 = Picture::new();
         let picture4 = Picture::new();
 
         picture1.set_size_request(600, 420);
+        picture2.set_size_request(600, 420);
         picture3.set_size_request(600, 420);
         picture4.set_size_request(600, 420);
 
@@ -871,9 +1003,10 @@ impl MainWindow {
         charts_grid.set_row_spacing(10);
         charts_grid.set_column_spacing(10);
 
-        charts_grid.attach(&picture1, 0, 0, 2, 1);
-        charts_grid.attach(&picture3, 0, 1, 1, 1);
-        charts_grid.attach(&picture4, 1, 1, 1, 1);
+        charts_grid.attach(&picture1, 0, 0, 1, 1);  // Top left
+        charts_grid.attach(&picture2, 1, 0, 1, 1);  // Top right
+        charts_grid.attach(&picture3, 0, 1, 1, 1);  // Bottom left
+        charts_grid.attach(&picture4, 1, 1, 1, 1);  // Bottom right
 
         box3.append(&charts_grid);
 
@@ -884,6 +1017,7 @@ impl MainWindow {
 
         // Create update function
         let picture1_clone = picture1.clone();
+        let picture2_clone = picture2.clone();
         let picture3_clone = picture3.clone();
         let picture4_clone = picture4.clone();
         let params_clone = Arc::clone(&parameters);
@@ -900,12 +1034,14 @@ impl MainWindow {
             let rot4 = rot4_clone.lock().unwrap();
 
             let buffer1 = render_chart1(&data);
+            let buffer2 = render_chart2(&data, isohypsis);
             let buffer3 = render_chart3(&data, isohypsis, rot3.0, rot3.1);
             let buffer4 = render_chart4(&data, isohypsis, rot4.0, rot4.1);
             drop(rot3);
             drop(rot4);
 
             update_picture_from_buffer(&picture1_clone, &buffer1, 600, 420);
+            update_picture_from_buffer(&picture2_clone, &buffer2, 600, 420);
             update_picture_from_buffer(&picture3_clone, &buffer3, 600, 420);
             update_picture_from_buffer(&picture4_clone, &buffer4, 600, 420);
         };
@@ -916,6 +1052,7 @@ impl MainWindow {
         // Add mouse drag handlers for natural 3D rotation
         let update_charts_3 = {
             let picture1 = picture1.clone();
+            let picture2 = picture2.clone();
             let picture3 = picture3.clone();
             let picture4 = picture4.clone();
             let params_clone2 = Arc::clone(&parameters);
@@ -931,12 +1068,14 @@ impl MainWindow {
                 let rot4 = rot4_clone2.lock().unwrap();
 
                 let buffer1 = render_chart1(&data);
+                let buffer2 = render_chart2(&data, isohypsis);
                 let buffer3 = render_chart3(&data, isohypsis, rot3.0, rot3.1);
                 let buffer4 = render_chart4(&data, isohypsis, rot4.0, rot4.1);
                 drop(rot3);
                 drop(rot4);
 
                 update_picture_from_buffer(&picture1, &buffer1, 600, 420);
+                update_picture_from_buffer(&picture2, &buffer2, 600, 420);
                 update_picture_from_buffer(&picture3, &buffer3, 600, 420);
                 update_picture_from_buffer(&picture4, &buffer4, 600, 420);
             }
@@ -944,6 +1083,7 @@ impl MainWindow {
         
         let update_charts_4 = {
             let picture1 = picture1.clone();
+            let picture2 = picture2.clone();
             let picture3 = picture3.clone();
             let picture4 = picture4.clone();
             let params_clone2 = Arc::clone(&parameters);
@@ -959,12 +1099,14 @@ impl MainWindow {
                 let rot4 = rot4_clone2.lock().unwrap();
 
                 let buffer1 = render_chart1(&data);
+                let buffer2 = render_chart2(&data, isohypsis);
                 let buffer3 = render_chart3(&data, isohypsis, rot3.0, rot3.1);
                 let buffer4 = render_chart4(&data, isohypsis, rot4.0, rot4.1);
                 drop(rot3);
                 drop(rot4);
 
                 update_picture_from_buffer(&picture1, &buffer1, 600, 420);
+                update_picture_from_buffer(&picture2, &buffer2, 600, 420);
                 update_picture_from_buffer(&picture3, &buffer3, 600, 420);
                 update_picture_from_buffer(&picture4, &buffer4, 600, 420);
             }
@@ -1036,6 +1178,7 @@ impl MainWindow {
         let rot4_for_sliders = Arc::clone(&rotation4);
         let update_fn: Rc<RefCell<dyn FnMut()>> = {
             let picture1 = picture1.clone();
+            let picture2 = picture2.clone();
             let picture3 = picture3.clone();
             let picture4 = picture4.clone();
             Rc::new(RefCell::new(move || {
@@ -1048,12 +1191,14 @@ impl MainWindow {
                 let rot4 = rot4_for_sliders.lock().unwrap();
 
                 let buffer1 = render_chart1(&data);
+                let buffer2 = render_chart2(&data, isohypsis);
                 let buffer3 = render_chart3(&data, isohypsis, rot3.0, rot3.1);
                 let buffer4 = render_chart4(&data, isohypsis, rot4.0, rot4.1);
                 drop(rot3);
                 drop(rot4);
 
                 update_picture_from_buffer(&picture1, &buffer1, 600, 420);
+                update_picture_from_buffer(&picture2, &buffer2, 600, 420);
                 update_picture_from_buffer(&picture3, &buffer3, 600, 420);
                 update_picture_from_buffer(&picture4, &buffer4, 600, 420);
             }))
@@ -1074,6 +1219,7 @@ impl MainWindow {
             window,
             parameters,
             picture1,
+            picture2,
             picture3,
             picture4,
             rotation3,
