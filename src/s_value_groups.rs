@@ -51,7 +51,7 @@ fn prepare_simulationconverge(variant: VariantConfig) -> SimulationConverge {
             campaigns.add(
                 "Campaign 0".to_string(),
                 CampaignType::MULTIPLICATIVE_PACING,
-                ConvergeTarget::TOTAL_BUDGET { target_total_budget: 20.0 },
+                vec![ConvergeTarget::TOTAL_BUDGET { target_total_budget: 20.0 }],
             );
         }
         VariantConfig::Two10 => {
@@ -59,12 +59,12 @@ fn prepare_simulationconverge(variant: VariantConfig) -> SimulationConverge {
             campaigns.add(
                 "Campaign 0".to_string(),
                 CampaignType::MULTIPLICATIVE_PACING,
-                ConvergeTarget::TOTAL_BUDGET { target_total_budget: 10.0 },
+                vec![ConvergeTarget::TOTAL_BUDGET { target_total_budget: 10.0 }],
             );
             campaigns.add(
                 "Campaign 1".to_string(),
                 CampaignType::MULTIPLICATIVE_PACING,
-                ConvergeTarget::TOTAL_BUDGET { target_total_budget: 10.0 },
+                vec![ConvergeTarget::TOTAL_BUDGET { target_total_budget: 10.0 }],
             );
         }
         VariantConfig::Two10ValueGroup => {
@@ -72,12 +72,12 @@ fn prepare_simulationconverge(variant: VariantConfig) -> SimulationConverge {
             campaigns.add(
                 "Campaign 0".to_string(),
                 CampaignType::MULTIPLICATIVE_PACING,
-                ConvergeTarget::TOTAL_BUDGET { target_total_budget: 10.0 },
+                vec![ConvergeTarget::TOTAL_BUDGET { target_total_budget: 10.0 }],
             );
             campaigns.add(
                 "Campaign 1".to_string(),
                 CampaignType::MULTIPLICATIVE_PACING,
-                ConvergeTarget::TOTAL_BUDGET { target_total_budget: 10.0 },
+                vec![ConvergeTarget::TOTAL_BUDGET { target_total_budget: 10.0 }],
             );
             // Create a value group containing both campaigns
             campaigns.create_value_group(vec![0, 1]);

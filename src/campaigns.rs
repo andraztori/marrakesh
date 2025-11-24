@@ -17,6 +17,7 @@ pub enum CampaignType {
     OPTIMAL,
     CHEATER,
     MAX_MARGIN,
+    MAX_MARGIN_DOUBLE_TARGET,
     ALB,
 }
 
@@ -26,6 +27,7 @@ pub enum CampaignType {
 pub enum ConvergeTarget {
     TOTAL_BUDGET { target_total_budget: f64 },
     TOTAL_IMPRESSIONS { target_total_impressions: i32 },
+    AVG_VALUE { avg_impression_value_to_campaign: f64 },
     NONE { default_pacing: f64 },
 }
 
@@ -37,7 +39,7 @@ pub enum ConvergeTarget {
 /// Simulation then creates such converge parameters for each campaign and uses them to be able to call next_controller_state() 
 
 // Re-export convergence target types for convenience
-pub use crate::campaign_targets::{ConvergeTargetTotalImpressions, ConvergeTargetTotalBudget, ConvergeNone};
+pub use crate::campaign_targets::{ConvergeTargetTotalImpressions, ConvergeTargetTotalBudget, ConvergeTargetAvgValue, ConvergeNone};
 
 
 /// Trait for campaigns participating in auctions
@@ -154,6 +156,7 @@ impl CampaignTrait for CampaignDouble {
         
         // Calculate base_value: lambda + mu * (value_to_campaign - secondary_target)
         // for viwablity lambda + mu * (viewability - targeted_viability)
+//        println!("value_to_campaign: {:.4}, secondary_target: {:.4}", value_to_campaign, secondary_target);
         let base_value = lambda * seller_boost_factor + mu * (value_to_campaign - secondary_target);
         
         // Get competition data (required for max margin bidding)
@@ -192,7 +195,7 @@ impl CampaignTrait for CampaignDouble {
     
     fn type_target_and_controller_state_string(&self, controller_state: &dyn ControllerState) -> String {
         format!(
-            "{} (Primary: {}, Secondary: {}, {})",
+            "{} ({}, Secondary: {}, {})",
             self.bidder.get_bidding_type(),
             self.converge_target_primary.converge_target_string(),
             self.converge_target_secondary.converge_target_string(),
@@ -222,21 +225,20 @@ impl Campaigns {
         }
     }
 
-    /// Add a campaign to the collection
+    /// Convert a ConvergeTarget into a converge target box and controller
     /// 
     /// # Arguments
-    /// * `campaign_name` - Name of the campaign
-    /// * `campaign_type` - Type of campaign (bidding strategy)
-    /// * `converge_target` - Target for convergence
+    /// * `converge_target` - The convergence target to convert
     /// 
     /// # Returns
-    /// The campaign_id of the just added campaign
-    pub fn add(&mut self, campaign_name: String, campaign_type: CampaignType, converge_target: ConvergeTarget) -> usize {
-        // No limit on number of campaigns
-        let campaign_id = self.campaigns.len();
-        
-        // Create converge_target and converge_controller based on converge_target
-        let (converge_target_box, converge_controller): (Box<dyn ConvergeTargetAny<crate::simulationrun::CampaignStat>>, Box<dyn crate::controllers::ConvergeController>) = match converge_target {
+    /// A tuple of (converge_target_box, converge_controller)
+    fn convert_converge_target(
+        converge_target: ConvergeTarget,
+    ) -> (
+        Box<dyn ConvergeTargetAny<crate::simulationrun::CampaignStat>>,
+        Box<dyn crate::controllers::ConvergeController>,
+    ) {
+        match converge_target {
             ConvergeTarget::TOTAL_IMPRESSIONS { target_total_impressions } => {
                 (
                     Box::new(ConvergeTargetTotalImpressions {
@@ -253,17 +255,41 @@ impl Campaigns {
                     Box::new(crate::controllers::ConvergeControllerProportional::new())
                 )
             }
+            ConvergeTarget::AVG_VALUE { avg_impression_value_to_campaign } => {
+                (
+                    Box::new(ConvergeTargetAvgValue {
+                        avg_impression_value_to_campaign: avg_impression_value_to_campaign,
+                    }),
+                    Box::new(crate::controllers::ConvergeControllerProportional::new())
+                )
+            }
             ConvergeTarget::NONE { default_pacing } => {
                 (
                     Box::new(ConvergeNone),
                     Box::new(crate::controllers::ConvergeControllerConstant::new(default_pacing))
                 )
             }
-        };
+        }
+    }
+
+    /// Add a campaign to the collection
+    /// 
+    /// # Arguments
+    /// * `campaign_name` - Name of the campaign
+    /// * `campaign_type` - Type of campaign (bidding strategy)
+    /// * `converge_targets` - Vector of targets for convergence
+    /// 
+    /// # Returns
+    /// The campaign_id of the just added campaign
+    pub fn add(&mut self, campaign_name: String, campaign_type: CampaignType, converge_targets: Vec<ConvergeTarget>) -> usize {
+        // No limit on number of campaigns
+        let campaign_id = self.campaigns.len();
         
         // Create campaign based on campaign_type
         match campaign_type {
             CampaignType::MULTIPLICATIVE_PACING => {
+                assert_eq!(converge_targets.len(), 1, "MULTIPLICATIVE_PACING requires exactly one converge target");
+                let (converge_target_box, converge_controller) = Self::convert_converge_target(converge_targets[0].clone());
                 let bidder = Box::new(CampaignBidderMultiplicative) as Box<dyn CampaignBidder>;
                 self.campaigns.push(Box::new(CampaignSimple {
                     campaign_id,
@@ -274,6 +300,8 @@ impl Campaigns {
                 }));
             }
             CampaignType::OPTIMAL => {
+                assert_eq!(converge_targets.len(), 1, "OPTIMAL requires exactly one converge target");
+                let (converge_target_box, converge_controller) = Self::convert_converge_target(converge_targets[0].clone());
                 let bidder = Box::new(CampaignBidderOptimal) as Box<dyn CampaignBidder>;
                 self.campaigns.push(Box::new(CampaignSimple {
                     campaign_id,
@@ -284,6 +312,8 @@ impl Campaigns {
                 }));
             }
             CampaignType::CHEATER => {
+                assert_eq!(converge_targets.len(), 1, "CHEATER requires exactly one converge target");
+                let (converge_target_box, converge_controller) = Self::convert_converge_target(converge_targets[0].clone());
                 let bidder = Box::new(CampaignBidderCheaterLastLook) as Box<dyn CampaignBidder>;
                 self.campaigns.push(Box::new(CampaignSimple {
                     campaign_id,
@@ -294,6 +324,8 @@ impl Campaigns {
                 }));
             }
             CampaignType::MAX_MARGIN => {
+                assert_eq!(converge_targets.len(), 1, "MAX_MARGIN requires exactly one converge target");
+                let (converge_target_box, converge_controller) = Self::convert_converge_target(converge_targets[0].clone());
                 let bidder = Box::new(BidderMaxMargin) as Box<dyn CampaignBidder>;
                 self.campaigns.push(Box::new(CampaignSimple {
                     campaign_id,
@@ -303,7 +335,24 @@ impl Campaigns {
                     bidder,
                 }));
             }
+            CampaignType::MAX_MARGIN_DOUBLE_TARGET => {
+                assert_eq!(converge_targets.len(), 2, "MAX_MARGIN_DOUBLE_TARGET requires exactly two converge targets");
+                let (converge_target_primary, _) = Self::convert_converge_target(converge_targets[0].clone());
+                let (converge_target_secondary, _) = Self::convert_converge_target(converge_targets[1].clone());
+                let bidder = Box::new(BidderMaxMargin) as Box<dyn CampaignBidder>;
+                let converge_controller = Box::new(crate::controllers::ConvergeDoubleProportionalController::new()) as Box<dyn crate::controllers::ConvergeControllerDouble>;
+                self.campaigns.push(Box::new(CampaignDouble {
+                    campaign_id,
+                    campaign_name,
+                    converge_target_primary,
+                    converge_target_secondary,
+                    converge_controller,
+                    bidder,
+                }));
+            }
             CampaignType::ALB => {
+                assert_eq!(converge_targets.len(), 1, "ALB requires exactly one converge target");
+                let (converge_target_box, converge_controller) = Self::convert_converge_target(converge_targets[0].clone());
                 let bidder = Box::new(crate::campaign_bidders::CampaignBidderALB) as Box<dyn CampaignBidder>;
                 self.campaigns.push(Box::new(CampaignSimple {
                     campaign_id,
@@ -523,7 +572,7 @@ mod tests {
         campaigns.add(
             "Fixed Pacing Campaign".to_string(),
             CampaignType::MULTIPLICATIVE_PACING,
-            ConvergeTarget::NONE { default_pacing: 0.75 },
+            vec![ConvergeTarget::NONE { default_pacing: 0.75 }],
         );
 
         assert_eq!(campaigns.campaigns.len(), 1);
@@ -586,9 +635,9 @@ mod tests {
         let mut campaigns = Campaigns::new();
         
         // Add some campaigns
-        campaigns.add("Campaign 0".to_string(), CampaignType::MULTIPLICATIVE_PACING, ConvergeTarget::NONE { default_pacing: 1.0 });
-        campaigns.add("Campaign 1".to_string(), CampaignType::MULTIPLICATIVE_PACING, ConvergeTarget::NONE { default_pacing: 1.0 });
-        campaigns.add("Campaign 2".to_string(), CampaignType::MULTIPLICATIVE_PACING, ConvergeTarget::NONE { default_pacing: 1.0 });
+        campaigns.add("Campaign 0".to_string(), CampaignType::MULTIPLICATIVE_PACING, vec![ConvergeTarget::NONE { default_pacing: 1.0 }]);
+        campaigns.add("Campaign 1".to_string(), CampaignType::MULTIPLICATIVE_PACING, vec![ConvergeTarget::NONE { default_pacing: 1.0 }]);
+        campaigns.add("Campaign 2".to_string(), CampaignType::MULTIPLICATIVE_PACING, vec![ConvergeTarget::NONE { default_pacing: 1.0 }]);
         
         // Create a value group with campaigns 0 and 1
         campaigns.create_value_group(vec![0, 1]);
@@ -603,7 +652,7 @@ mod tests {
         let mut campaigns = Campaigns::new();
         
         // Add only one campaign (ID 0)
-        campaigns.add("Campaign 0".to_string(), CampaignType::MULTIPLICATIVE_PACING, ConvergeTarget::NONE { default_pacing: 1.0 });
+        campaigns.add("Campaign 0".to_string(), CampaignType::MULTIPLICATIVE_PACING, vec![ConvergeTarget::NONE { default_pacing: 1.0 }]);
         
         // Try to create a group with invalid campaign_id (1 doesn't exist)
         campaigns.create_value_group(vec![0, 1]);
@@ -615,9 +664,9 @@ mod tests {
         let mut campaigns = Campaigns::new();
         
         // Add campaigns
-        campaigns.add("Campaign 0".to_string(), CampaignType::MULTIPLICATIVE_PACING, ConvergeTarget::NONE { default_pacing: 1.0 });
-        campaigns.add("Campaign 1".to_string(), CampaignType::MULTIPLICATIVE_PACING, ConvergeTarget::NONE { default_pacing: 1.0 });
-        campaigns.add("Campaign 2".to_string(), CampaignType::MULTIPLICATIVE_PACING, ConvergeTarget::NONE { default_pacing: 1.0 });
+        campaigns.add("Campaign 0".to_string(), CampaignType::MULTIPLICATIVE_PACING, vec![ConvergeTarget::NONE { default_pacing: 1.0 }]);
+        campaigns.add("Campaign 1".to_string(), CampaignType::MULTIPLICATIVE_PACING, vec![ConvergeTarget::NONE { default_pacing: 1.0 }]);
+        campaigns.add("Campaign 2".to_string(), CampaignType::MULTIPLICATIVE_PACING, vec![ConvergeTarget::NONE { default_pacing: 1.0 }]);
         
         // Create first group with campaign 0
         campaigns.create_value_group(vec![0]);
@@ -635,7 +684,7 @@ mod tests {
             campaigns.add(
                 format!("Campaign {}", i),
                 CampaignType::MULTIPLICATIVE_PACING,
-                ConvergeTarget::NONE { default_pacing: 1.0 }
+                vec![ConvergeTarget::NONE { default_pacing: 1.0 }]
             );
         }
         
@@ -657,7 +706,7 @@ mod tests {
             campaigns.add(
                 format!("Campaign {}", i),
                 CampaignType::MULTIPLICATIVE_PACING,
-                ConvergeTarget::NONE { default_pacing: 1.0 }
+                vec![ConvergeTarget::NONE { default_pacing: 1.0 }]
             );
         }
         
@@ -689,7 +738,7 @@ mod tests {
             campaigns.add(
                 format!("Campaign {}", i),
                 CampaignType::MULTIPLICATIVE_PACING,
-                ConvergeTarget::NONE { default_pacing: 1.0 }
+                vec![ConvergeTarget::NONE { default_pacing: 1.0 }]
             );
         }
         
@@ -718,7 +767,7 @@ mod tests {
             campaigns.add(
                 format!("Campaign {}", i),
                 CampaignType::MULTIPLICATIVE_PACING,
-                ConvergeTarget::NONE { default_pacing: 1.0 }
+                vec![ConvergeTarget::NONE { default_pacing: 1.0 }]
             );
         }
         
@@ -775,7 +824,7 @@ mod tests {
             campaigns.add(
                 format!("Campaign {}", i),
                 CampaignType::MULTIPLICATIVE_PACING,
-                ConvergeTarget::NONE { default_pacing: 1.0 }
+                vec![ConvergeTarget::NONE { default_pacing: 1.0 }]
             );
         }
         

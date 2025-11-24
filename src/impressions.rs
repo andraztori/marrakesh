@@ -382,6 +382,7 @@ impl Impressions {
             for _ in 0..seller.get_impressions_on_offer() {
                 // First calculate base impression value (needed for floor generation)
                 let base_impression_value = params.base_impression_value_dist.sample(&mut rng_base_value);
+               // println!("base_impression_value: {:.4}", base_impression_value);
                 let (competition, floor_cpm) = seller.generate_impression(
                     base_impression_value,
                     &mut rng_competition,
@@ -393,6 +394,9 @@ impl Impressions {
 
                 for _ in 0..num_campaign_groups {
                     let multiplier = params.value_to_campaign_multiplier_dist.sample(&mut rng_campaigns_multiplier);
+//                    println!("multiplier: {:.4}", multiplier);
+                    // println!("base_impression_value: {:.4}", base_impression_value)
+                    let multiplier = 1.0;
                     let value = base_impression_value * multiplier;
                     value_to_campaign_group.push(value);
                 }

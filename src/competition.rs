@@ -121,7 +121,7 @@ impl CompetitionGeneratorTrait for CompetitionGeneratorLogNormal {
             // Generate win_rate_actual_sigmoid_offset based on lognormal distribution
             // centered around value_base, with some stddev.
             //let offset = Distribution::sample(&self.actual_offset_dist, rng);
-            let offset = base_impression_value;
+            let offset = base_impression_value * 10.0;
             let scale = Distribution::sample(&self.actual_scale_dist, rng);
             
             // Create a temporary sigmoid to evaluate the rejection criterion

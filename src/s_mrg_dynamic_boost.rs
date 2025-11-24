@@ -34,13 +34,13 @@ fn prepare_variant(dynamic_boost: bool) -> SimulationConverge {
     campaigns.add(
         "Campaign 0".to_string(),  // campaign_name
         CampaignType::MULTIPLICATIVE_PACING,
-        ConvergeTarget::TOTAL_IMPRESSIONS { target_total_impressions: 1000 },
+        vec![ConvergeTarget::TOTAL_IMPRESSIONS { target_total_impressions: 1000 }],
     );
 
     campaigns.add(
         "Campaign 1".to_string(),  // campaign_name
         CampaignType::MULTIPLICATIVE_PACING,
-        ConvergeTarget::TOTAL_BUDGET { target_total_budget: 20.0 },
+        vec![ConvergeTarget::TOTAL_BUDGET { target_total_budget: 20.0 }],
     );
 
     // Add two sellers (IDs are automatically set to match Vec index)
@@ -55,7 +55,7 @@ fn prepare_variant(dynamic_boost: bool) -> SimulationConverge {
         if dynamic_boost {
             // Converge when cost of impressions matches virtual price
             // fixed_cost_cpm is in CPM (cost per 1000 impressions), so divide by 1000 to get cost per impression
-            let target_total_cost = (impressions_on_offer as f64) * fixed_cost_cpm / 1000.0;
+            let target_total_cost = (impressions_on_offer as f64) * fixed_cost_cpm;
             SellerConvergeStrategy::TOTAL_COST { target_total_cost }
         } else {
             SellerConvergeStrategy::NONE { default_value: 1.0 }

@@ -39,7 +39,7 @@ fn prepare_simulationconverge(hb_impressions: usize, campaign_type: CampaignType
     campaigns.add(
         "Campaign 0".to_string(),  // campaign_name
         campaign_type,  // campaign_type - either multiplicative pacing, ALB, or max margin
-        ConvergeTarget::TOTAL_BUDGET { target_total_budget: 30.0 },  // converge_target
+        vec![ConvergeTarget::TOTAL_BUDGET { target_total_budget: 30.0 }],  // converge_target
     );
 
     // Add seller (ID is automatically set to match Vec index)

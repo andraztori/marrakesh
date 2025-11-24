@@ -36,13 +36,13 @@ fn prepare_simulationconverge(hb_impressions: usize) -> SimulationConverge {
     campaigns.add(
         "Campaign 0".to_string(),  // campaign_name
         CampaignType::MULTIPLICATIVE_PACING,
-        ConvergeTarget::TOTAL_IMPRESSIONS { target_total_impressions: 1000 },
+        vec![ConvergeTarget::TOTAL_IMPRESSIONS { target_total_impressions: 1000 }],
     );
 
     campaigns.add(
         "Campaign 1".to_string(),  // campaign_name
         CampaignType::MULTIPLICATIVE_PACING,
-        ConvergeTarget::TOTAL_BUDGET { target_total_budget: 20.0 },
+        vec![ConvergeTarget::TOTAL_BUDGET { target_total_budget: 20.0 }],
     );
 
     // Add two sellers (IDs are automatically set to match Vec index)

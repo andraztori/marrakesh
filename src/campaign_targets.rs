@@ -41,7 +41,7 @@ impl ConvergeTargetAny<crate::simulationrun::CampaignStat> for ConvergeTargetTot
 /// Convergence strategy for average value target
 /// For example, may be we want viewability to be 80% ...
 pub struct ConvergeTargetAvgValue {
-    pub target_avg_value: f64,
+    pub avg_impression_value_to_campaign: f64,
 }
 
 impl ConvergeTargetAny<crate::simulationrun::CampaignStat> for ConvergeTargetAvgValue {
@@ -53,15 +53,15 @@ impl ConvergeTargetAny<crate::simulationrun::CampaignStat> for ConvergeTargetAvg
         } else {
             0.0
         };
-        (actual, self.target_avg_value)
+        (actual, self.avg_impression_value_to_campaign)
     }
     
     fn get_target_value(&self) -> f64 {
-        self.target_avg_value
+        self.avg_impression_value_to_campaign
     }
     
     fn converge_target_string(&self) -> String {
-        format!("Average value target: {:.4}", self.target_avg_value)
+        format!("Average value target: {:.4}", self.avg_impression_value_to_campaign)
     }
 }
 

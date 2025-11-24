@@ -190,7 +190,7 @@ impl ConvergeControllerDouble for ConvergeDoubleProportionalController {
         let prev_dual = previous_state.as_any().downcast_ref::<ControllerStateDualVariable>().unwrap();
         let next_dual = next_state.as_any_mut().downcast_mut::<ControllerStateDualVariable>().unwrap();
         println!("actual_primary: {:.4}, target_primary: {:.4}", actual_primary, target_primary);
-        println!("actual_secondary: {:.4}, target_secondary: {:.4}", actual_secondary * 1000.0, target_secondary * 1000.0);   
+        println!("actual_secondary: {:.4}, target_secondary: {:.4}", actual_secondary, target_secondary);
         // Update both controllers independently using the new signature
         let (primary_changed, next_primary_pacing) = self.controller_primary.controller_next_state(
             target_primary,

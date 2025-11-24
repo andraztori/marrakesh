@@ -15,7 +15,21 @@ impl ControllerProportional {
             tolerance_fraction: 0.005,  // 0.5% tolerance
             max_adjustment_factor: 0.2,  // Max 20% adjustment
             proportional_gain: 0.1,      // 20% of error
+    }
         }
+
+    /// Create a new proportional controller with custom parameters
+    /// 
+    /// # Arguments
+    /// * `tolerance_fraction` - Tolerance as a fraction of target (e.g., 0.005 = 0.5%)
+    /// * `max_adjustment_factor` - Maximum adjustment factor (e.g., 0.2 = 20%)
+    /// * `proportional_gain` - Proportional gain (e.g., 0.1 = 10% of error)
+    pub fn new_advanced(tolerance_fraction: f64, max_adjustment_factor: f64, proportional_gain: f64) -> Self {
+        Self {
+            tolerance_fraction,
+            max_adjustment_factor,
+            proportional_gain,
+    }
     }
 
     /// Calculate pacing for next iteration based on target and actual values

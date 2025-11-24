@@ -185,7 +185,7 @@ impl SimulationStat {
                     overall_stat.total_virtual_cost += virtual_cost;
                     overall_stat.total_buyer_charge += buyer_charge;
                     let group_id = marketplace.campaigns.campaign_to_value_group_mapping[campaign_id];
-                    overall_stat.total_value += impression.value_to_campaign_group[group_id] / 1000.0;
+                    overall_stat.total_value += impression.value_to_campaign_group[group_id];
 
                     // Update seller statistics
                     let seller_stat = &mut seller_stats[seller_id];
@@ -194,7 +194,7 @@ impl SimulationStat {
                     seller_stat.total_virtual_cost += virtual_cost;
                     seller_stat.total_buyer_charge += buyer_charge;
                     let group_id = marketplace.campaigns.campaign_to_value_group_mapping[campaign_id];
-                    seller_stat.total_provided_value += impression.value_to_campaign_group[group_id] / 1000.0;
+                    seller_stat.total_provided_value += impression.value_to_campaign_group[group_id];
 
                     // Update campaign statistics
                     let campaign_stat = &mut campaign_stats[campaign_id];
@@ -203,7 +203,7 @@ impl SimulationStat {
                     campaign_stat.total_virtual_cost += virtual_cost;
                     campaign_stat.total_buyer_charge += buyer_charge;
                     let group_id = marketplace.campaigns.campaign_to_value_group_mapping[campaign_id];
-                    campaign_stat.total_value += impression.value_to_campaign_group[group_id] / 1000.0;
+                    campaign_stat.total_value += impression.value_to_campaign_group[group_id];
                         }
                     }
                 }
@@ -234,13 +234,13 @@ impl SimulationStat {
                                 overall_stat.total_virtual_cost += fractional_winner.virtual_cost * win_fraction;
                                 overall_stat.total_buyer_charge += fractional_winner.buyer_charge * win_fraction;
                                 let group_id = marketplace.campaigns.campaign_to_value_group_mapping[campaign_id];
-                                overall_stat.total_value += impression.value_to_campaign_group[group_id] / 1000.0 * win_fraction;
+                                overall_stat.total_value += impression.value_to_campaign_group[group_id] * win_fraction;
 
                                 // Update seller statistics (weighted by win_fraction)
                                 seller_stat.total_virtual_cost += fractional_winner.virtual_cost * win_fraction;
                                 seller_stat.total_buyer_charge += fractional_winner.buyer_charge * win_fraction;
                                 let group_id = marketplace.campaigns.campaign_to_value_group_mapping[campaign_id];
-                                seller_stat.total_provided_value += impression.value_to_campaign_group[group_id] / 1000.0 * win_fraction;
+                                seller_stat.total_provided_value += impression.value_to_campaign_group[group_id] * win_fraction;
 
                                 // Update campaign statistics (weighted by win_fraction - fractional counting on buy side)
                                 let campaign_stat = &mut campaign_stats[campaign_id];
@@ -249,7 +249,7 @@ impl SimulationStat {
                                 campaign_stat.total_virtual_cost += fractional_winner.virtual_cost * win_fraction;
                                 campaign_stat.total_buyer_charge += fractional_winner.buyer_charge * win_fraction;
                                 let group_id = marketplace.campaigns.campaign_to_value_group_mapping[campaign_id];
-                                campaign_stat.total_value += impression.value_to_campaign_group[group_id] / 1000.0 * win_fraction;
+                                campaign_stat.total_value += impression.value_to_campaign_group[group_id] * win_fraction;
                             }
                             
                             // Update overall supply cost (once per impression)
@@ -284,7 +284,12 @@ impl SimulationStat {
                      campaign_stat.total_supply_cost, 
                      campaign_stat.total_virtual_cost, 
                      campaign_stat.total_buyer_charge);
-            logln!(logger, event, "  Obtained Value: {:.2}", campaign_stat.total_value);
+            let value_per_impression = if campaign_stat.impressions_obtained > 0.0 {
+                campaign_stat.total_value / campaign_stat.impressions_obtained
+            } else {
+                0.0
+            };
+            logln!(logger, event, "  Obtained Value: {:.2} (per M impressions: {:.4})", campaign_stat.total_value, value_per_impression * 1000.0);
         }
     }
 
@@ -334,7 +339,15 @@ impl SimulationStat {
                  self.overall_stat.total_supply_cost, 
                  self.overall_stat.total_virtual_cost, 
                  self.overall_stat.total_buyer_charge);
-        logln!(logger, LogEvent::Variant, "Total Obtained Value: {:.2}", self.overall_stat.total_value);
+        
+        // Calculate total impressions from all campaigns
+        let total_impressions: f64 = self.campaign_stats.iter().map(|cs| cs.impressions_obtained).sum();
+        let value_per_impression = if total_impressions > 0.0 {
+            self.overall_stat.total_value / total_impressions
+        } else {
+            0.0
+        };
+        logln!(logger, LogEvent::Variant, "Total Obtained Value: {:.2} (per M impressions: {:.4})", self.overall_stat.total_value, value_per_impression * 1000.0);
     }
 }
 
