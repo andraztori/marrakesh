@@ -133,12 +133,6 @@ pub trait ConvergeControllerDouble {
         target_secondary: f64,
     ) -> bool;
     
-    /// Get the control variable (pacing value)
-    /// 
-    /// # Arguments
-    /// * `converge` - Controller state to extract the pacing value from
-    fn get_control_variable(&self, converge: &dyn ControllerState) -> f64;
-    
     /// Get the primary control variable (pacing value)
     /// 
     /// # Arguments
@@ -175,7 +169,7 @@ impl ConvergeDoubleProportionalController {
             controller_primary: ControllerProportional::new(),
             controller_secondary: ControllerProportional::new(),
         }
- g   }
+    }
 }
 
 impl ConvergeControllerDouble for ConvergeDoubleProportionalController {
@@ -210,14 +204,6 @@ impl ConvergeControllerDouble for ConvergeDoubleProportionalController {
         next_dual.converging_variable_2 = next_secondary_pacing;
         
         primary_changed || secondary_changed
-    }
-    
-    fn get_control_variable(&self, converge: &dyn ControllerState) -> f64 {
-        // Extract both variables and multiply them together for the final pacing
-        let dual_state = converge.as_any().downcast_ref::<ControllerStateDualVariable>().unwrap();
-        
-        // Combine the two pacing values by multiplying them
-        dual_state.converging_variable_1 * dual_state.converging_variable_2
     }
     
     fn get_control_variable_primary(&self, converge: &dyn ControllerState) -> f64 {

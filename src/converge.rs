@@ -20,6 +20,12 @@ pub trait ConvergeTargetAny<T> {
     /// A tuple `(actual, target)` representing the actual value achieved and the target value
     fn get_actual_and_target(&self, stat: &T) -> (f64, f64);
     
+    /// Get the target value for convergence
+    /// 
+    /// # Returns
+    /// The target value that the campaign is trying to converge to
+    fn get_target_value(&self) -> f64;
+    
     /// Get a string representation of the convergence target
     fn converge_target_string(&self) -> String;
 }

@@ -3,6 +3,9 @@ pub use crate::converge::ConvergeTargetAny;
 pub use crate::controllers::{ConvergeController, ConvergeControllerDouble};
 pub use crate::controller_state::ControllerState;
 pub use crate::campaign_bidders::CampaignBidder;
+use crate::sigmoid::Sigmoid;
+use crate::logger::{LogEvent};
+use crate::warnln;
 
 
 
@@ -142,9 +145,36 @@ impl CampaignTrait for CampaignDouble {
     }
     
     fn get_bid(&self, impression: &Impression, controller_state: &dyn ControllerState, seller_boost_factor: f64, value_to_campaign: f64, logger: &mut crate::logger::Logger) -> Option<f64> {
-        let pacing = self.converge_controller.get_control_variable(controller_state);
-        // Pass the value_to_campaign to the bidder
-        self.bidder.get_bid(value_to_campaign, impression, pacing, seller_boost_factor, logger)
+        // Save primary control variable as lambda, secondary as mu
+        let lambda = self.converge_controller.get_control_variable_primary(controller_state);
+        let mu = self.converge_controller.get_control_variable_secondary(controller_state);
+        
+        // Get secondary converge target value
+        let secondary_target = self.converge_target_secondary.get_target_value();
+        
+        // Calculate base_value: lambda + mu * (value_to_campaign - secondary_target)
+        // for viwablity lambda + mu * (viewability - targeted_viability)
+        let base_value = lambda * seller_boost_factor + mu * (value_to_campaign - secondary_target);
+        
+        // Get competition data (required for max margin bidding)
+        let competition = match &impression.competition {
+            Some(comp) => comp,
+            None => {
+                warnln!(logger, LogEvent::Simulation, 
+                    "Max margin bidding requires competition data. This impression has no competition data.");
+                return None;
+            }
+        };
+        
+        // Initialize sigmoid with competition parameters
+        let sigmoid = Sigmoid::new(
+            competition.win_rate_prediction_sigmoid_offset,
+            competition.win_rate_prediction_sigmoid_scale,
+            1.0,  // Using normalized value of 1.0
+        );
+        
+
+        sigmoid.max_margin_bid_bisection(base_value, impression.floor_cpm)
     }
     
     fn next_controller_state(&self, previous_state: &dyn ControllerState, next_state: &mut dyn ControllerState, campaign_stat: &crate::simulationrun::CampaignStat) -> bool {

@@ -10,6 +10,10 @@ impl ConvergeTargetAny<crate::simulationrun::CampaignStat> for ConvergeTargetTot
         (campaign_stat.impressions_obtained, self.total_impressions_target as f64)
     }
     
+    fn get_target_value(&self) -> f64 {
+        self.total_impressions_target as f64
+    }
+    
     fn converge_target_string(&self) -> String {
         format!("Fixed impressions ({})", self.total_impressions_target)
     }
@@ -25,31 +29,39 @@ impl ConvergeTargetAny<crate::simulationrun::CampaignStat> for ConvergeTargetTot
         (campaign_stat.total_buyer_charge, self.total_budget_target)
     }
     
+    fn get_target_value(&self) -> f64 {
+        self.total_budget_target
+    }
+    
     fn converge_target_string(&self) -> String {
         format!("Fixed budget target: {:.2}", self.total_budget_target)
     }
 }
 
-/// Convergence strategy for average utility target
+/// Convergence strategy for average value target
 /// For example, may be we want viewability to be 80% ...
-pub struct ConvergeTargetAvgUtility {
-    pub target_avg_utility: f64,
+pub struct ConvergeTargetAvgValue {
+    pub target_avg_value: f64,
 }
 
-impl ConvergeTargetAny<crate::simulationrun::CampaignStat> for ConvergeTargetAvgUtility {
+impl ConvergeTargetAny<crate::simulationrun::CampaignStat> for ConvergeTargetAvgValue {
     fn get_actual_and_target(&self, campaign_stat: &crate::simulationrun::CampaignStat) -> (f64, f64) {
-        // Calculate average utility as total_value / impressions_obtained
+        // Calculate average value as total_value / impressions_obtained
         // If no impressions were obtained, return 0.0 as actual
         let actual = if campaign_stat.impressions_obtained > 0.0 {
             campaign_stat.total_value / campaign_stat.impressions_obtained
         } else {
             0.0
         };
-        (actual, self.target_avg_utility)
+        (actual, self.target_avg_value)
+    }
+    
+    fn get_target_value(&self) -> f64 {
+        self.target_avg_value
     }
     
     fn converge_target_string(&self) -> String {
-        format!("Average utility target: {:.4}", self.target_avg_utility)
+        format!("Average value target: {:.4}", self.target_avg_value)
     }
 }
 
@@ -60,6 +72,10 @@ impl ConvergeTargetAny<crate::simulationrun::CampaignStat> for ConvergeNone {
     fn get_actual_and_target(&self, _campaign_stat: &crate::simulationrun::CampaignStat) -> (f64, f64) {
         // No convergence, so no target or actual values
         (0.0, 0.0)
+    }
+    
+    fn get_target_value(&self) -> f64 {
+        0.0
     }
     
     fn converge_target_string(&self) -> String {

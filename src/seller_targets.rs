@@ -9,6 +9,10 @@ impl ConvergeTargetAny<crate::simulationrun::SellerStat> for ConvergeNone {
         (0.0, 0.0)
     }
     
+    fn get_target_value(&self) -> f64 {
+        0.0
+    }
+    
     fn converge_target_string(&self) -> String {
         "No convergence".to_string()
     }
@@ -24,6 +28,10 @@ impl ConvergeTargetAny<crate::simulationrun::SellerStat> for ConvergeTargetTotal
         let actual = seller_stat.total_virtual_cost;
         let target = self.target_cost;
         (actual, target)
+    }
+    
+    fn get_target_value(&self) -> f64 {
+        self.target_cost
     }
     
     fn converge_target_string(&self) -> String {
