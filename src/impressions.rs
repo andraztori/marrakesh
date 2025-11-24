@@ -396,7 +396,7 @@ impl Impressions {
                     let multiplier = params.value_to_campaign_multiplier_dist.sample(&mut rng_campaigns_multiplier);
 //                    println!("multiplier: {:.4}", multiplier);
                     // println!("base_impression_value: {:.4}", base_impression_value)
-                    let multiplier = 1.0;
+                    //let multiplier = 1.0;
                     let value = base_impression_value * multiplier;
                     value_to_campaign_group.push(value);
                 }
