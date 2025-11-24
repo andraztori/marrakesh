@@ -55,7 +55,7 @@ fn prepare_variant(dynamic_boost: bool) -> SimulationConverge {
         if dynamic_boost {
             // Converge when cost of impressions matches virtual price
             // fixed_cost_cpm is in CPM (cost per 1000 impressions), so divide by 1000 to get cost per impression
-            let target_total_cost = (impressions_on_offer as f64) * fixed_cost_cpm;
+            let target_total_cost = (impressions_on_offer as f64) * fixed_cost_cpm / 1000.0;
             SellerConvergeStrategy::TOTAL_COST { target_total_cost }
         } else {
             SellerConvergeStrategy::NONE { default_value: 1.0 }
