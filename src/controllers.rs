@@ -167,7 +167,11 @@ impl ConvergeDoubleProportionalController {
     pub fn new() -> Self {
         Self {
             controller_primary: ControllerProportional::new(),
-            controller_secondary: ControllerProportional::new(),
+            controller_secondary: ControllerProportional::new_advanced(
+                0.005, // tolerance_fraction
+                0.5,   // max_adjustment_factor
+                1.0,   // proportional_gain
+            ),
         }
     }
 }
@@ -185,7 +189,8 @@ impl ConvergeControllerDouble for ConvergeDoubleProportionalController {
         // Extract previous dual state
         let prev_dual = previous_state.as_any().downcast_ref::<ControllerStateDualVariable>().unwrap();
         let next_dual = next_state.as_any_mut().downcast_mut::<ControllerStateDualVariable>().unwrap();
-        
+        println!("actual_primary: {:.4}, target_primary: {:.4}", actual_primary, target_primary);
+        println!("actual_secondary: {:.4}, target_secondary: {:.4}", actual_secondary * 1000.0, target_secondary * 1000.0);   
         // Update both controllers independently using the new signature
         let (primary_changed, next_primary_pacing) = self.controller_primary.controller_next_state(
             target_primary,
@@ -230,7 +235,7 @@ impl ConvergeControllerDouble for ConvergeDoubleProportionalController {
         let dual_state = converge.as_any().downcast_ref::<ControllerStateDualVariable>().unwrap();
         
         format!(
-            "Double proportional controller, primary_pacing: {:.4}, secondary_pacing: {:.4}",
+            "Proportional, primary_pacing: {:.4}, secondary_pacing: {:.4}",
             dual_state.converging_variable_1,
             dual_state.converging_variable_2
         )

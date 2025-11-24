@@ -1,12 +1,10 @@
-/// This scenario compares Optimal and Max Margin bidding converging to $20 spend, expecting equality.
-/// This numerically proves that the methods are actually equivalent.
+/// This scenario compares Max Margin bidding with single and double targets.
 ///
-/// It compares two bidding strategies converging to the same budget:
+/// It compares two bidding strategies:
 ///
-/// - Variant B: Optimal bidding (optimizes marginal utility of spend) converging to $20 spend
+/// - Variant A: Max margin bidding converging to 1000 impressions
 ///
-/// - Variant D: Max margin bidding (optimizes expected margin) converging to $20 spend
-/// This scenario proves that Max Margin and Optimal Bidding are equivalent when configured correctly.
+/// - Variant B: Max margin double target bidding converging to 1000 impressions and avg value of 0.8
 
 
 use crate::simulationrun::{Marketplace, SimulationType};
@@ -28,7 +26,7 @@ inventory::submit!(crate::scenarios::ScenarioEntry {
 });
 
 /// Prepare simulation converge instance with campaign and seller setup
-fn prepare_simulationconverge(hb_impressions: usize, campaign_type: CampaignType) -> SimulationConverge {
+fn prepare_simulationconverge(hb_impressions: usize, campaign_type: CampaignType, converge_targets: Vec<ConvergeTarget>) -> SimulationConverge {
     // Initialize containers for campaigns and sellers
     let mut campaigns = Campaigns::new();
     let mut sellers = Sellers::new();
@@ -37,7 +35,7 @@ fn prepare_simulationconverge(hb_impressions: usize, campaign_type: CampaignType
     campaigns.add(
         "Campaign 0".to_string(),  // campaign_name
         campaign_type,  // campaign_type
-        ConvergeTarget::TOTAL_BUDGET { target_total_budget: 20.0 },  // converge_target
+        converge_targets,  // converge_targets
     );
 
     // Add seller (ID is automatically set to match Vec index)
@@ -53,7 +51,7 @@ fn prepare_simulationconverge(hb_impressions: usize, campaign_type: CampaignType
 
     // Create impressions parameters
     let impressions_params = ImpressionsParam::new(
-        utils::beta_dist(31.0, 3.0),  // base_impression_value_dist (beta distribution, values 0-1), this resembles viewability
+        utils::beta_dist(30.0, 3.0),  // base_impression_value_dist (beta distribution, values 0-1), this resembles viewability
         utils::lognormal_dist(1.0, 2.0),   // value_to_campaign_multiplier_dist
     );
 
@@ -66,50 +64,72 @@ fn prepare_simulationconverge(hb_impressions: usize, campaign_type: CampaignType
 
 pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::error::Error>> {
     let num_impressions = 10000;
+    const TARGET_IMPRESSIONS: i32 = 1000;
+    const TARGET_AVG_VALUE: f64 = 0.92;
     
-    // Run variant B with optimal bidding
-    // Converging to $20 spend
-    let simulation_converge_b = prepare_simulationconverge(
-        num_impressions,
-        CampaignType::OPTIMAL,
-    );
-    let stats_b = simulation_converge_b.run_variant("Running with optimal bidding", scenario_name, "optimal", 100, logger);
-    
-    // Run variant D with max margin bidding
-    // Converging to $20 spend
-    let simulation_converge_d = prepare_simulationconverge(
+    // Run variant A with max margin bidding
+    // Converging to TARGET_IMPRESSIONS impressions
+    let simulation_converge_a = prepare_simulationconverge(
         num_impressions,
         CampaignType::MAX_MARGIN,
+        vec![ConvergeTarget::TOTAL_IMPRESSIONS { target_total_impressions: TARGET_IMPRESSIONS }],
     );
-    let stats_d = simulation_converge_d.run_variant("Running with max margin bidding", scenario_name, "max-margin", 100, logger);
+    let stats_a = simulation_converge_a.run_variant(&format!("Running with max margin bidding ({} impressions)", TARGET_IMPRESSIONS), scenario_name, "max-margin-impressions", 100, logger);
+    
+    // Run variant B with max margin double target bidding
+    // Converging to TARGET_IMPRESSIONS impressions and avg value of TARGET_AVG_VALUE
+    let simulation_converge_b = prepare_simulationconverge(
+        num_impressions,
+        CampaignType::MAX_MARGIN_DOUBLE_TARGET,
+        vec![
+            ConvergeTarget::TOTAL_IMPRESSIONS { target_total_impressions: TARGET_IMPRESSIONS },
+            ConvergeTarget::AVG_VALUE { avg_impression_value_to_campaign: TARGET_AVG_VALUE },
+        ],
+    );
+    let stats_b = simulation_converge_b.run_variant(&format!("Running with max margin double target ({} impressions, avg value {})", TARGET_IMPRESSIONS, TARGET_AVG_VALUE), scenario_name, "max-margin-double", 1000, logger);
     
     logln!(logger, LogEvent::Scenario, "");
     
     // Validation
     let mut errors = Vec::new();
     
-    // Check spend equality
-    let spend_diff = (stats_b.overall_stat.total_buyer_charge - stats_d.overall_stat.total_buyer_charge).abs();
-    let spend_avg = (stats_b.overall_stat.total_buyer_charge + stats_d.overall_stat.total_buyer_charge) / 2.0;
-    let spend_diff_pct = if spend_avg > 0.0 { spend_diff / spend_avg * 100.0 } else { 0.0 };
+    // Check that both campaigns achieved roughly TARGET_IMPRESSIONS impressions
+    let impressions_a = stats_a.campaign_stats[0].impressions_obtained;
+    let impressions_b = stats_b.campaign_stats[0].impressions_obtained;
+    let impressions_target = TARGET_IMPRESSIONS as f64;
     
-    if spend_diff_pct < 1.0 {
-        logln!(logger, LogEvent::Scenario, "✓ Spend is roughly equal ({:.2}% diff)", spend_diff_pct);
+    let impressions_a_diff = (impressions_a - impressions_target).abs();
+    let impressions_b_diff = (impressions_b - impressions_target).abs();
+    
+    if impressions_a_diff < 50.0 {
+        logln!(logger, LogEvent::Scenario, "✓ Variant A achieved roughly {} impressions: {:.0}", TARGET_IMPRESSIONS, impressions_a);
     } else {
-        let msg = format!("Spend is NOT roughly equal ({:.2}% diff). Optimal: {:.2}, MaxMargin: {:.2}", spend_diff_pct, stats_b.overall_stat.total_buyer_charge, stats_d.overall_stat.total_buyer_charge);
+        let msg = format!("Variant A did NOT achieve roughly {} impressions: {:.0}", TARGET_IMPRESSIONS, impressions_a);
         errln!(logger, LogEvent::Scenario, "✗ {}", msg);
         errors.push(msg);
     }
     
-    // Check value equality
-    let value_diff = (stats_b.overall_stat.total_value - stats_d.overall_stat.total_value).abs();
-    let value_avg = (stats_b.overall_stat.total_value + stats_d.overall_stat.total_value) / 2.0;
-    let value_diff_pct = if value_avg > 0.0 { value_diff / value_avg * 100.0 } else { 0.0 };
-    
-    if value_diff_pct < 1.0 {
-        logln!(logger, LogEvent::Scenario, "✓ Value is roughly equal ({:.2}% diff)", value_diff_pct);
+    if impressions_b_diff < 50.0 {
+        logln!(logger, LogEvent::Scenario, "✓ Variant B achieved roughly {} impressions: {:.0}", TARGET_IMPRESSIONS, impressions_b);
     } else {
-        let msg = format!("Value is NOT roughly equal ({:.2}% diff). Optimal: {:.2}, MaxMargin: {:.2}", value_diff_pct, stats_b.overall_stat.total_value, stats_d.overall_stat.total_value);
+        let msg = format!("Variant B did NOT achieve roughly {} impressions: {:.0}", TARGET_IMPRESSIONS, impressions_b);
+        errln!(logger, LogEvent::Scenario, "✗ {}", msg);
+        errors.push(msg);
+    }
+    
+    // Check that variant B achieved roughly TARGET_AVG_VALUE avg value
+    let avg_value_b = if impressions_b > 0.0 {
+        stats_b.campaign_stats[0].total_value / impressions_b
+    } else {
+        0.0
+    };
+    let avg_value_target = TARGET_AVG_VALUE;
+    let avg_value_diff = (avg_value_b - avg_value_target).abs();
+    
+    if avg_value_diff < 0.05 {
+        logln!(logger, LogEvent::Scenario, "✓ Variant B achieved roughly {} avg value: {:.4}", TARGET_AVG_VALUE, avg_value_b);
+    } else {
+        let msg = format!("Variant B did NOT achieve roughly {} avg value: {:.4}", TARGET_AVG_VALUE, avg_value_b);
         errln!(logger, LogEvent::Scenario, "✗ {}", msg);
         errors.push(msg);
     }
