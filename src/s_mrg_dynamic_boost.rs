@@ -5,8 +5,11 @@
 ///
 /// - Second one is where MRG seller dynamically adjusts boost parameter to exactly balance out
 ///   the market so supply cost equals demand cost (using MULTIPLICATIVE_PACING)
-///
-/// - Third one uses MULTIPLICATIVE_ADDITIVE bidding strategy with dynamic boost
+///   It uses simple value function of campaign_value * pacing * supply_boost_factor
+/// 
+/// - Third one uses MULTIPLICATIVE_ADDITIVE bidding strategy with dynamic boost. 
+///   We show that additive is sub-optimal in terms of value-to-cost ratio
+///   It uses value function of campaign_value * pacing + supply_boost_factor
 
 use crate::simulationrun::{Marketplace, SimulationType};
 use crate::sellers::{Sellers, SellerGeneral, SellerTrait};
