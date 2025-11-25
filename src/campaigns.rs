@@ -14,6 +14,7 @@ use crate::warnln;
 #[derive(Debug, Clone, PartialEq)]
 pub enum CampaignType {
     MULTIPLICATIVE_PACING,
+    MULTIPLICATIVE_ADDITIVE,
     OPTIMAL,
     CHEATER,
     MAX_MARGIN,
@@ -124,7 +125,7 @@ impl CampaignTrait for CampaignSimple {
 }
 
 // Re-export bidder types for convenience
-pub use crate::campaign_bidders::{CampaignBidderMultiplicative, CampaignBidderOptimal, BidderMaxMargin, CampaignBidderCheaterLastLook};
+pub use crate::campaign_bidders::{CampaignBidderMultiplicative, CampaignBidderMultiplicativeAdditive, CampaignBidderOptimal, BidderMaxMargin, CampaignBidderCheaterLastLook};
 
 /// Campaign type that converges to both primary and secondary targets
 /// Based on CampaignSimple but with dual converge targets
@@ -156,7 +157,7 @@ impl CampaignTrait for CampaignDouble {
         
         // Calculate base_value: lambda + mu * (value_to_campaign - secondary_target)
         // for viwablity lambda + mu * (viewability - targeted_viability)
-//        println!("value_to_campaign: {:.4}, secondary_target: {:.4}", value_to_campaign, secondary_target);
+
         let base_value = lambda * seller_boost_factor + mu * (value_to_campaign - secondary_target);
         
         // Get competition data (required for max margin bidding)
@@ -291,6 +292,18 @@ impl Campaigns {
                 assert_eq!(converge_targets.len(), 1, "MULTIPLICATIVE_PACING requires exactly one converge target");
                 let (converge_target_box, converge_controller) = Self::convert_converge_target(converge_targets[0].clone());
                 let bidder = Box::new(CampaignBidderMultiplicative) as Box<dyn CampaignBidder>;
+                self.campaigns.push(Box::new(CampaignSimple {
+                    campaign_id,
+                    campaign_name,
+                    converge_target: converge_target_box,
+                    converge_controller,
+                    bidder,
+                }));
+            }
+            CampaignType::MULTIPLICATIVE_ADDITIVE => {
+                assert_eq!(converge_targets.len(), 1, "MULTIPLICATIVE_ADDITIVE requires exactly one converge target");
+                let (converge_target_box, converge_controller) = Self::convert_converge_target(converge_targets[0].clone());
+                let bidder = Box::new(CampaignBidderMultiplicativeAdditive) as Box<dyn CampaignBidder>;
                 self.campaigns.push(Box::new(CampaignSimple {
                     campaign_id,
                     campaign_name,

@@ -38,6 +38,27 @@ impl CampaignBidder for CampaignBidderMultiplicative {
     }
 }
 
+/// Bidder for multiplicative pacing with additive seller boost factor
+pub struct CampaignBidderMultiplicativeAdditive;
+
+impl CampaignBidder for CampaignBidderMultiplicativeAdditive {
+    fn get_bid(&self, value_to_campaign: f64, impression: &Impression, pacing: f64, seller_boost_factor: f64, _logger: &mut Logger) -> Option<f64> {
+        let bid = pacing * value_to_campaign + seller_boost_factor;
+        let floor = impression.floor_cpm;
+        
+        // Don't bid if bid is below floor
+        if bid < floor {
+            return None;
+        }
+        
+        Some(bid)
+    }
+    
+    fn get_bidding_type(&self) -> String {
+        "Multiplicative additive".to_string()
+    }
+}
+
 /// Bidder for optimal bidding strategy
 /// Optimal bidding means that all bids are made at the same marginal utility of spend
 /// That gives an optimal total expected value for the total expected budget

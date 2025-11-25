@@ -78,6 +78,18 @@ impl ConvergeControllerProportional {
             controller: ControllerProportional::new(),
         }
     }
+
+    /// Create a new ConvergeControllerProportional with custom parameters
+    /// 
+    /// # Arguments
+    /// * `tolerance_fraction` - Tolerance as a fraction of target (e.g., 0.005 = 0.5%)
+    /// * `max_adjustment_factor` - Maximum adjustment factor (e.g., 0.2 = 20%)
+    /// * `proportional_gain` - Proportional gain (e.g., 0.1 = 10% of error)
+    pub fn new_advanced(tolerance_fraction: f64, max_adjustment_factor: f64, proportional_gain: f64) -> Self {
+        Self {
+            controller: ControllerProportional::new_advanced(tolerance_fraction, max_adjustment_factor, proportional_gain),
+        }
+    }
 }
 
 impl ConvergeController for ConvergeControllerProportional {

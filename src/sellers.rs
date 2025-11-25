@@ -3,6 +3,7 @@ use crate::floors::FloorGeneratorTrait;
 use crate::controllers::ConvergeController;
 use rand::rngs::StdRng;
 pub use crate::converge::ConvergeTargetAny;
+use std::any::Any;
 
 /// Seller type for different pricing models
 #[allow(non_camel_case_types)]
@@ -26,7 +27,7 @@ pub use crate::seller_targets::{ConvergeNone, ConvergeTargetTotalCost};
 pub use crate::seller_chargers::{SellerCharger, SellerChargerFirstPrice, SellerChargerFixedPrice};
 
 /// Trait for sellers participating in auctions
-pub trait SellerTrait {
+pub trait SellerTrait: Any {
     /// Get the seller ID
     fn seller_id(&self) -> usize;
     
@@ -76,6 +77,11 @@ pub trait SellerTrait {
     /// The control variable value (boost factor)
     fn get_control_variable(&self, controller_state: &dyn crate::controllers::ControllerState) -> f64;
     
+    /// Get reference to Any for downcasting
+    fn as_any(&self) -> &dyn Any;
+    
+    /// Get mutable reference to Any for downcasting
+    fn as_any_mut(&mut self) -> &mut dyn Any;
 }
 
 /// General seller structure that can use any charging strategy
@@ -120,6 +126,14 @@ impl SellerTrait for SellerGeneral {
     
     fn get_control_variable(&self, controller_state: &dyn crate::controllers::ControllerState) -> f64 {
         self.converge_controller.get_control_variable(controller_state)
+    }
+    
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
     }
 }
 
@@ -197,5 +211,20 @@ impl Sellers {
                 }));
             }
         }
+    }
+
+    /// Add a seller using an advanced method that accepts a pre-constructed SellerTrait
+    /// 
+    /// # Arguments
+    /// * `seller` - A boxed SellerTrait object. The seller_id will be set to the current length of sellers.
+    pub fn add_advanced(&mut self, mut seller: Box<dyn SellerTrait>) {
+        let seller_id = self.sellers.len();
+        
+        // Try to downcast to SellerGeneral to set the seller_id
+        if let Some(seller_general) = seller.as_mut().as_any_mut().downcast_mut::<SellerGeneral>() {
+            seller_general.seller_id = seller_id;
+        }
+        
+        self.sellers.push(seller);
     }
 }
