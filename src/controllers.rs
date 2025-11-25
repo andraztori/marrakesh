@@ -62,7 +62,7 @@ impl ConvergeController for ConvergeControllerConstant {
     }
     
     fn controller_string(&self, converge: &dyn ControllerState) -> String {
-        format!("Constant value: {:.4}", self.get_control_variable(converge))
+        format!("Constant: {:.4}", self.get_control_variable(converge))
     }
 }
 
@@ -104,7 +104,7 @@ impl ConvergeController for ConvergeControllerProportional {
     }
     
     fn controller_string(&self, converge: &dyn ControllerState) -> String {
-        format!("Proportional controller, pacing: {:.4}", self.get_control_variable(converge))
+        format!("Proportional, pacing: {:.4}", self.get_control_variable(converge))
     }
 }
 
