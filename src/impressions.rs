@@ -127,12 +127,13 @@ impl Impression {
 
         for campaign in &campaigns.campaigns {
             let campaign_id = campaign.campaign_id();
-            let campaign_converge = &campaign_controller_states.campaign_controller_states[campaign_id];
+            let campaign_converge_vec = &campaign_controller_states.campaign_controller_states[campaign_id];
+            let campaign_converge: Vec<&dyn crate::controllers::ControllerState> = campaign_converge_vec.iter().map(|cs| cs.as_ref()).collect();
             // Resolve value_to_campaign at call site using campaign's group ID
             let group_id = campaigns.campaign_to_value_group_mapping[campaign_id];
             let value_to_campaign = self.value_to_campaign_group[group_id];
             // Use the trait method for get_bid
-            if let Some(bid) = campaign.get_bid(self, campaign_converge.as_ref(), seller_control_factor, value_to_campaign, logger) {
+            if let Some(bid) = campaign.get_bid(self, &campaign_converge, seller_control_factor, value_to_campaign, logger) {
                 // Check if bid is below zero - skip negative bids
                 if bid < 0.0 {
                     errln!(logger, LogEvent::Simulation, "Bid below zero: {:.4} from campaign_id: {}, skipping", bid, campaign_id);
@@ -273,12 +274,13 @@ impl Impression {
 
         for campaign in &campaigns.campaigns {
             let campaign_id = campaign.campaign_id();
-            let campaign_converge = &campaign_controller_states.campaign_controller_states[campaign_id];
+            let campaign_converge_vec = &campaign_controller_states.campaign_controller_states[campaign_id];
+            let campaign_converge: Vec<&dyn crate::controllers::ControllerState> = campaign_converge_vec.iter().map(|cs| cs.as_ref()).collect();
             // Resolve value_to_campaign at call site using campaign's group ID
             let group_id = campaigns.campaign_to_value_group_mapping[campaign_id];
             let value_to_campaign = self.value_to_campaign_group[group_id];
             // Use the trait method for get_bid
-            if let Some(bid) = campaign.get_bid(self, campaign_converge.as_ref(), seller_control_factor, value_to_campaign, logger) {
+            if let Some(bid) = campaign.get_bid(self, &campaign_converge, seller_control_factor, value_to_campaign, logger) {
                 any_bids_made = true;
                 // Check if bid is below zero - skip negative bids
                 if bid < 0.0 {

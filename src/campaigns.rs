@@ -1,8 +1,8 @@
 use crate::impressions::Impression;
 pub use crate::converge::ConvergeTargetAny;
-pub use crate::controllers::{ConvergeController, ConvergeControllerDouble};
+pub use crate::controllers::ConvergeController;
 pub use crate::controller_state::ControllerState;
-pub use crate::campaign_bidders::CampaignBidderSingle;
+pub use crate::campaign_bidders_single::CampaignBidderSingle;
 use crate::sigmoid::Sigmoid;
 use crate::logger::{LogEvent};
 use crate::warnln;
@@ -54,30 +54,30 @@ pub trait CampaignTrait {
     /// Calculate the bid for this campaign given an impression, convergence parameter, and seller control factor
     /// Bid = campaign_control_factor * value_to_campaign * seller_control_factor
     /// Returns None if bid cannot be calculated (logs warning via logger)
-    fn get_bid(&self, impression: &Impression, controller_state: &dyn crate::controllers::ControllerState, seller_control_factor: f64, value_to_campaign: f64, logger: &mut crate::logger::Logger) -> Option<f64>;
+    fn get_bid(&self, impression: &Impression, controller_states: &[&dyn crate::controllers::ControllerState], seller_control_factor: f64, value_to_campaign: f64, logger: &mut crate::logger::Logger) -> Option<f64>;
     
   
     
     /// Create a new convergence parameter for this campaign type
-    fn create_controller_state(&self) -> Box<dyn crate::controllers::ControllerState>;
+    fn create_controller_state(&self) -> Vec<Box<dyn crate::controllers::ControllerState>>;
 
     /// Perform one iteration of convergence, updating the next convergence parameter
     /// This method encapsulates the convergence logic for each campaign type
     /// 
     /// # Arguments
-    /// * `previous_state` - Previous controller state (immutable)
-    /// * `next_state` - Next controller state to be updated (mutable)
+    /// * `previous_states` - Previous controller states (immutable slice)
+    /// * `next_states` - Next controller states to be updated (mutable slice)
     /// * `campaign_stat` - Statistics from the current simulation run
     /// 
     /// # Returns
     /// `true` if pacing was changed, `false` if it remained the same
-    fn next_controller_state(&self, previous_state: &dyn crate::controllers::ControllerState, next_state: &mut dyn crate::controllers::ControllerState, campaign_stat: &crate::simulationrun::CampaignStat) -> bool;
+    fn next_controller_state(&self, previous_states: &[&dyn crate::controllers::ControllerState], next_states: &mut [&mut dyn crate::controllers::ControllerState], campaign_stat: &crate::simulationrun::CampaignStat) -> bool;
 
     /// Get a string representation of the campaign type and convergence strategy
     /// 
     /// # Arguments
-    /// * `controller_state` - Controller state to include pacing information
-    fn type_target_and_controller_state_string(&self, controller_state: &dyn crate::controllers::ControllerState) -> String;
+    /// * `controller_states` - Controller states to include pacing information
+    fn type_target_and_controller_state_string(&self, controller_states: &[&dyn crate::controllers::ControllerState]) -> String;
 
 }
 
@@ -104,28 +104,28 @@ impl CampaignTrait for CampaignSingle {
         &self.campaign_name
     }
     
-    fn get_bid(&self, impression: &Impression, controller_state: &dyn crate::controllers::ControllerState, seller_control_factor: f64, value_to_campaign: f64, logger: &mut crate::logger::Logger) -> Option<f64> {
-        let campaign_control_factor = self.converge_controller.get_control_variable(controller_state);
+    fn get_bid(&self, impression: &Impression, controller_states: &[&dyn crate::controllers::ControllerState], seller_control_factor: f64, value_to_campaign: f64, logger: &mut crate::logger::Logger) -> Option<f64> {
+        let campaign_control_factor = self.converge_controller.get_control_variable(controller_states[0]);
         // Pass the value_to_campaign to the bidder
         self.bidder.get_bid(value_to_campaign, impression, campaign_control_factor, seller_control_factor, logger)
     }
     
-    fn next_controller_state(&self, previous_state: &dyn crate::controllers::ControllerState, next_state: &mut dyn crate::controllers::ControllerState, campaign_stat: &crate::simulationrun::CampaignStat) -> bool {
+    fn next_controller_state(&self, previous_states: &[&dyn crate::controllers::ControllerState], next_states: &mut [&mut dyn crate::controllers::ControllerState], campaign_stat: &crate::simulationrun::CampaignStat) -> bool {
         let (actual, target) = self.converge_target.get_actual_and_target(campaign_stat);
-        self.converge_controller.next_controller_state(previous_state, next_state, actual, target)
+        self.converge_controller.next_controller_state(previous_states[0], next_states[0], actual, target)
     }
     
-    fn type_target_and_controller_state_string(&self, controller_state: &dyn crate::controllers::ControllerState) -> String {
-        format!("{} ({}, {})", self.bidder.get_bidding_type(), self.converge_target.converge_target_string(), self.converge_controller.controller_string(controller_state))
+    fn type_target_and_controller_state_string(&self, controller_states: &[&dyn crate::controllers::ControllerState]) -> String {
+        format!("{} ({}, {})", self.bidder.get_bidding_type(), self.converge_target.converge_target_string(), self.converge_controller.controller_string(controller_states[0]))
     }
     
-    fn create_controller_state(&self) -> Box<dyn crate::controllers::ControllerState> {
-        self.converge_controller.create_controller_state()
+    fn create_controller_state(&self) -> Vec<Box<dyn crate::controllers::ControllerState>> {
+        vec![self.converge_controller.create_controller_state()]
     }
 }
 
 // Re-export bidder types for convenience
-pub use crate::campaign_bidders::{CampaignBidderMultiplicative, CampaignBidderMultiplicativeAdditive, CampaignBidderOptimal, BidderMaxMargin, CampaignBidderCheaterLastLook};
+pub use crate::campaign_bidders_single::{CampaignBidderMultiplicative, CampaignBidderMultiplicativeAdditive, CampaignBidderOptimal, BidderMaxMargin, CampaignBidderCheaterLastLook};
 
 /// Campaign type that converges to both primary and secondary targets
 /// Based on CampaignSingle but with dual converge targets
@@ -133,7 +133,7 @@ pub struct CampaignDouble {
     pub campaign_id: usize,
     pub campaign_name: String,
     pub converge_targets: Vec<Box<dyn ConvergeTargetAny<crate::simulationrun::CampaignStat>>>,
-    pub converge_controller: Box<dyn ConvergeControllerDouble>,
+    pub converge_controllers: Vec<Box<dyn ConvergeController>>,
     pub bidder: Box<dyn CampaignBidderSingle>,
 }
 
@@ -146,10 +146,10 @@ impl CampaignTrait for CampaignDouble {
         &self.campaign_name
     }
     
-    fn get_bid(&self, impression: &Impression, controller_state: &dyn ControllerState, seller_control_factor: f64, value_to_campaign: f64, logger: &mut crate::logger::Logger) -> Option<f64> {
+    fn get_bid(&self, impression: &Impression, controller_states: &[&dyn ControllerState], seller_control_factor: f64, value_to_campaign: f64, logger: &mut crate::logger::Logger) -> Option<f64> {
         // Save primary control variable as lambda, secondary as mu
-        let lambda = self.converge_controller.get_control_variable_primary(controller_state);
-        let mu = self.converge_controller.get_control_variable_secondary(controller_state);
+        let lambda = self.converge_controllers[0].get_control_variable(controller_states[0]);
+        let mu = self.converge_controllers[1].get_control_variable(controller_states[1]);
         
         // Get secondary converge target value
         let secondary_target = self.converge_targets[1].get_target_value();
@@ -180,31 +180,33 @@ impl CampaignTrait for CampaignDouble {
         sigmoid.max_margin_bid_bisection(base_value, impression.floor_cpm)
     }
     
-    fn next_controller_state(&self, previous_state: &dyn ControllerState, next_state: &mut dyn ControllerState, campaign_stat: &crate::simulationrun::CampaignStat) -> bool {
-        let (actual_primary, target_primary) = self.converge_targets[0].get_actual_and_target(campaign_stat);
-        let (actual_secondary, target_secondary) = self.converge_targets[1].get_actual_and_target(campaign_stat);
-        self.converge_controller.next_controller_state(
-            previous_state,
-            next_state,
-            actual_primary,
-            target_primary,
-            actual_secondary,
-            target_secondary,
-        )
+    fn next_controller_state(&self, previous_states: &[&dyn ControllerState], next_states: &mut [&mut dyn ControllerState], campaign_stat: &crate::simulationrun::CampaignStat) -> bool {
+        let mut any_changed = false;
+        for (index, (converge_target, converge_controller)) in self.converge_targets.iter().zip(self.converge_controllers.iter()).enumerate() {
+            let (actual, target) = converge_target.get_actual_and_target(campaign_stat);
+            let changed = converge_controller.next_controller_state(previous_states[index], next_states[index], actual, target);
+            any_changed = any_changed || changed;
+        }
+        any_changed
     }
     
-    fn type_target_and_controller_state_string(&self, controller_state: &dyn ControllerState) -> String {
-        format!(
-            "{} ({}, Secondary: {}, {})",
-            self.bidder.get_bidding_type(),
-            self.converge_targets[0].converge_target_string(),
-            self.converge_targets[1].converge_target_string(),
-            self.converge_controller.controller_string(controller_state)
-        )
+    fn type_target_and_controller_state_string(&self, controller_states: &[&dyn ControllerState]) -> String {
+        let mut parts = Vec::new();
+        for (index, (converge_target, converge_controller)) in self.converge_targets.iter().zip(self.converge_controllers.iter()).enumerate() {
+            parts.push(format!("Target {}: {} (Cntrl: {})", 
+                index + 1,
+                converge_target.converge_target_string(),
+                converge_controller.controller_string(controller_states[index])
+            ));
+        }
+        format!("{} ({})", self.bidder.get_bidding_type(), parts.join(", "))
     }
     
-    fn create_controller_state(&self) -> Box<dyn ControllerState> {
-        self.converge_controller.create_controller_state()
+    fn create_controller_state(&self) -> Vec<Box<dyn ControllerState>> {
+        vec![
+            self.converge_controllers[0].create_controller_state(),
+            self.converge_controllers[1].create_controller_state(),
+        ]
     }
 }
 
@@ -353,19 +355,26 @@ impl Campaigns {
                     .map(|ct| Self::convert_converge_target(ct.clone()).0)
                     .collect();
                 let bidder = Box::new(BidderMaxMargin) as Box<dyn CampaignBidderSingle>;
-                let converge_controller = Box::new(crate::controllers::ConvergeDoubleProportionalController::new()) as Box<dyn crate::controllers::ConvergeControllerDouble>;
+                let converge_controllers = vec![
+                    Box::new(crate::controllers::ConvergeControllerProportional::new()) as Box<dyn crate::controllers::ConvergeController>,
+                    Box::new(crate::controllers::ConvergeControllerProportional::new_advanced(
+                        0.005, // tolerance_fraction
+                        0.5,   // max_adjustment_factor
+                        1.0,   // proportional_gain
+                    )) as Box<dyn crate::controllers::ConvergeController>,
+                ];
                 self.campaigns.push(Box::new(CampaignDouble {
                     campaign_id,
                     campaign_name,
                     converge_targets: converge_targets_vec,
-                    converge_controller,
+                    converge_controllers,
                     bidder,
                 }));
             }
             CampaignType::ALB => {
                 assert_eq!(converge_targets.len(), 1, "ALB requires exactly one converge target");
                 let (converge_target_box, converge_controller) = Self::convert_converge_target(converge_targets[0].clone());
-                let bidder = Box::new(crate::campaign_bidders::CampaignBidderALB) as Box<dyn CampaignBidderSingle>;
+                let bidder = Box::new(crate::campaign_bidders_single::CampaignBidderALB) as Box<dyn CampaignBidderSingle>;
                 self.campaigns.push(Box::new(CampaignSingle {
                     campaign_id,
                     campaign_name,
@@ -489,7 +498,8 @@ mod tests {
 
         // Expected bid = 0.5 * 20.0 * 1.0 = 10.0
         let mut logger = crate::logger::Logger::new();
-        let bid = campaign.get_bid(&impression, campaign_converge.as_ref(), 1.0, 20.0, &mut logger);
+        let controller_states = vec![campaign_converge.as_ref()];
+        let bid = campaign.get_bid(&impression, &controller_states, 1.0, 20.0, &mut logger);
         assert_eq!(bid, Some(10.0));
     }
 
@@ -594,7 +604,7 @@ mod tests {
         // Test create_controller_state returns the default pacing
         let converge_vars = campaign.create_controller_state();
         // Use ControllerStateSingleVariable to extract the pacing value
-        if let Some(state) = converge_vars.as_any().downcast_ref::<crate::controllers::ControllerStateSingleVariable>() {
+        if let Some(state) = converge_vars[0].as_any().downcast_ref::<crate::controllers::ControllerStateSingleVariable>() {
             assert_eq!(state.converging_variable, 0.75);
         } else {
             panic!("Expected ControllerStateSingleVariable");
@@ -609,11 +619,13 @@ mod tests {
             total_value: 200.0,
         };
         let mut next_state = campaign.create_controller_state();
-        let converged = campaign.next_controller_state(converge_vars.as_ref(), next_state.as_mut(), &campaign_stat);
+        let previous_states: Vec<&dyn crate::controllers::ControllerState> = converge_vars.iter().map(|cs| cs.as_ref()).collect();
+        let next_states: Vec<&mut dyn crate::controllers::ControllerState> = next_state.iter_mut().map(|cs| cs.as_mut()).collect();
+        let converged = campaign.next_controller_state(&previous_states, &mut next_states, &campaign_stat);
         assert_eq!(converged, false);
 
         // Test that pacing remains unchanged after next_controller_state
-        if let Some(state) = next_state.as_any().downcast_ref::<crate::controllers::ControllerStateSingleVariable>() {
+        if let Some(state) = next_state[0].as_any().downcast_ref::<crate::controllers::ControllerStateSingleVariable>() {
             assert_eq!(state.converging_variable, 0.75);
         } else {
             panic!("Expected ControllerStateSingleVariable");
@@ -638,7 +650,8 @@ mod tests {
 
         // Expected bid = 0.75 * 30.0 * 1.0 = 22.5
         let mut logger = crate::logger::Logger::new();
-        let bid = campaign.get_bid(&impression, converge_vars.as_ref(), 1.0, 30.0, &mut logger);
+        let controller_states: Vec<&dyn crate::controllers::ControllerState> = converge_vars.iter().map(|cs| cs.as_ref()).collect();
+        let bid = campaign.get_bid(&impression, &controller_states, 1.0, 30.0, &mut logger);
         assert_eq!(bid, Some(22.5));
     }
 

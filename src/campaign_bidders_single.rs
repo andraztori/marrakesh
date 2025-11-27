@@ -239,3 +239,4 @@ impl CampaignBidderSingle for CampaignBidderALB {
         "ALB (Auction Level Bid)".to_string()
     }
 }
+

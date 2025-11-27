@@ -6,7 +6,7 @@ mod utils;
 mod impressions;
 mod campaigns;
 mod campaign_targets;
-mod campaign_bidders;
+mod campaign_bidders_single;
 mod sellers;
 mod seller_targets;
 mod seller_chargers;
@@ -169,8 +169,9 @@ fn main() {
             
             println!("{}: {:#?}", test_case.name, impression);
             
-            let bid_optimal = campaign_optimal.get_bid(&impression, converge_vars.as_ref(), 1.0, test_case.value, &mut logger);
-            let bid_max_margin = campaign_max_margin.get_bid(&impression, converge_vars.as_ref(), 1.0, test_case.value, &mut logger);
+            let controller_states: Vec<&dyn campaigns::ControllerState> = converge_vars.iter().map(|cs| cs.as_ref()).collect();
+            let bid_optimal = campaign_optimal.get_bid(&impression, &controller_states, 1.0, test_case.value, &mut logger);
+            let bid_max_margin = campaign_max_margin.get_bid(&impression, &controller_states, 1.0, test_case.value, &mut logger);
             
             println!("Optimal Bid (pacing=0.8298): {:?}", bid_optimal);
             println!("Max Margin Bid (pacing=0.8298): {:?}", bid_max_margin);

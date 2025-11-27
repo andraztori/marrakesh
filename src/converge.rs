@@ -32,14 +32,17 @@ pub trait ConvergeTargetAny<T> {
 
 /// Container for campaign controller states
 /// Uses dynamic dispatch to support different campaign types
+/// Each campaign can have multiple controller states (e.g., CampaignDouble has 2)
 pub struct CampaignControllerStates {
-    pub campaign_controller_states: Vec<Box<dyn ControllerState>>,
+    pub campaign_controller_states: Vec<Vec<Box<dyn ControllerState>>>,
 }
 
 impl Clone for CampaignControllerStates {
     fn clone(&self) -> Self {
         Self {
-            campaign_controller_states: self.campaign_controller_states.iter().map(|p| p.clone_box()).collect(),
+            campaign_controller_states: self.campaign_controller_states.iter()
+                .map(|states| states.iter().map(|p| p.clone_box()).collect())
+                .collect(),
         }
     }
 }
@@ -182,11 +185,13 @@ impl SimulationConverge {
             let mut pacing_changed = false;
             for (index, campaign) in self.marketplace.campaigns.campaigns.iter().enumerate() {
                 let campaign_stat = &stats.campaign_stats[index];
-                let previous_state = current_campaign_controller_states.campaign_controller_states[index].as_ref();
-                let next_state = next_campaign_controller_states.campaign_controller_states[index].as_mut();
+                let previous_states_vec = &current_campaign_controller_states.campaign_controller_states[index];
+                let previous_states: Vec<&dyn ControllerState> = previous_states_vec.iter().map(|cs| cs.as_ref()).collect();
+                let next_states_vec = &mut next_campaign_controller_states.campaign_controller_states[index];
+                let mut next_states: Vec<&mut dyn ControllerState> = next_states_vec.iter_mut().map(|cs| cs.as_mut()).collect();
                 
                 // Use the campaign's next_controller_state method (now part of CampaignTrait)
-                pacing_changed |= campaign.next_controller_state(previous_state, next_state, campaign_stat);
+                pacing_changed |= campaign.next_controller_state(&previous_states, &mut next_states, campaign_stat);
             }
             
             // Calculate next iteration's seller controller states based on current results

@@ -274,8 +274,9 @@ impl SimulationStat {
         
         for (index, campaign_stat) in self.campaign_stats.iter().enumerate() {
             let campaign = &campaigns.campaigns[index];
-            let controller_state = campaign_controller_states.campaign_controller_states[index].as_ref();
-            let type_target_and_controller_string = campaign.type_target_and_controller_state_string(controller_state);
+            let controller_states_vec = &campaign_controller_states.campaign_controller_states[index];
+            let controller_states: Vec<&dyn crate::controllers::ControllerState> = controller_states_vec.iter().map(|cs| cs.as_ref()).collect();
+            let type_target_and_controller_string = campaign.type_target_and_controller_state_string(&controller_states);
             
             logln!(logger, event, "\nCampaign {} ({}) - {}", 
                      campaign.campaign_id(), campaign.campaign_name(), type_target_and_controller_string);
