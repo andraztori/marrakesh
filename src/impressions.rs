@@ -122,8 +122,8 @@ impl Impression {
             None
         };
 
-        // Get seller_boost_factor from seller using get_control_variable
-        let seller_boost_factor = seller.get_control_variable(seller_converge);
+        // Get seller_control_factor from seller using get_control_variable
+        let seller_control_factor = seller.get_control_variable(seller_converge);
 
         for campaign in &campaigns.campaigns {
             let campaign_id = campaign.campaign_id();
@@ -132,7 +132,7 @@ impl Impression {
             let group_id = campaigns.campaign_to_value_group_mapping[campaign_id];
             let value_to_campaign = self.value_to_campaign_group[group_id];
             // Use the trait method for get_bid
-            if let Some(bid) = campaign.get_bid(self, campaign_converge.as_ref(), seller_boost_factor, value_to_campaign, logger) {
+            if let Some(bid) = campaign.get_bid(self, campaign_converge.as_ref(), seller_control_factor, value_to_campaign, logger) {
                 // Check if bid is below zero - skip negative bids
                 if bid < 0.0 {
                     errln!(logger, LogEvent::Simulation, "Bid below zero: {:.4} from campaign_id: {}, skipping", bid, campaign_id);
@@ -268,8 +268,8 @@ impl Impression {
         let mut fractional_winners: Vec<FractionalWinner> = Vec::new();
         let mut any_bids_made = false;
 
-        // Get seller_boost_factor from seller using get_control_variable
-        let seller_boost_factor = seller.get_control_variable(seller_converge);
+        // Get seller_control_factor from seller using get_control_variable
+        let seller_control_factor = seller.get_control_variable(seller_converge);
 
         for campaign in &campaigns.campaigns {
             let campaign_id = campaign.campaign_id();
@@ -278,7 +278,7 @@ impl Impression {
             let group_id = campaigns.campaign_to_value_group_mapping[campaign_id];
             let value_to_campaign = self.value_to_campaign_group[group_id];
             // Use the trait method for get_bid
-            if let Some(bid) = campaign.get_bid(self, campaign_converge.as_ref(), seller_boost_factor, value_to_campaign, logger) {
+            if let Some(bid) = campaign.get_bid(self, campaign_converge.as_ref(), seller_control_factor, value_to_campaign, logger) {
                 any_bids_made = true;
                 // Check if bid is below zero - skip negative bids
                 if bid < 0.0 {

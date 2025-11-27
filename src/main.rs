@@ -93,14 +93,14 @@ fn main() {
     
     // Check if "test" argument is provided
     if args.len() > 1 && args[1] == "test" {
-        use campaigns::{CampaignSimple, ConvergeNone, CampaignTrait};
+        use campaigns::{CampaignSingle, ConvergeNone, CampaignTrait};
         use impressions::Impression;
         use competition::ImpressionCompetition;
         
         // Setup shared resources
         use campaigns::{CampaignBidderOptimal, BidderMaxMargin};
-        let bidder_optimal = Box::new(CampaignBidderOptimal) as Box<dyn campaigns::CampaignBidder>;
-        let campaign_optimal = CampaignSimple {
+        let bidder_optimal = Box::new(CampaignBidderOptimal) as Box<dyn campaigns::CampaignBidderSingle>;
+        let campaign_optimal = CampaignSingle {
             campaign_id: 0,
             campaign_name: "Optimal".to_string(),
             converge_target: Box::new(ConvergeNone),
@@ -108,8 +108,8 @@ fn main() {
             bidder: bidder_optimal,
         };
         
-        let bidder_max_margin = Box::new(BidderMaxMargin) as Box<dyn campaigns::CampaignBidder>;
-        let campaign_max_margin = CampaignSimple {
+        let bidder_max_margin = Box::new(BidderMaxMargin) as Box<dyn campaigns::CampaignBidderSingle>;
+        let campaign_max_margin = CampaignSingle {
             campaign_id: 0,
             campaign_name: "MaxMargin".to_string(),
             converge_target: Box::new(ConvergeNone),

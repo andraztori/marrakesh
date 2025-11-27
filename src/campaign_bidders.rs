@@ -3,15 +3,16 @@ use crate::sigmoid::Sigmoid;
 use crate::logger::{Logger, LogEvent};
 use crate::warnln;
 
-// These are bidders that can be used by CampaignSimple. In theory we could give them more flexibility, but 
+// These are bidders that can be used by CampaignSingle. In theory we could give them more flexibility, but 
 // vast majority of strategies require just one pacing parameter, so if one needs more complex state
 // one can implement a full CampaignTrait
 
 /// Trait for campaign bidding strategies
-pub trait CampaignBidder {
-    /// Calculate the bid for this campaign given an impression, pacing, and seller boost factor
+/// Single refers to using a single control factor on the demand side
+pub trait CampaignBidderSingle {
+    /// Calculate the bid for this campaign given an impression, campaign control factor, and seller control factor
     /// Returns None if bid cannot be calculated (logs warning via logger)
-    fn get_bid(&self, value_to_campaign: f64, impression: &Impression, pacing: f64, seller_boost_factor: f64, logger: &mut Logger) -> Option<f64>;
+    fn get_bid(&self, value_to_campaign: f64, impression: &Impression, campaign_control_factor: f64, seller_control_factor: f64, logger: &mut Logger) -> Option<f64>;
     
     /// Get a string representation of the bidding type
     fn get_bidding_type(&self) -> String;
@@ -20,13 +21,12 @@ pub trait CampaignBidder {
 /// Bidder for multiplicative pacing strategy
 pub struct CampaignBidderMultiplicative;
 
-impl CampaignBidder for CampaignBidderMultiplicative {
-    fn get_bid(&self, value_to_campaign: f64, impression: &Impression, pacing: f64, seller_boost_factor: f64, _logger: &mut Logger) -> Option<f64> {
-        let bid = pacing * value_to_campaign * seller_boost_factor;
-        let floor = impression.floor_cpm;
+impl CampaignBidderSingle for CampaignBidderMultiplicative {
+    fn get_bid(&self, value_to_campaign: f64, impression: &Impression, campaign_control_factor: f64, seller_control_factor: f64, _logger: &mut Logger) -> Option<f64> {
+        let bid = campaign_control_factor * value_to_campaign * seller_control_factor;
         
         // Don't bid if bid is below floor
-        if bid < floor {
+        if bid < impression.floor_cpm {
             return None;
         }
         
@@ -38,16 +38,15 @@ impl CampaignBidder for CampaignBidderMultiplicative {
     }
 }
 
-/// Bidder for multiplicative pacing with additive seller boost factor
+/// Bidder for multiplicative pacing with additive seller control factor
 pub struct CampaignBidderMultiplicativeAdditive;
 
-impl CampaignBidder for CampaignBidderMultiplicativeAdditive {
-    fn get_bid(&self, value_to_campaign: f64, impression: &Impression, pacing: f64, seller_boost_factor: f64, _logger: &mut Logger) -> Option<f64> {
-        let bid = pacing * value_to_campaign + seller_boost_factor;
-        let floor = impression.floor_cpm;
+impl CampaignBidderSingle for CampaignBidderMultiplicativeAdditive {
+    fn get_bid(&self, value_to_campaign: f64, impression: &Impression, campaign_control_factor: f64, seller_control_factor: f64, _logger: &mut Logger) -> Option<f64> {
+        let bid = campaign_control_factor * value_to_campaign + seller_control_factor;
         
         // Don't bid if bid is below floor
-        if bid < floor {
+        if bid < impression.floor_cpm {
             return None;
         }
         
@@ -68,22 +67,22 @@ impl CampaignBidder for CampaignBidderMultiplicativeAdditive {
 /// The quantity of the marginal utility of spend is what needs to converge (for example based on target impressions or budget)
 pub struct CampaignBidderOptimal;
 
-impl CampaignBidder for CampaignBidderOptimal {
-    fn get_bid(&self, value_to_campaign: f64, impression: &Impression, pacing: f64, seller_boost_factor: f64, logger: &mut Logger) -> Option<f64> {
-        // Handle zero or very small pacing to avoid division by zero
-        if pacing <= 1e-10 {
-            warnln!(logger, LogEvent::Simulation, "Pacing is too small, returning 0.0");
+impl CampaignBidderSingle for CampaignBidderOptimal {
+    fn get_bid(&self, value_to_campaign: f64, impression: &Impression, campaign_control_factor: f64, seller_control_factor: f64, logger: &mut Logger) -> Option<f64> {
+        // Handle zero or very small campaign_control_factor to avoid division by zero
+        if campaign_control_factor <= 1e-10 {
+            warnln!(logger, LogEvent::Simulation, "Campaign control factor is too small, returning 0.0");
             return Some(0.0);
         }
         
-        // a) Calculate marginal_utility_of_spend as 1.0 / pacing
-        // In pacing converger we assume higher pacing leads to more spend
+        // a) Calculate marginal_utility_of_spend as 1.0 / campaign_control_factor
+        // In campaign control factor converger we assume higher campaign_control_factor leads to more spend
         // but marginal utility of spend actually has to decrease to have more spend
         // so we do this non-linear transform. works well enough, but could probably be improved.
-        let marginal_utility_of_spend = 1.0 / pacing;
+        let marginal_utility_of_spend = 1.0 / campaign_control_factor;
         
-        // b) Calculate value as multiplication between seller_boost_factor and impression value to campaign
-        let value = seller_boost_factor * value_to_campaign;
+        // b) Calculate value as multiplication between seller_control_factor and impression value to campaign
+        let value = seller_control_factor * value_to_campaign;
         
         // Get competition data (required for optimal bidding)
         let competition = match &impression.competition {
@@ -136,10 +135,10 @@ impl CampaignBidder for CampaignBidderOptimal {
 /// Bidder for max margin bidding strategy
 pub struct BidderMaxMargin;
 
-impl CampaignBidder for BidderMaxMargin {
-    fn get_bid(&self, value_to_campaign: f64, impression: &Impression, pacing: f64, seller_boost_factor: f64, logger: &mut Logger) -> Option<f64> {
+impl CampaignBidderSingle for BidderMaxMargin {
+    fn get_bid(&self, value_to_campaign: f64, impression: &Impression, campaign_control_factor: f64, seller_control_factor: f64, logger: &mut Logger) -> Option<f64> {
         // Calculate full_price (maximum we're willing to pay)
-        let boosted_price = pacing * seller_boost_factor * value_to_campaign;
+        let boosted_price = campaign_control_factor * seller_control_factor * value_to_campaign;
         
         // Get competition data (required for max margin bidding)
         let competition = match &impression.competition {
@@ -170,10 +169,10 @@ impl CampaignBidder for BidderMaxMargin {
 /// Bidder for cheater/last look bidding strategy
 pub struct CampaignBidderCheaterLastLook;
 
-impl CampaignBidder for CampaignBidderCheaterLastLook {
-    fn get_bid(&self, value_to_campaign: f64, impression: &Impression, pacing: f64, seller_boost_factor: f64, _logger: &mut Logger) -> Option<f64> {
-        // Calculate value as multiplication between seller_boost_factor and impression value to campaign
-        let max_affordable_bid = pacing * seller_boost_factor * value_to_campaign;
+impl CampaignBidderSingle for CampaignBidderCheaterLastLook {
+    fn get_bid(&self, value_to_campaign: f64, impression: &Impression, campaign_control_factor: f64, seller_control_factor: f64, _logger: &mut Logger) -> Option<f64> {
+        // Calculate value as multiplication between seller_control_factor and impression value to campaign
+        let max_affordable_bid = campaign_control_factor * seller_control_factor * value_to_campaign;
         
         // Calculate minimum winning bid as minimum of floor and competing bid, plus 0.00001
         let mut minimum_winning_bid = impression.floor_cpm;
@@ -204,10 +203,10 @@ impl CampaignBidder for CampaignBidderCheaterLastLook {
 /// ALB is worse than multiplicative bidding when there is scarcity of impressions and we have high fill rates
 pub struct CampaignBidderALB;
 
-impl CampaignBidder for CampaignBidderALB {
-    fn get_bid(&self, value_to_campaign: f64, impression: &Impression, pacing: f64, seller_boost_factor: f64, logger: &mut Logger) -> Option<f64> {
-        // Calculate multiplicative pacing bid
-        let pacing_bid = pacing * value_to_campaign * seller_boost_factor;
+impl CampaignBidderSingle for CampaignBidderALB {
+    fn get_bid(&self, value_to_campaign: f64, impression: &Impression, campaign_control_factor: f64, seller_control_factor: f64, logger: &mut Logger) -> Option<f64> {
+        // Calculate multiplicative bid
+        let campaign_control_bid = campaign_control_factor * value_to_campaign * seller_control_factor;
         
         // Get competition data (required for ALB bidding)
         let competition = match &impression.competition {
@@ -222,13 +221,13 @@ impl CampaignBidder for CampaignBidderALB {
         // Get the predicted offset point
         let predicted_offset = competition.win_rate_prediction_sigmoid_offset;
         //println!("actual offset: {:.4}, predicted offset: {:.4}", competition.win_rate_actual_sigmoid_offset, competition.win_rate_prediction_sigmoid_offset);
-        // Only bid if pacing bid is above predicted offset point
-        if pacing_bid <= predicted_offset {
+        // Only bid if campaign control bid is above predicted offset point
+        if campaign_control_bid <= predicted_offset {
             return None;
         }
         
-        // If floor is above predicted_offset but below pacing_bid, bid with floor
-        if impression.floor_cpm > predicted_offset && impression.floor_cpm < pacing_bid {
+        // If floor is above predicted_offset but below campaign control bid, bid with floor
+        if impression.floor_cpm > predicted_offset && impression.floor_cpm < campaign_control_bid {
             return Some(impression.floor_cpm);
         }
         
