@@ -73,9 +73,9 @@ impl SimulationRun {
             // Check simulation type and call appropriate auction method
             match marketplace.simulation_type {
                 SimulationType::Standard => {
-            let result = impression.run_auction(&marketplace.campaigns, campaign_controller_states, seller, seller_converge, logger);
-            results.push(result);
-        }
+                    let result = impression.run_auction(&marketplace.campaigns, campaign_controller_states, seller, seller_converge, logger);
+                    results.push(result);
+                }
                 SimulationType::FractionalInternalAuction { softmax_temperature } => {
                     let result_fractional = impression.run_fractional_auction(&marketplace.campaigns, campaign_controller_states, seller, seller_converge, softmax_temperature, logger);
                     results_fractional.push(result_fractional);

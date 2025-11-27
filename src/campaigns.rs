@@ -132,8 +132,7 @@ pub use crate::campaign_bidders::{CampaignBidderMultiplicative, CampaignBidderMu
 pub struct CampaignDouble {
     pub campaign_id: usize,
     pub campaign_name: String,
-    pub converge_target_primary: Box<dyn ConvergeTargetAny<crate::simulationrun::CampaignStat>>,
-    pub converge_target_secondary: Box<dyn ConvergeTargetAny<crate::simulationrun::CampaignStat>>,
+    pub converge_targets: Vec<Box<dyn ConvergeTargetAny<crate::simulationrun::CampaignStat>>>,
     pub converge_controller: Box<dyn ConvergeControllerDouble>,
     pub bidder: Box<dyn CampaignBidderSingle>,
 }
@@ -153,7 +152,7 @@ impl CampaignTrait for CampaignDouble {
         let mu = self.converge_controller.get_control_variable_secondary(controller_state);
         
         // Get secondary converge target value
-        let secondary_target = self.converge_target_secondary.get_target_value();
+        let secondary_target = self.converge_targets[1].get_target_value();
         
         // Calculate base_value: lambda + mu * (value_to_campaign - secondary_target)
         // for viwablity lambda + mu * (viewability - targeted_viability)
@@ -182,8 +181,8 @@ impl CampaignTrait for CampaignDouble {
     }
     
     fn next_controller_state(&self, previous_state: &dyn ControllerState, next_state: &mut dyn ControllerState, campaign_stat: &crate::simulationrun::CampaignStat) -> bool {
-        let (actual_primary, target_primary) = self.converge_target_primary.get_actual_and_target(campaign_stat);
-        let (actual_secondary, target_secondary) = self.converge_target_secondary.get_actual_and_target(campaign_stat);
+        let (actual_primary, target_primary) = self.converge_targets[0].get_actual_and_target(campaign_stat);
+        let (actual_secondary, target_secondary) = self.converge_targets[1].get_actual_and_target(campaign_stat);
         self.converge_controller.next_controller_state(
             previous_state,
             next_state,
@@ -198,8 +197,8 @@ impl CampaignTrait for CampaignDouble {
         format!(
             "{} ({}, Secondary: {}, {})",
             self.bidder.get_bidding_type(),
-            self.converge_target_primary.converge_target_string(),
-            self.converge_target_secondary.converge_target_string(),
+            self.converge_targets[0].converge_target_string(),
+            self.converge_targets[1].converge_target_string(),
             self.converge_controller.controller_string(controller_state)
         )
     }
@@ -350,15 +349,15 @@ impl Campaigns {
             }
             CampaignType::MAX_MARGIN_DOUBLE_TARGET => {
                 assert_eq!(converge_targets.len(), 2, "MAX_MARGIN_DOUBLE_TARGET requires exactly two converge targets");
-                let (converge_target_primary, _) = Self::convert_converge_target(converge_targets[0].clone());
-                let (converge_target_secondary, _) = Self::convert_converge_target(converge_targets[1].clone());
+                let converge_targets_vec: Vec<Box<dyn ConvergeTargetAny<crate::simulationrun::CampaignStat>>> = converge_targets.iter()
+                    .map(|ct| Self::convert_converge_target(ct.clone()).0)
+                    .collect();
                 let bidder = Box::new(BidderMaxMargin) as Box<dyn CampaignBidderSingle>;
                 let converge_controller = Box::new(crate::controllers::ConvergeDoubleProportionalController::new()) as Box<dyn crate::controllers::ConvergeControllerDouble>;
                 self.campaigns.push(Box::new(CampaignDouble {
                     campaign_id,
                     campaign_name,
-                    converge_target_primary,
-                    converge_target_secondary,
+                    converge_targets: converge_targets_vec,
                     converge_controller,
                     bidder,
                 }));
