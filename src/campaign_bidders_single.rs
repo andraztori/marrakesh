@@ -2,17 +2,21 @@ use crate::impressions::Impression;
 use crate::sigmoid::Sigmoid;
 use crate::logger::{Logger, LogEvent};
 use crate::warnln;
+use crate::converge::ConvergeTargetAny;
 
-// These are bidders that can be used by CampaignSingle. In theory we could give them more flexibility, but 
+// These are bidders that can be used by CampaignGeneral. In theory we could give them more flexibility, but 
 // vast majority of strategies require just one pacing parameter, so if one needs more complex state
 // one can implement a full CampaignTrait
 
 /// Trait for campaign bidding strategies
 /// Single refers to using a single control factor on the demand side
-pub trait CampaignBidderSingle {
-    /// Calculate the bid for this campaign given an impression, campaign control factor, and seller control factor
+pub trait CampaignBidder {
+    /// Calculate the bid for this campaign given an impression, control variables slice, converge targets, and seller control factor
     /// Returns None if bid cannot be calculated (logs warning via logger)
-    fn get_bid(&self, value_to_campaign: f64, impression: &Impression, campaign_control_factor: f64, seller_control_factor: f64, logger: &mut Logger) -> Option<f64>;
+    /// Default implementation panics - must be implemented by specific bidder types
+    fn get_bid(&self, _value_to_campaign: f64, _impression: &Impression, _control_variables: &[f64], _converge_targets: &Vec<Box<dyn ConvergeTargetAny<crate::simulationrun::CampaignStat>>>, _seller_control_factor: f64, _logger: &mut Logger) -> Option<f64> {
+        unimplemented!("get_bid is not implemented for this bidder type")
+    }
     
     /// Get a string representation of the bidding type
     fn get_bidding_type(&self) -> String;
@@ -21,8 +25,10 @@ pub trait CampaignBidderSingle {
 /// Bidder for multiplicative pacing strategy
 pub struct CampaignBidderMultiplicative;
 
-impl CampaignBidderSingle for CampaignBidderMultiplicative {
-    fn get_bid(&self, value_to_campaign: f64, impression: &Impression, campaign_control_factor: f64, seller_control_factor: f64, _logger: &mut Logger) -> Option<f64> {
+impl CampaignBidder for CampaignBidderMultiplicative {
+    fn get_bid(&self, value_to_campaign: f64, impression: &Impression, control_variables: &[f64], _converge_targets: &Vec<Box<dyn ConvergeTargetAny<crate::simulationrun::CampaignStat>>>, seller_control_factor: f64, _logger: &mut Logger) -> Option<f64> {
+        assert_eq!(control_variables.len(), 1, "CampaignBidderMultiplicative requires exactly 1 control variable");
+        let campaign_control_factor = control_variables[0];
         let bid = campaign_control_factor * value_to_campaign * seller_control_factor;
         
         // Don't bid if bid is below floor
@@ -41,8 +47,10 @@ impl CampaignBidderSingle for CampaignBidderMultiplicative {
 /// Bidder for multiplicative pacing with additive seller control factor
 pub struct CampaignBidderMultiplicativeAdditive;
 
-impl CampaignBidderSingle for CampaignBidderMultiplicativeAdditive {
-    fn get_bid(&self, value_to_campaign: f64, impression: &Impression, campaign_control_factor: f64, seller_control_factor: f64, _logger: &mut Logger) -> Option<f64> {
+impl CampaignBidder for CampaignBidderMultiplicativeAdditive {
+    fn get_bid(&self, value_to_campaign: f64, impression: &Impression, control_variables: &[f64], _converge_targets: &Vec<Box<dyn ConvergeTargetAny<crate::simulationrun::CampaignStat>>>, seller_control_factor: f64, _logger: &mut Logger) -> Option<f64> {
+        assert_eq!(control_variables.len(), 1, "CampaignBidderMultiplicativeAdditive requires exactly 1 control variable");
+        let campaign_control_factor = control_variables[0];
         let bid = campaign_control_factor * value_to_campaign + seller_control_factor;
         
         // Don't bid if bid is below floor
@@ -67,8 +75,11 @@ impl CampaignBidderSingle for CampaignBidderMultiplicativeAdditive {
 /// The quantity of the marginal utility of spend is what needs to converge (for example based on target impressions or budget)
 pub struct CampaignBidderOptimal;
 
-impl CampaignBidderSingle for CampaignBidderOptimal {
-    fn get_bid(&self, value_to_campaign: f64, impression: &Impression, campaign_control_factor: f64, seller_control_factor: f64, logger: &mut Logger) -> Option<f64> {
+impl CampaignBidder for CampaignBidderOptimal {
+    fn get_bid(&self, value_to_campaign: f64, impression: &Impression, control_variables: &[f64], _converge_targets: &Vec<Box<dyn ConvergeTargetAny<crate::simulationrun::CampaignStat>>>, seller_control_factor: f64, logger: &mut Logger) -> Option<f64> {
+        assert_eq!(control_variables.len(), 1, "CampaignBidderOptimal requires exactly 1 control variable");
+        let campaign_control_factor = control_variables[0];
+        
         // Handle zero or very small campaign_control_factor to avoid division by zero
         if campaign_control_factor <= 1e-10 {
             warnln!(logger, LogEvent::Simulation, "Campaign control factor is too small, returning 0.0");
@@ -135,8 +146,11 @@ impl CampaignBidderSingle for CampaignBidderOptimal {
 /// Bidder for max margin bidding strategy
 pub struct BidderMaxMargin;
 
-impl CampaignBidderSingle for BidderMaxMargin {
-    fn get_bid(&self, value_to_campaign: f64, impression: &Impression, campaign_control_factor: f64, seller_control_factor: f64, logger: &mut Logger) -> Option<f64> {
+impl CampaignBidder for BidderMaxMargin {
+    fn get_bid(&self, value_to_campaign: f64, impression: &Impression, control_variables: &[f64], _converge_targets: &Vec<Box<dyn ConvergeTargetAny<crate::simulationrun::CampaignStat>>>, seller_control_factor: f64, logger: &mut Logger) -> Option<f64> {
+        assert_eq!(control_variables.len(), 1, "BidderMaxMargin requires exactly 1 control variable");
+        let campaign_control_factor = control_variables[0];
+        
         // Calculate full_price (maximum we're willing to pay)
         let boosted_price = campaign_control_factor * seller_control_factor * value_to_campaign;
         
@@ -169,8 +183,11 @@ impl CampaignBidderSingle for BidderMaxMargin {
 /// Bidder for cheater/last look bidding strategy
 pub struct CampaignBidderCheaterLastLook;
 
-impl CampaignBidderSingle for CampaignBidderCheaterLastLook {
-    fn get_bid(&self, value_to_campaign: f64, impression: &Impression, campaign_control_factor: f64, seller_control_factor: f64, _logger: &mut Logger) -> Option<f64> {
+impl CampaignBidder for CampaignBidderCheaterLastLook {
+    fn get_bid(&self, value_to_campaign: f64, impression: &Impression, control_variables: &[f64], _converge_targets: &Vec<Box<dyn ConvergeTargetAny<crate::simulationrun::CampaignStat>>>, seller_control_factor: f64, _logger: &mut Logger) -> Option<f64> {
+        assert_eq!(control_variables.len(), 1, "CampaignBidderCheaterLastLook requires exactly 1 control variable");
+        let campaign_control_factor = control_variables[0];
+        
         // Calculate value as multiplication between seller_control_factor and impression value to campaign
         let max_affordable_bid = campaign_control_factor * seller_control_factor * value_to_campaign;
         
@@ -203,8 +220,11 @@ impl CampaignBidderSingle for CampaignBidderCheaterLastLook {
 /// ALB is worse than multiplicative bidding when there is scarcity of impressions and we have high fill rates
 pub struct CampaignBidderALB;
 
-impl CampaignBidderSingle for CampaignBidderALB {
-    fn get_bid(&self, value_to_campaign: f64, impression: &Impression, campaign_control_factor: f64, seller_control_factor: f64, logger: &mut Logger) -> Option<f64> {
+impl CampaignBidder for CampaignBidderALB {
+    fn get_bid(&self, value_to_campaign: f64, impression: &Impression, control_variables: &[f64], _converge_targets: &Vec<Box<dyn ConvergeTargetAny<crate::simulationrun::CampaignStat>>>, seller_control_factor: f64, logger: &mut Logger) -> Option<f64> {
+        assert_eq!(control_variables.len(), 1, "CampaignBidderALB requires exactly 1 control variable");
+        let campaign_control_factor = control_variables[0];
+        
         // Calculate multiplicative bid
         let campaign_control_bid = campaign_control_factor * value_to_campaign * seller_control_factor;
         

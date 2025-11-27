@@ -2,12 +2,11 @@ use crate::impressions::Impression;
 pub use crate::converge::ConvergeTargetAny;
 pub use crate::controllers::ConvergeController;
 pub use crate::controller_state::ControllerState;
-pub use crate::campaign_bidders_single::CampaignBidderSingle;
-use crate::sigmoid::Sigmoid;
-use crate::logger::{LogEvent};
-use crate::warnln;
+pub use crate::campaign_bidders_single::CampaignBidder;
+pub use crate::campaign_bidders_double::CampaignBidderDouble;
 
-
+/// Maximum number of controllers supported by campaigns
+const MAX_CONTROLLERS: usize = 10;
 
 /// Campaign type determining the bidding strategy
 #[allow(non_camel_case_types)]
@@ -86,16 +85,16 @@ pub trait CampaignTrait {
 /// - what outcome is the campaign looking to converge to
 /// - what is the controller taking care of convergence
 /// - what is the bidding (pricing) strategy
-/// Single means a single demand side control parameter
-pub struct CampaignSingle {
+/// CampaignGeneral supports any number of converge targets and controllers
+pub struct CampaignGeneral {
     pub campaign_id: usize,
     pub campaign_name: String,
-    pub converge_target: Box<dyn ConvergeTargetAny<crate::simulationrun::CampaignStat>>,
-    pub converge_controller: Box<dyn crate::controllers::ConvergeController>,
-    pub bidder: Box<dyn CampaignBidderSingle>,
+    pub converge_targets: Vec<Box<dyn ConvergeTargetAny<crate::simulationrun::CampaignStat>>>,
+    pub converge_controllers: Vec<Box<dyn ConvergeController>>,
+    pub bidder: Box<dyn CampaignBidder>,
 }
 
-impl CampaignTrait for CampaignSingle {
+impl CampaignTrait for CampaignGeneral {
     fn campaign_id(&self) -> usize {
         self.campaign_id
     }
@@ -105,82 +104,17 @@ impl CampaignTrait for CampaignSingle {
     }
     
     fn get_bid(&self, impression: &Impression, controller_states: &[&dyn crate::controllers::ControllerState], seller_control_factor: f64, value_to_campaign: f64, logger: &mut crate::logger::Logger) -> Option<f64> {
-        let campaign_control_factor = self.converge_controller.get_control_variable(controller_states[0]);
-        // Pass the value_to_campaign to the bidder
-        self.bidder.get_bid(value_to_campaign, impression, campaign_control_factor, seller_control_factor, logger)
+        // Setup control variables in a static array
+        let mut control_variables = [0.0; MAX_CONTROLLERS];
+        for (i, (converge_controller, controller_state)) in self.converge_controllers.iter().zip(controller_states.iter()).enumerate() {
+            control_variables[i] = converge_controller.get_control_variable(*controller_state);
+        }
+        
+        // Delegate to the bidder
+        self.bidder.get_bid(value_to_campaign, impression, &control_variables[..self.converge_controllers.len()], &self.converge_targets, seller_control_factor, logger)
     }
     
     fn next_controller_state(&self, previous_states: &[&dyn crate::controllers::ControllerState], next_states: &mut [&mut dyn crate::controllers::ControllerState], campaign_stat: &crate::simulationrun::CampaignStat) -> bool {
-        let (actual, target) = self.converge_target.get_actual_and_target(campaign_stat);
-        self.converge_controller.next_controller_state(previous_states[0], next_states[0], actual, target)
-    }
-    
-    fn type_target_and_controller_state_string(&self, controller_states: &[&dyn crate::controllers::ControllerState]) -> String {
-        format!("{} ({}, {})", self.bidder.get_bidding_type(), self.converge_target.converge_target_string(), self.converge_controller.controller_string(controller_states[0]))
-    }
-    
-    fn create_controller_state(&self) -> Vec<Box<dyn crate::controllers::ControllerState>> {
-        vec![self.converge_controller.create_controller_state()]
-    }
-}
-
-// Re-export bidder types for convenience
-pub use crate::campaign_bidders_single::{CampaignBidderMultiplicative, CampaignBidderMultiplicativeAdditive, CampaignBidderOptimal, BidderMaxMargin, CampaignBidderCheaterLastLook};
-
-/// Campaign type that converges to both primary and secondary targets
-/// Based on CampaignSingle but with dual converge targets
-pub struct CampaignDouble {
-    pub campaign_id: usize,
-    pub campaign_name: String,
-    pub converge_targets: Vec<Box<dyn ConvergeTargetAny<crate::simulationrun::CampaignStat>>>,
-    pub converge_controllers: Vec<Box<dyn ConvergeController>>,
-    pub bidder: Box<dyn CampaignBidderSingle>,
-}
-
-impl CampaignTrait for CampaignDouble {
-    fn campaign_id(&self) -> usize {
-        self.campaign_id
-    }
-    
-    fn campaign_name(&self) -> &str {
-        &self.campaign_name
-    }
-    
-    fn get_bid(&self, impression: &Impression, controller_states: &[&dyn ControllerState], seller_control_factor: f64, value_to_campaign: f64, logger: &mut crate::logger::Logger) -> Option<f64> {
-        // Save primary control variable as lambda, secondary as mu
-        let lambda = self.converge_controllers[0].get_control_variable(controller_states[0]);
-        let mu = self.converge_controllers[1].get_control_variable(controller_states[1]);
-        
-        // Get secondary converge target value
-        let secondary_target = self.converge_targets[1].get_target_value();
-        
-        // Calculate base_value: lambda + mu * (value_to_campaign - secondary_target)
-        // for viwablity lambda + mu * (viewability - targeted_viability)
-
-        let base_value = lambda * seller_control_factor + mu * (value_to_campaign - secondary_target);
-        
-        // Get competition data (required for max margin bidding)
-        let competition = match &impression.competition {
-            Some(comp) => comp,
-            None => {
-                warnln!(logger, LogEvent::Simulation, 
-                    "Max margin bidding requires competition data. This impression has no competition data.");
-                return None;
-            }
-        };
-        
-        // Initialize sigmoid with competition parameters
-        let sigmoid = Sigmoid::new(
-            competition.win_rate_prediction_sigmoid_offset,
-            competition.win_rate_prediction_sigmoid_scale,
-            1.0,  // Using normalized value of 1.0
-        );
-        
-
-        sigmoid.max_margin_bid_bisection(base_value, impression.floor_cpm)
-    }
-    
-    fn next_controller_state(&self, previous_states: &[&dyn ControllerState], next_states: &mut [&mut dyn ControllerState], campaign_stat: &crate::simulationrun::CampaignStat) -> bool {
         let mut any_changed = false;
         for (index, (converge_target, converge_controller)) in self.converge_targets.iter().zip(self.converge_controllers.iter()).enumerate() {
             let (actual, target) = converge_target.get_actual_and_target(campaign_stat);
@@ -190,7 +124,7 @@ impl CampaignTrait for CampaignDouble {
         any_changed
     }
     
-    fn type_target_and_controller_state_string(&self, controller_states: &[&dyn ControllerState]) -> String {
+    fn type_target_and_controller_state_string(&self, controller_states: &[&dyn crate::controllers::ControllerState]) -> String {
         let mut parts = Vec::new();
         for (index, (converge_target, converge_controller)) in self.converge_targets.iter().zip(self.converge_controllers.iter()).enumerate() {
             parts.push(format!("Target {}: {} (Cntrl: {})", 
@@ -202,13 +136,13 @@ impl CampaignTrait for CampaignDouble {
         format!("{} ({})", self.bidder.get_bidding_type(), parts.join(", "))
     }
     
-    fn create_controller_state(&self) -> Vec<Box<dyn ControllerState>> {
-        vec![
-            self.converge_controllers[0].create_controller_state(),
-            self.converge_controllers[1].create_controller_state(),
-        ]
+    fn create_controller_state(&self) -> Vec<Box<dyn crate::controllers::ControllerState>> {
+        self.converge_controllers.iter().map(|c| c.create_controller_state()).collect()
     }
 }
+
+// Re-export bidder types for convenience
+pub use crate::campaign_bidders_single::{CampaignBidderMultiplicative, CampaignBidderMultiplicativeAdditive, CampaignBidderOptimal, BidderMaxMargin, CampaignBidderCheaterLastLook};
 
 /// Container for campaigns with methods to add campaigns
 /// Uses trait objects to support different campaign types
@@ -292,60 +226,60 @@ impl Campaigns {
             CampaignType::MULTIPLICATIVE_PACING => {
                 assert_eq!(converge_targets.len(), 1, "MULTIPLICATIVE_PACING requires exactly one converge target");
                 let (converge_target_box, converge_controller) = Self::convert_converge_target(converge_targets[0].clone());
-                let bidder = Box::new(CampaignBidderMultiplicative) as Box<dyn CampaignBidderSingle>;
-                self.campaigns.push(Box::new(CampaignSingle {
+                let bidder = Box::new(CampaignBidderMultiplicative) as Box<dyn CampaignBidder>;
+                self.campaigns.push(Box::new(CampaignGeneral {
                     campaign_id,
                     campaign_name,
-                    converge_target: converge_target_box,
-                    converge_controller,
+                    converge_targets: vec![converge_target_box],
+                    converge_controllers: vec![converge_controller],
                     bidder,
                 }));
             }
             CampaignType::MULTIPLICATIVE_ADDITIVE => {
                 assert_eq!(converge_targets.len(), 1, "MULTIPLICATIVE_ADDITIVE requires exactly one converge target");
                 let (converge_target_box, converge_controller) = Self::convert_converge_target(converge_targets[0].clone());
-                let bidder = Box::new(CampaignBidderMultiplicativeAdditive) as Box<dyn CampaignBidderSingle>;
-                self.campaigns.push(Box::new(CampaignSingle {
+                let bidder = Box::new(CampaignBidderMultiplicativeAdditive) as Box<dyn CampaignBidder>;
+                self.campaigns.push(Box::new(CampaignGeneral {
                     campaign_id,
                     campaign_name,
-                    converge_target: converge_target_box,
-                    converge_controller,
+                    converge_targets: vec![converge_target_box],
+                    converge_controllers: vec![converge_controller],
                     bidder,
                 }));
             }
             CampaignType::OPTIMAL => {
                 assert_eq!(converge_targets.len(), 1, "OPTIMAL requires exactly one converge target");
                 let (converge_target_box, converge_controller) = Self::convert_converge_target(converge_targets[0].clone());
-                let bidder = Box::new(CampaignBidderOptimal) as Box<dyn CampaignBidderSingle>;
-                self.campaigns.push(Box::new(CampaignSingle {
+                let bidder = Box::new(CampaignBidderOptimal) as Box<dyn CampaignBidder>;
+                self.campaigns.push(Box::new(CampaignGeneral {
                     campaign_id,
                     campaign_name,
-                    converge_target: converge_target_box,
-                    converge_controller,
+                    converge_targets: vec![converge_target_box],
+                    converge_controllers: vec![converge_controller],
                     bidder,
                 }));
             }
             CampaignType::CHEATER => {
                 assert_eq!(converge_targets.len(), 1, "CHEATER requires exactly one converge target");
                 let (converge_target_box, converge_controller) = Self::convert_converge_target(converge_targets[0].clone());
-                let bidder = Box::new(CampaignBidderCheaterLastLook) as Box<dyn CampaignBidderSingle>;
-                self.campaigns.push(Box::new(CampaignSingle {
+                let bidder = Box::new(CampaignBidderCheaterLastLook) as Box<dyn CampaignBidder>;
+                self.campaigns.push(Box::new(CampaignGeneral {
                     campaign_id,
                     campaign_name,
-                    converge_target: converge_target_box,
-                    converge_controller,
+                    converge_targets: vec![converge_target_box],
+                    converge_controllers: vec![converge_controller],
                     bidder,
                 }));
             }
             CampaignType::MAX_MARGIN => {
                 assert_eq!(converge_targets.len(), 1, "MAX_MARGIN requires exactly one converge target");
                 let (converge_target_box, converge_controller) = Self::convert_converge_target(converge_targets[0].clone());
-                let bidder = Box::new(BidderMaxMargin) as Box<dyn CampaignBidderSingle>;
-                self.campaigns.push(Box::new(CampaignSingle {
+                let bidder = Box::new(BidderMaxMargin) as Box<dyn CampaignBidder>;
+                self.campaigns.push(Box::new(CampaignGeneral {
                     campaign_id,
                     campaign_name,
-                    converge_target: converge_target_box,
-                    converge_controller,
+                    converge_targets: vec![converge_target_box],
+                    converge_controllers: vec![converge_controller],
                     bidder,
                 }));
             }
@@ -354,7 +288,7 @@ impl Campaigns {
                 let converge_targets_vec: Vec<Box<dyn ConvergeTargetAny<crate::simulationrun::CampaignStat>>> = converge_targets.iter()
                     .map(|ct| Self::convert_converge_target(ct.clone()).0)
                     .collect();
-                let bidder = Box::new(BidderMaxMargin) as Box<dyn CampaignBidderSingle>;
+                let bidder = Box::new(CampaignBidderDouble) as Box<dyn CampaignBidder>;
                 let converge_controllers = vec![
                     Box::new(crate::controllers::ConvergeControllerProportional::new()) as Box<dyn crate::controllers::ConvergeController>,
                     Box::new(crate::controllers::ConvergeControllerProportional::new_advanced(
@@ -363,7 +297,7 @@ impl Campaigns {
                         1.0,   // proportional_gain
                     )) as Box<dyn crate::controllers::ConvergeController>,
                 ];
-                self.campaigns.push(Box::new(CampaignDouble {
+                self.campaigns.push(Box::new(CampaignGeneral {
                     campaign_id,
                     campaign_name,
                     converge_targets: converge_targets_vec,
@@ -374,12 +308,12 @@ impl Campaigns {
             CampaignType::ALB => {
                 assert_eq!(converge_targets.len(), 1, "ALB requires exactly one converge target");
                 let (converge_target_box, converge_controller) = Self::convert_converge_target(converge_targets[0].clone());
-                let bidder = Box::new(crate::campaign_bidders_single::CampaignBidderALB) as Box<dyn CampaignBidderSingle>;
-                self.campaigns.push(Box::new(CampaignSingle {
+                let bidder = Box::new(crate::campaign_bidders_single::CampaignBidderALB) as Box<dyn CampaignBidder>;
+                self.campaigns.push(Box::new(CampaignGeneral {
                     campaign_id,
                     campaign_name,
-                    converge_target: converge_target_box,
-                    converge_controller,
+                    converge_targets: vec![converge_target_box],
+                    converge_controllers: vec![converge_controller],
                     bidder,
                 }));
             }
@@ -463,14 +397,14 @@ mod tests {
     #[test]
     fn test_get_bid() {
         // Create a campaign with campaign_id = 2
-        let bidder = Box::new(CampaignBidderMultiplicative) as Box<dyn CampaignBidderSingle>;
-        let campaign = CampaignSingle {
+        let bidder = Box::new(CampaignBidderMultiplicative) as Box<dyn CampaignBidder>;
+        let campaign = CampaignGeneral {
             campaign_id: 2,
             campaign_name: "Test Campaign".to_string(),
-            converge_target: Box::new(ConvergeTargetTotalImpressions {
+            converge_targets: vec![Box::new(ConvergeTargetTotalImpressions {
                 total_impressions_target: 1000,
-            }),
-            converge_controller: Box::new(crate::controllers::ConvergeControllerConstant::new(1.0)),
+            })],
+            converge_controllers: vec![Box::new(crate::controllers::ConvergeControllerConstant::new(1.0))],
             bidder,
         };
 
@@ -506,14 +440,14 @@ mod tests {
     #[test]
     fn test_get_bid_with_different_campaign_id() {
         // Create a campaign with campaign_id = 0
-        let bidder = Box::new(CampaignBidderMultiplicative) as Box<dyn CampaignBidderSingle>;
-        let campaign = CampaignSingle {
+        let bidder = Box::new(CampaignBidderMultiplicative) as Box<dyn CampaignBidder>;
+        let campaign = CampaignGeneral {
             campaign_id: 0,
             campaign_name: "Test Campaign".to_string(),
-            converge_target: Box::new(ConvergeTargetTotalBudget {
+            converge_targets: vec![Box::new(ConvergeTargetTotalBudget {
                 total_budget_target: 5000.0,
-            }),
-            converge_controller: Box::new(crate::controllers::ConvergeControllerConstant::new(1.0)),
+            })],
+            converge_controllers: vec![Box::new(crate::controllers::ConvergeControllerConstant::new(1.0))],
             bidder,
         };
 
@@ -548,14 +482,14 @@ mod tests {
     #[test]
     fn test_get_bid_with_zero_pacing() {
         // Create a campaign with campaign_id = 1
-        let bidder = Box::new(CampaignBidderMultiplicative) as Box<dyn CampaignBidderSingle>;
-        let campaign = CampaignSingle {
+        let bidder = Box::new(CampaignBidderMultiplicative) as Box<dyn CampaignBidder>;
+        let campaign = CampaignGeneral {
             campaign_id: 1,
             campaign_name: "Test Campaign".to_string(),
-            converge_target: Box::new(ConvergeTargetTotalImpressions {
+            converge_targets: vec![Box::new(ConvergeTargetTotalImpressions {
                 total_impressions_target: 1000,
-            }),
-            converge_controller: Box::new(crate::controllers::ConvergeControllerConstant::new(1.0)),
+            })],
+            converge_controllers: vec![Box::new(crate::controllers::ConvergeControllerConstant::new(1.0))],
             bidder,
         };
 

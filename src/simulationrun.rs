@@ -65,6 +65,11 @@ impl SimulationRun {
         let mut results = Vec::with_capacity(marketplace.impressions.impressions.len());
         let mut results_fractional = Vec::with_capacity(marketplace.impressions.impressions.len());
         
+        // Create campaign_converge slices for all campaigns (once, outside the loop)
+        let campaign_converges: Vec<Vec<&dyn crate::controllers::ControllerState>> = campaign_controller_states.campaign_controller_states.iter()
+            .map(|campaign_states_vec| campaign_states_vec.iter().map(|cs| cs.as_ref()).collect())
+            .collect();
+        
         for impression in &marketplace.impressions.impressions {
             // Get the seller and seller_converge for this impression
             let seller = marketplace.sellers.sellers[impression.seller_id].as_ref();
@@ -73,11 +78,11 @@ impl SimulationRun {
             // Check simulation type and call appropriate auction method
             match marketplace.simulation_type {
                 SimulationType::Standard => {
-                    let result = impression.run_auction(&marketplace.campaigns, campaign_controller_states, seller, seller_converge, logger);
+                    let result = impression.run_auction(&marketplace.campaigns, &campaign_converges, seller, seller_converge, logger);
                     results.push(result);
                 }
                 SimulationType::FractionalInternalAuction { softmax_temperature } => {
-                    let result_fractional = impression.run_fractional_auction(&marketplace.campaigns, campaign_controller_states, seller, seller_converge, softmax_temperature, logger);
+                    let result_fractional = impression.run_fractional_auction(&marketplace.campaigns, &campaign_converges, seller, seller_converge, softmax_temperature, logger);
                     results_fractional.push(result_fractional);
                 }
             }

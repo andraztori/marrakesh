@@ -32,7 +32,7 @@ pub trait ConvergeTargetAny<T> {
 
 /// Container for campaign controller states
 /// Uses dynamic dispatch to support different campaign types
-/// Each campaign can have multiple controller states (e.g., CampaignDouble has 2)
+/// Each campaign can have multiple controller states (e.g., CampaignGeneral can have 1 or more)
 pub struct CampaignControllerStates {
     pub campaign_controller_states: Vec<Vec<Box<dyn ControllerState>>>,
 }

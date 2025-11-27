@@ -2,7 +2,6 @@ use rand::{rngs::StdRng, SeedableRng};
 use rand_distr::Distribution;
 use crate::sellers::{Sellers, SellerTrait};
 use crate::campaigns::Campaigns;
-use crate::converge::CampaignControllerStates;
 use crate::competition::ImpressionCompetition;
 use crate::logger::LogEvent;
 use crate::errln;
@@ -112,7 +111,7 @@ impl Impression {
 
     /// Run an auction for this impression with the given campaigns, campaign converges, seller, and seller convergence parameters
     /// Returns the auction result
-    pub fn run_auction(&self, campaigns: &Campaigns, campaign_controller_states: &CampaignControllerStates, seller: &dyn SellerTrait, seller_converge: &dyn crate::controllers::ControllerState, logger: &mut crate::logger::Logger) -> AuctionResult {
+    pub fn run_auction(&self, campaigns: &Campaigns, campaign_converges: &[Vec<&dyn crate::controllers::ControllerState>], seller: &dyn SellerTrait, seller_converge: &dyn crate::controllers::ControllerState, logger: &mut crate::logger::Logger) -> AuctionResult {
         // Get bids from all campaigns
         let mut winning_bid_cpm = 0.0;
         let mut winning_campaign_id: Option<usize> = None;
@@ -127,8 +126,7 @@ impl Impression {
 
         for campaign in &campaigns.campaigns {
             let campaign_id = campaign.campaign_id();
-            let campaign_converge_vec = &campaign_controller_states.campaign_controller_states[campaign_id];
-            let campaign_converge: Vec<&dyn crate::controllers::ControllerState> = campaign_converge_vec.iter().map(|cs| cs.as_ref()).collect();
+            let campaign_converge = &campaign_converges[campaign_id];
             // Resolve value_to_campaign at call site using campaign's group ID
             let group_id = campaigns.campaign_to_value_group_mapping[campaign_id];
             let value_to_campaign = self.value_to_campaign_group[group_id];
@@ -256,7 +254,7 @@ impl Impression {
     /// - Lower values (< 1.0) make the distribution sharper (more concentrated on highest bid)
     /// - Higher values (> 1.0) make the distribution smoother (more uniform)
     /// - Default: 1.0 (standard softmax)
-    pub fn run_fractional_auction(&self, campaigns: &Campaigns, campaign_controller_states: &CampaignControllerStates, seller: &dyn SellerTrait, seller_converge: &dyn crate::controllers::ControllerState, softmax_temperature: f64, logger: &mut crate::logger::Logger) -> FractionalAuctionResult {
+    pub fn run_fractional_auction(&self, campaigns: &Campaigns, campaign_converges: &[Vec<&dyn crate::controllers::ControllerState>], seller: &dyn SellerTrait, seller_converge: &dyn crate::controllers::ControllerState, softmax_temperature: f64, logger: &mut crate::logger::Logger) -> FractionalAuctionResult {
         // Calculate minimum CPM needed to win this impression
         // Must be at least the floor, and if competition exists, must beat the competing bid
         let minimum_cpm_to_win = if let Some(competition) = &self.competition {
@@ -274,8 +272,7 @@ impl Impression {
 
         for campaign in &campaigns.campaigns {
             let campaign_id = campaign.campaign_id();
-            let campaign_converge_vec = &campaign_controller_states.campaign_controller_states[campaign_id];
-            let campaign_converge: Vec<&dyn crate::controllers::ControllerState> = campaign_converge_vec.iter().map(|cs| cs.as_ref()).collect();
+            let campaign_converge = &campaign_converges[campaign_id];
             // Resolve value_to_campaign at call site using campaign's group ID
             let group_id = campaigns.campaign_to_value_group_mapping[campaign_id];
             let value_to_campaign = self.value_to_campaign_group[group_id];
