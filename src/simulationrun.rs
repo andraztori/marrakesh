@@ -73,7 +73,8 @@ impl SimulationRun {
         for impression in &marketplace.impressions.impressions {
             // Get the seller and seller_converge for this impression
             let seller = marketplace.sellers.sellers[impression.seller_id].as_ref();
-            let seller_converge = seller_controller_states.seller_controller_states[seller.seller_id()].as_ref();
+            // For sellers, we typically use the first controller state
+            let seller_converge = seller_controller_states.seller_controller_states[seller.seller_id()][0].as_ref();
             
             // Check simulation type and call appropriate auction method
             match marketplace.simulation_type {
@@ -304,8 +305,8 @@ impl SimulationStat {
         
         for (index, seller_stat) in self.seller_stats.iter().enumerate() {
             let seller = &sellers.sellers[index];
-            let controller_state = seller_controller_states.seller_controller_states[index].as_ref();
-            let type_target_and_controller_string = seller.type_target_and_controller_state_string(controller_state);
+            let controller_states: Vec<&dyn crate::controllers::ControllerState> = seller_controller_states.seller_controller_states[index].iter().map(|s| s.as_ref()).collect();
+            let type_target_and_controller_string = seller.type_target_and_controller_state_string(&controller_states);
             
             logln!(logger, event, "\nSeller {} ({}) - {}", 
                      seller.seller_id(), seller.seller_name(), type_target_and_controller_string);

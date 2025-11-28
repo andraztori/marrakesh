@@ -92,8 +92,8 @@ fn prepare_variant(dynamic_boost: bool, campaign_type: CampaignType) -> Simulati
         seller_id: 0,  // Will be set by add_advanced
         seller_name: "MRG".to_string(),
         impressions_on_offer: impressions_on_offer_mrg,
-        converge_target: converge_target_mrg,
-        converge_controller: converge_controller_mrg,
+        converge_targets: vec![converge_target_mrg],
+        converge_controllers: vec![converge_controller_mrg],
         competition_generator: CompetitionGeneratorNone::new(),
         floor_generator: floors::FloorGeneratorFixed::new(0.0),
         seller_charger: Box::new(SellerChargerFixedPrice {
@@ -107,8 +107,8 @@ fn prepare_variant(dynamic_boost: bool, campaign_type: CampaignType) -> Simulati
         seller_id: 0,  // Will be set by add_advanced
         seller_name: "HB".to_string(),
         impressions_on_offer: 10000,
-        converge_target: Box::new(ConvergeNone),
-        converge_controller: Box::new(crate::controllers::ConvergeControllerConstant::new(1.0)),
+        converge_targets: vec![Box::new(ConvergeNone)],
+        converge_controllers: vec![Box::new(crate::controllers::ConvergeControllerConstant::new(1.0))],
         competition_generator: CompetitionGeneratorLogNormal::new(10.0),
         floor_generator: floors::FloorGeneratorLogNormal::new(0.2, 3.0),
         seller_charger: Box::new(SellerChargerFirstPrice),

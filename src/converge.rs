@@ -60,14 +60,17 @@ impl CampaignControllerStates {
 
 /// Container for seller controller states
 /// Uses dynamic dispatch to support different seller types
+/// Each seller can have multiple controller states (e.g., SellerGeneral can have 1 or more)
 pub struct SellerControllerStates {
-    pub seller_controller_states: Vec<Box<dyn ControllerState>>,
+    pub seller_controller_states: Vec<Vec<Box<dyn ControllerState>>>,
 }
 
 impl Clone for SellerControllerStates {
     fn clone(&self) -> Self {
         Self {
-            seller_controller_states: self.seller_controller_states.iter().map(|p| p.clone_box()).collect(),
+            seller_controller_states: self.seller_controller_states.iter()
+                .map(|states| states.iter().map(|p| p.clone_box()).collect())
+                .collect(),
         }
     }
 }
@@ -199,11 +202,13 @@ impl SimulationConverge {
             let mut boost_changed = false;
             for (index, seller) in self.marketplace.sellers.sellers.iter().enumerate() {
                 let seller_stat = &stats.seller_stats[index];
-                let previous_state = current_seller_controller_states.seller_controller_states[index].as_ref();
-                let next_state = next_seller_controller_states.seller_controller_states[index].as_mut();
+                let previous_states_vec = &current_seller_controller_states.seller_controller_states[index];
+                let previous_states: Vec<&dyn ControllerState> = previous_states_vec.iter().map(|s| s.as_ref()).collect();
+                let next_states_vec = &mut next_seller_controller_states.seller_controller_states[index];
+                let mut next_states: Vec<&mut dyn ControllerState> = next_states_vec.iter_mut().map(|s| s.as_mut()).collect();
                 
                 // Use the seller's next_controller_state method
-                boost_changed |= seller.next_controller_state(previous_state, next_state, seller_stat);
+                boost_changed |= seller.next_controller_state(&previous_states, &mut next_states, seller_stat);
             }
             
             // Output campaign statistics for each iteration (using the controller states that were actually used)
