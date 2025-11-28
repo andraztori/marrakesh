@@ -35,6 +35,11 @@ The simulation uses seeded random number generation to ensure reproducibility.
 - The seed can be set per iteration to enable multiple runs of the same scenario with different random sequences
 - This allows analysis across multiple runs while maintaining reproducibility
 
+
+### Performance matters ###
+
+Care is taken to avoid any kind of memory allocation within one simulation run of the market.
+
 ---
 
 ## Marketplace Model
@@ -115,7 +120,7 @@ Marrakesh supports two auction types: **Standard** and **Fractional Internal Auc
 **Benefits of Fractional Auctions**:
 - **Improved Convergence Stability**: By allowing multiple campaigns to share impressions, the system reduces the impact of discrete auction outcomes on convergence. Small changes in pacing don't cause dramatic shifts in win/loss patterns.
 - **Faster Convergence**: The smoother gradient provided by fractional allocations helps the convergence algorithm find optimal pacing values more quickly, reducing the number of iterations needed.
-- **Better Evaluation of Equivalent Configurations**: Fractional auctions enable more accurate comparison of equivalent campaign setups. For example, in the `s_value_groups` scenario, fractional auctions demonstrate that two campaigns with half budget each behave equivalently to one campaign with double budget when they share the same value group. This equivalence would be harder to observe with standard auctions due to discrete win/loss outcomes.
+- **Better Evaluation of Equivalent Configurations**: Fractional auctions enable more accurate comparison of equivalent campaign setups. For example, in the `value_groups` scenario, fractional auctions demonstrate that two campaigns with half budget each behave equivalently to one campaign with double budget when they share the same value group. This equivalence would be harder to observe with standard auctions due to discrete win/loss outcomes.
 
 **When to Use Fractional Auctions**:
 - Scenarios where multiple campaigns compete for the same supply and value that supply equally and you want to evaluate their equivalence
@@ -150,22 +155,11 @@ Sellers that use first-price auctions generate competition data; fixed-cost sell
 ### Seller Architecture
 
 All sellers use the `SellerGeneral` structure, which combines several independent components:
-- **Convergence Target** (`ConvergeTargetAny<T>`): Defines what to converge to (total cost or none)
-- **Convergence Controller** (`ConvergeController`): Defines how to converge (proportional, constant)
+- **Convergence Targets** (`Vec<Box<dyn SellerTargetTrait>>`): Defines what to converge to (total cost or none)
+- **Convergence Controllers** (`Vec<Box<dyn ControllerTrait>>`): Defines how to converge for each target (proportional, constant)
 - **Competition Generator** (`CompetitionGeneratorTrait`): Generates competition data for impressions
 - **Floor Generator** (`FloorGeneratorTrait`): Generates floor prices for impressions
 - **Charger** (`SellerCharger`): Defines the pricing model (first-price or fixed-price)
-
-This design allows flexible combination of any convergence strategy, competition model, floor model, and pricing model.
-
-**Seller Addition Methods**:
-- `Sellers::add()`: Standard method that takes seller type, convergence strategy, and generators as parameters
-  - Automatically constructs `SellerGeneral` internally
-  - Sets seller_id automatically based on current collection size
-- `Sellers::add_advanced()`: Advanced method that accepts a pre-constructed `Box<dyn SellerTrait>`
-  - Allows full control over seller construction
-  - Automatically sets seller_id via downcasting to `SellerGeneral`
-  - Useful for scenarios requiring custom seller configurations or advanced controller parameters
 
 ### Two Seller Pricing Models
 
@@ -204,7 +198,7 @@ Boost factors allow sellers to influence how campaigns value their impressions. 
 
 **Multiplicative Boost** (used by most bidding strategies):
 - Applied multiplicatively to campaign bids: `bid = pacing × value × boost_factor`
-- Used by: MULTIPLICATIVE_PACING, OPTIMAL, CHEATER, MAX_MARGIN, ALB
+- Used by: MULTIPLICATIVE_PACING, OPTIMAL, CHEATER, MAX_MARGIN, MEDIAN
 - Boost factor scales the entire bid proportionally
 
 **Additive Boost** (used by MULTIPLICATIVE_ADDITIVE):
@@ -251,53 +245,49 @@ These models represent the fundamental trade-offs in advertising:
 - **Different optimization objectives**: Impression targets optimize for volume; budget targets optimize for cost control
 - **Quality vs. Quantity**: Average value targets optimize for quality metrics while maintaining volume
 
-**Dual-Target Campaigns**: The `MAX_MARGIN_DOUBLE_TARGET` campaign type can converge on two targets simultaneously (e.g., total impressions AND average value), using independent pacing variables for each target.
+**Dual-Target Campaigns**: The `MAX_MARGIN_DOUBLE_TARGET` campaign type can converge on two targets simultaneously (e.g., total impressions AND average value), using independent control variables (lambda and mu) for each target via `CampaignBidderDouble`.
 
 ### Campaign Architecture
 
-Campaigns use one of two structures depending on their convergence requirements:
+All campaigns use the unified `CampaignGeneral` structure, which supports any number of convergence targets:
 
-1. **CampaignSimple**: For campaigns with a single convergence target
-   - Combines three independent components:
-     - **Convergence Target** (`ConvergeTargetAny<T>`): Defines what to converge to (impressions, budget, average value, or none)
-     - **Convergence Controller** (`ConvergeController`): Defines how to converge (proportional, constant)
-     - **Bidder** (`CampaignBidder`): Defines the bidding strategy
-   - Used by most campaign types (MULTIPLICATIVE_PACING, MULTIPLICATIVE_ADDITIVE, OPTIMAL, CHEATER, MAX_MARGIN, ALB)
+**CampaignGeneral**: Generalized campaign structure
+   - Combines independent components:
+     - **Convergence Targets** (`Vec<Box<dyn CampaignTargetTrait>>`): Defines what to converge to (impressions, budget, average value, or none)
+     - **Convergence Controllers** (`Vec<Box<dyn ControllerTrait>>`): Defines how to converge for each target (proportional, constant)
+     - **Bidder** (`Box<dyn CampaignBidderTrait>`): Defines the bidding strategy
+   - Used by all campaign types (MULTIPLICATIVE_PACING, MULTIPLICATIVE_ADDITIVE, OPTIMAL, CHEATER, MAX_MARGIN, MEDIAN, MAX_MARGIN_DOUBLE_TARGET)
+   - Supports single-target campaigns (one target, one controller) and dual-target campaigns (two targets, two controllers)
+   - Uses a stack-allocated array (`[f64; MAX_CONTROLLERS]`) for control variables to avoid heap allocations
 
-2. **CampaignDouble**: For campaigns with dual convergence targets
-   - Combines four independent components:
-     - **Primary Convergence Target** (`ConvergeTargetAny<T>`): First target (e.g., total impressions)
-     - **Secondary Convergence Target** (`ConvergeTargetAny<T>`): Second target (e.g., average value)
-     - **Convergence Controller** (`ConvergeControllerDouble`): Dual-target controller (e.g., `ConvergeDoubleProportionalController`)
-     - **Bidder** (`CampaignBidder`): Defines the bidding strategy
-   - Used by `MAX_MARGIN_DOUBLE_TARGET` campaign type
-   - Manages two independent pacing variables (lambda and mu) for dual-target convergence
+**Bidding Strategies**:
+   - Single-control bidders (in `campaign_bidders_single.rs`): Use one control variable (pacing)
+     - CampaignBidderMultiplicative, CampaignBidderMultiplicativeAdditive, CampaignBidderOptimal, BidderMaxMargin, CampaignBidderCheaterLastLook, CampaignBidderMedian
+   - Dual-control bidders (in `campaign_bidders_double.rs`): Use two control variables (lambda and mu)
+     - CampaignBidderDouble: Used for MAX_MARGIN_DOUBLE_TARGET campaigns
 
 This design allows flexible combination of any convergence target(s), controller, and bidding strategy.
 
 ### Campaign Types and Bidding Strategies
 
-Campaigns can use one of seven bidding strategies (implemented as `CampaignBidder` trait objects):
+Campaigns can use one of seven bidding strategies (implemented as `CampaignBidderTrait` trait objects):
 
 1. **Multiplicative Pacing** (`MULTIPLICATIVE_PACING`, `CampaignBidderMultiplicative`):
    - Simple bid calculation: `bid = pacing × value × seller_boost_factor`
    - Pacing multiplier is adjusted to meet campaign targets
-   - Works with both impression and budget constraints
    - Straightforward and easy to understand
 
 2. **Multiplicative Additive** (`MULTIPLICATIVE_ADDITIVE`, `CampaignBidderMultiplicativeAdditive`):
    - Bid calculation uses additive seller boost: `bid = pacing × value + seller_boost_factor`
    - Similar to multiplicative pacing but applies seller boost factor additively rather than multiplicatively
    - Useful for studying how additive vs. multiplicative boost factors affect marketplace dynamics
-   - Works with both impression and budget constraints
-
+   
 3. **Optimal Bidding** (`OPTIMAL`, `CampaignBidderOptimal`):
    - Uses sigmoid functions to model win probability
    - Calculates marginal utility of spend from pacing: `marginal_utility = 1.0 / pacing`
    - Uses bisection method (`marginal_utility_of_spend_inverse_numerical_2`) to find optimal bid
    - Requires competition data (sigmoid parameters)
    - More sophisticated, theoretically optimal approach
-   - Works with any convergence target (impressions or budget), but requires competition data
 
 4. **Cheater/Last Look** (`CHEATER`, `CampaignBidderCheaterLastLook`):
    - Calculates maximum affordable bid: `max_affordable_bid = pacing × value × seller_boost_factor`
@@ -311,21 +301,21 @@ Campaigns can use one of seven bidding strategies (implemented as `CampaignBidde
    - Where `full_price = pacing × value × seller_boost_factor`
    - Uses bisection method to find the bid where the derivative of margin is zero
    - Requires competition data (sigmoid parameters)
-   - Balances win probability against cost to maximize net value
-   - Actually the simulation has shown that this approach is equal to Optimal Bidding
+   - The simulation has shown that this approach is equal to Optimal Bidding
 
-6. **ALB (Auction Level Bid)** (`ALB`, `CampaignBidderALB`):
+6. **Median Bidding** (`MEDIAN`, `CampaignBidderMedian`):
+   - Also known as ALB (Auction Level Bid)
    - Uses multiplicative pacing to calculate initial bid
    - Only bids if the pacing bid is above the predicted offset point
    - If bidding, bids at the predicted offset point (or floor if floor is higher)
    - Requires competition data (for predicted offset)
-   - Research observation: ALB improves vs. multiplicative bidding when there is abundance of impressions, but is worse when there is scarcity and high fill rates
+   - Research observation: Median Bidding improves vs. multiplicative bidding when there is abundance of impressions, but is worse when there is scarcity and high fill rates
 
-7. **Max Margin Double Target** (`MAX_MARGIN_DOUBLE_TARGET`, `BidderMaxMargin`):
-   - Uses the same max margin bidding strategy as `MAX_MARGIN`
-   - Converges on two targets simultaneously using `CampaignDouble` structure
+7. **Max Margin Double Target** (`MAX_MARGIN_DOUBLE_TARGET`, `CampaignBidderDouble`):
+   - Uses max margin bidding strategy with dual control variables (lambda and mu)
+   - Converges on two targets simultaneously using `CampaignGeneral` with two targets and controllers
    - Requires two convergence targets (e.g., total impressions and average value)
-   - Uses `ConvergeDoubleProportionalController` to manage dual convergence
+   - Uses two independent `ControllerProportional` instances to manage dual convergence
    - Useful for campaigns with multiple objectives (e.g., reach and quality targets)
 ### Convergence Mechanism
 
@@ -338,39 +328,42 @@ The system uses an **iterative feedback loop** to find optimal pacing and boost 
 - If maximum iterations reached without convergence, log a warning
 
 **Campaign Convergence**:
-- Campaigns converge their pacing multipliers to meet impression or budget targets
-- Uses `ConvergeControllerProportional` (which wraps `ControllerProportional`) for smooth adjustments
-- Each convergence target (`ConvergeTargetTotalImpressions`, `ConvergeTargetTotalBudget`) defines what to converge to
-- The controller (`ConvergeControllerProportional`) handles how to converge
+- Campaigns converge their control variables (pacing multipliers) to meet impression, budget, or average value targets
+- Uses `ControllerProportional` (which wraps `ControllerProportionalCore`) for smooth adjustments
+- Each convergence target (`CampaignTargetTotalImpressions`, `CampaignTargetTotalBudget`, `CampaignTargetAvgValue`) defines what to converge to
+- The controller (`ControllerProportional` or `ControllerConstant`) handles how to converge
 - Convergence tracks the number of iterations taken to converge, stored in `SimulationStat`
 
 **Seller Convergence**:
-- Sellers with `TOTAL_COST` strategy converge boost factors to balance supply costs with target costs
-- Sellers with `NONE` strategy maintain constant boost factors
-- First-price sellers don't use boost factors
+- Sellers with `TOTAL_COST` strategy converge boost factors to balance supply costs with target costs using `ControllerProportional`
+- Sellers with `NONE` strategy maintain constant boost factors using `ControllerConstant`
+- First-price sellers typically use boost factor of 1.0 (no effect)
 
 This is not a pacing algorithm to be studied—it's a **simulation calibration tool** that ensures campaigns and sellers operate at their optimal point, allowing clean observation of other marketplace dynamics.
 
 ### Convergence Architecture
 
-The system uses a **strategy pattern** for convergence with trait-based dynamic dispatch:
+The system uses a **strategy pattern** for convergence with trait-based dynamic dispatch. Both campaigns and sellers use `Vec`s to support multiple convergence targets and controllers:
 
 **Core Traits and Types**:
 - `ControllerState`: Trait for controller state (replaces `ConvergingVariables`)
 - `ControllerStateSingleVariable`: Concrete type storing a single `f64` value (pacing or boost)
-- `ConvergeTargetAny<T>`: Generic trait for convergence targets, parameterized by statistic type
+- `CampaignTargetTrait`: Trait for campaign convergence targets (works with `CampaignStat`)
   - Methods: `get_actual_and_target`, `converge_target_string`
   - Provides the target value and actual value for convergence calculations
-- `ConvergeController`: Trait for controlling convergence behavior
+- `SellerTargetTrait`: Trait for seller convergence targets (works with `SellerStat`)
+  - Methods: `get_actual_and_target`, `converge_target_string`
+  - Provides the target value and actual value for convergence calculations
+- `ControllerTrait`: Trait for controlling convergence behavior
   - Methods: `next_controller_state`, `get_control_variable`, `create_controller_state`, `controller_string`
   - Handles the actual convergence logic and state management
 
 **Controller Implementations**:
-- `ConvergeControllerConstant`: Constant controller that maintains a fixed value
-  - Used for campaigns/sellers with `ConvergeNone` target
+- `ControllerConstant`: Constant controller that maintains a fixed value
+  - Used for campaigns/sellers with no convergence target
   - Initializes controller state with the specified default value
-- `ConvergeControllerProportional`: Proportional controller that adjusts based on error between target and actual
-  - Uses `ControllerProportional` internally for the control algorithm
+- `ControllerProportional`: Proportional controller that adjusts based on error between target and actual
+  - Uses `ControllerProportionalCore` internally for the control algorithm
   - Default parameters: tolerance_fraction=0.005 (0.5%), max_adjustment_factor=0.2 (20%), proportional_gain=0.1 (10%)
   - Initializes controller state with pacing/boost = 1.0
   - Provides `new_advanced()` method for custom parameter configuration:
@@ -378,35 +371,25 @@ The system uses a **strategy pattern** for convergence with trait-based dynamic 
     - `max_adjustment_factor`: Maximum adjustment factor (e.g., 0.5 = 50%)
     - `proportional_gain`: Proportional gain (e.g., 1.0 = 100% of error)
   - Useful for scenarios requiring more aggressive convergence (e.g., additive bidding strategies)
-- `ConvergeDoubleProportionalController`: Dual-target proportional controller for campaigns with two convergence targets
-  - Uses two independent `ControllerProportional` instances
-  - Primary controller uses default parameters
-  - Secondary controller uses advanced parameters: tolerance_fraction=0.005, max_adjustment_factor=0.5, proportional_gain=1.0
-  - Manages dual controller state (`ControllerStateDualVariable`) with two independent pacing variables
-  - Used by `CampaignDouble` for dual-target convergence
 
 **Campaign Convergence Targets**:
-- `ConvergeTargetTotalImpressions`: Target is total impressions obtained
-- `ConvergeTargetTotalBudget`: Target is total budget spent (uses `total_buyer_charge`)
-- `ConvergeTargetAvgValue`: Target is average value per impression (uses `total_value / impressions_obtained`)
+- `CampaignTargetTotalImpressions`: Target is total impressions obtained
+- `CampaignTargetTotalBudget`: Target is total budget spent (uses `total_buyer_charge`)
+- `CampaignTargetAvgValue`: Target is average value per impression (uses `total_value / impressions_obtained`)
   - Target value is specified as `avg_impression_value_to_campaign` (scaled by 1000 when instantiated)
   - Useful for quality-focused campaigns (e.g., viewability targets)
-- `ConvergeNone`: No target (constant pacing, with configurable default value)
+- `CampaignTargetNone`: No target (constant pacing, with configurable default value)
 
 **Seller Convergence Targets**:
-- `ConvergeNone`: No target (constant boost factor, with configurable default value)
-- `ConvergeTargetTotalCost`: Target is total cost (uses `total_virtual_cost` from seller statistics)
-
-**State Containers**:
-- `CampaignControllerStates`: Container for campaign controller states (vector of `Box<dyn ControllerState>`)
-- `SellerControllerStates`: Container for seller controller states (vector of `Box<dyn ControllerState>`)
-- Both use the unified `ControllerStateSingleVariable` type internally
+- `SellerTargetNone`: No target (constant boost factor, with configurable default value)
+- `SellerTargetTotalCost`: Target is total cost (uses `total_virtual_cost` from seller statistics)
 
 **Design Benefits**:
 - Clear separation: Convergence targets define what to converge to, controllers define how to converge
 - Extensibility: New convergence targets and controllers can be added independently
-- Flexibility: Any combination of target and controller can be used
+- Flexibility: Any combination of target and controller can be used, with support for multiple targets per campaign/seller
 - Uniform interface: All campaigns and sellers work with `ControllerState` trait objects
+- Performance: Uses stack-allocated arrays for control variables to avoid heap allocations
 
 ---
 
@@ -559,7 +542,7 @@ With optimal pacing assumed, researchers can focus on:
 - How do campaign objectives (impressions vs. budget) affect bidding?
 - How does optimal bidding compare to multiplicative pacing?
 - What is the impact of strategic bidding (cheating) on marketplace outcomes?
-- How does ALB (Auction Level Bid) perform compared to other strategies?
+- How does Median Bidding (ALB) perform compared to other strategies?
 - How do max margin and optimal bidding compare (they appear to be equivalent)?
 
 **Marketplace Design**:
@@ -601,8 +584,8 @@ Iteratively adjust pacing and boost factors until campaigns and sellers meet the
 - Run full auction simulation with current controller states
 - Calculate performance metrics for campaigns and sellers
 - Use `next_controller_state()` to calculate new controller states based on targets
-- Adjust campaign pacing based on impression/budget targets using `ConvergeControllerProportional`
-- Adjust seller boost factors based on cost balance (for dynamic boost sellers) using `ConvergeControllerProportional`
+- Adjust campaign control variables based on impression/budget/average value targets using `ControllerProportional`
+- Adjust seller boost factors based on cost balance (for dynamic boost sellers) using `ControllerProportional`
 - Repeat until convergence (no changes in an iteration)
 
 This phase ensures campaigns and sellers operate optimally before observation begins. The `SimulationConverge` struct manages this process, encapsulating the marketplace and controller states.
@@ -620,8 +603,8 @@ Once converged, analyze:
 
 Researchers can then vary:
 - Seller pricing models (fixed cost, first price, boost strategies)
-- Campaign objectives and constraints (impressions vs. budget)
-- Campaign bidding strategies (multiplicative pacing, optimal bidding, cheater)
+- Campaign objectives and constraints (impressions vs. budget vs. average value)
+- Campaign bidding strategies (multiplicative pacing, optimal bidding, cheater, median bidding, max margin)
 - Impression valuations and competition data
 - Marketplace rules (floors, thresholds)
 - Supply composition
@@ -645,16 +628,17 @@ The system includes a scenario framework for structured experimentation:
 - When running multiple iterations, each scenario completes all its iterations before moving to the next scenario
 
 **Example Scenarios**:
-- `HBabundance` (from `s_one.rs`): Basic marketplace dynamics with multiple campaigns and sellers, comparing scarce vs. abundant supply scenarios
-- `MRGboost` (from `s_mrg_boost.rs`): Effect of seller boost factors on marketplace outcomes
-- `MRGdynamicboost` (from `s_mrg_dynamic_boost.rs`): Comparison of fixed vs. dynamic boost strategies, including multiplicative and additive bidding strategies
+- `scarcity_and_abundance` (from `scenarios/scarcity_and_abundance.rs`): Basic marketplace dynamics with multiple campaigns and sellers, comparing scarce vs. abundant supply scenarios
+- `supply_simple_boost` (from `scenarios/supply_simple_boost.rs`): Effect of seller boost factors on marketplace outcomes
+- `supply_controlled_boost` (from `scenarios/supply_controlled_boost.rs`): Comparison of fixed vs. dynamic boost strategies, including multiplicative and additive bidding strategies
   - Variant A: Fixed boost (no convergence) with MULTIPLICATIVE_PACING
   - Variant B: Dynamic boost with MULTIPLICATIVE_PACING
   - Variant C: Dynamic boost with MULTIPLICATIVE_ADDITIVE (uses advanced controller parameters)
-- `viewability` (from `s_viewability.rs`): Demonstrates dual-target convergence using MAX_MARGIN_DOUBLE_TARGET
+- `viewability` (from `scenarios/viewability.rs`): Demonstrates dual-target convergence using MAX_MARGIN_DOUBLE_TARGET
   - Converges on both total impressions and average value targets simultaneously
-- `various` (from `s_various.rs`): Comparison of all bidding strategies (multiplicative pacing, optimal bidding, cheater, max margin, ALB)
-- `maxmargin_equality` (from `s_maxmargin_equality.rs`): Comparison of Optimal Bidding and Max Margin strategies. This scenario demonstrates that Max Margin and Optimal Bidding appear to be equivalent when configured correctly.
+- `basic_bidding_strategies` (from `scenarios/basic_bidding_strategies.rs`): Comparison of all bidding strategies (multiplicative pacing, median bidding, optimal bidding, max margin, cheater)
+- `maxmargin_equality` (from `scenarios/maxmargin_equality.rs`): Comparison of Optimal Bidding and Max Margin strategies. This scenario demonstrates that Max Margin and Optimal Bidding appear to be equivalent when configured correctly.
+- `median_bidder` (from `scenarios/median_bidder.rs`): Comparison of Median Bidding (ALB) with other strategies under varying supply conditions
 
 ---
 
@@ -744,22 +728,26 @@ There are some development-time tools an visualizations in charts.rs. They can b
 
 The system separates:
 - **Impression and auction logic** (`impressions.rs`): Core auction mechanics, impression generation, winner determination
-- **Campaign logic** (`campaigns.rs`): Campaign trait, `CampaignSimple` and `CampaignDouble` structures, campaign container
-- **Campaign bidding strategies** (`campaign_bidders.rs`): Bidding strategy implementations (multiplicative, multiplicative additive, optimal, max margin, cheater, ALB)
+- **Campaign logic** (`campaign.rs`): Campaign trait, `CampaignGeneral` structure, `CampaignBidderTrait`
+- **Campaign container** (`campaigns.rs`): Campaign container with methods to add campaigns
+- **Campaign bidding strategies (single)** (`campaign_bidders_single.rs`): Single-control-variable bidding strategy implementations (multiplicative, multiplicative additive, optimal, max margin, cheater, median)
+- **Campaign bidding strategies (double)** (`campaign_bidders_double.rs`): Dual-control-variable bidding strategy implementations (max margin with lambda and mu)
 - **Campaign convergence targets** (`campaign_targets.rs`): Campaign convergence target implementations (impressions, budget, average value, none)
-- **Seller logic** (`sellers.rs`): Seller trait, `SellerGeneral` structure, seller container
+- **Seller logic** (`seller.rs`): Seller trait, `SellerGeneral` structure
+- **Seller container** (`sellers.rs`): Seller container with methods to add sellers
 - **Seller charging strategies** (`seller_chargers.rs`): Pricing model implementations (first-price, fixed-price)
 - **Seller convergence targets** (`seller_targets.rs`): Seller convergence target implementations
 - **Simulation execution** (`simulationrun.rs`): Running auctions, calculating statistics, marketplace structure
-- **Convergence logic** (`converge.rs`): Finding optimal pacing and boost factors, convergence targets, controller state management
-- **Controller logic** (`controllers.rs`): Controller implementations (proportional, constant, double proportional), unified controller state types
+- **Convergence logic** (`converge.rs`): Finding optimal pacing and boost factors, controller state management
+- **Controller logic** (`controllers.rs`): Controller implementations (proportional, constant), unified controller state types
 - **Controller core** (`controller_core.rs`): Core proportional controller algorithm with configurable parameters
+- **Controller state** (`controller_state.rs`): Controller state trait and implementations
 - **Competition generation** (`competition.rs`): Generating competition data for impressions
 - **Floor generation** (`floors.rs`): Generating floor prices for impressions
 - **Sigmoid functions** (`sigmoid.rs`): Win probability and marginal utility calculations
 - **Visualization** (`charts.rs`): Chart and histogram generation
-- **Scenarios** (`s_*.rs`): Experimental setups and validations
-- **Scenario framework** (`scenarios.rs`): Scenario registration and catalog system
+- **Scenarios** (`scenarios/*.rs`): Experimental setups and validations
+- **Scenario framework** (`scenarios/mod.rs`): Scenario registration and catalog system
 - **Initialization** (`main.rs`): Setting up experiments and scenario execution
 - **Logging** (`logger.rs`): Structured logging with multiple receivers
 - **Utilities** (`utils.rs`): Random number generation, distributions, helper functions
@@ -781,11 +769,11 @@ This design choice prioritizes simplicity and performance over flexibility.
 The system uses Rust traits for extensibility:
 - `CampaignTrait`: Defines campaign interface (bidding, convergence, statistics)
 - `SellerTrait`: Defines seller interface (pricing, impression generation, convergence)
-- `CampaignBidder`: Trait for bidding strategies (used by `CampaignSimple` and `CampaignDouble`)
+- `CampaignBidderTrait`: Trait for bidding strategies (used by `CampaignGeneral`)
 - `SellerCharger`: Trait for pricing models (used by `SellerGeneral`)
-- `ConvergeTargetAny<T>`: Generic convergence target trait parameterized by statistic type
-- `ConvergeController`: Trait for controlling convergence behavior (single-target campaigns)
-- `ConvergeControllerDouble`: Trait for controlling dual-target convergence behavior (used by `CampaignDouble`)
+- `CampaignTargetTrait`: Trait for campaign convergence targets (works with `CampaignStat`)
+- `SellerTargetTrait`: Trait for seller convergence targets (works with `SellerStat`)
+- `ControllerTrait`: Trait for controlling convergence behavior (used by both campaigns and sellers)
 - `ControllerState`: Trait for controller state representation (unified for campaigns and sellers)
 - `CompetitionGeneratorTrait`: Extensible competition generation
 - `FloorGeneratorTrait`: Extensible floor generation
@@ -796,14 +784,16 @@ This allows new bidding strategies, pricing models, convergence targets, and con
 ### Strategy Pattern for Convergence
 
 The convergence system uses the strategy pattern with two layers:
-- **Convergence Targets** (`ConvergeTargetAny<T>`): Define what to converge to (e.g., total impressions, total budget)
-  - Campaigns and sellers hold a `Box<dyn ConvergeTargetAny<T>>` to define their convergence target
+- **Convergence Targets** (`CampaignTargetTrait` or `SellerTargetTrait`): Define what to converge to (e.g., total impressions, total budget, average value, total cost)
+  - Campaigns hold a `Vec<Box<dyn CampaignTargetTrait>>` to define their convergence targets
+  - Sellers hold a `Vec<Box<dyn SellerTargetTrait>>` to define their convergence targets
   - Provides `get_actual_and_target()` to compare current state with target
-- **Convergence Controllers** (`ConvergeController`): Define how to converge (e.g., proportional control, constant)
-  - Campaigns and sellers hold a `Box<dyn ConvergeController>` to control convergence behavior
+- **Convergence Controllers** (`ControllerTrait`): Define how to converge (e.g., proportional control, constant)
+  - Campaigns and sellers hold a `Vec<Box<dyn ControllerTrait>>` to control convergence behavior for each target
   - Handles state management and adjustment logic
 - All controllers work with `ControllerState` trait objects for uniform interface
 - Enables flexible combination of targets and controllers (e.g., proportional control for budget targets, constant control for fixed pacing)
+- Supports multiple targets per campaign/seller (e.g., dual-target campaigns with two independent controllers)
 
 ### Deterministic Execution
 
@@ -821,9 +811,10 @@ This enables reproducible research and controlled experimentation.
 The framework is designed to be extended without modifying core logic:
 
 ### New Bidding Strategies
-- Implement `CampaignBidder` trait with new bid calculation methods
+- Implement `CampaignBidderTrait` trait with new bid calculation methods
 - Add the new bidder to `CampaignType` enum and `Campaigns::add()` method
-- Examples: All campaigns use `CampaignSimple` (or `CampaignDouble` for dual-target campaigns) with different `CampaignBidder` implementations
+- Place single-control bidders in `campaign_bidders_single.rs` or dual-control bidders in `campaign_bidders_double.rs`
+- Examples: All campaigns use `CampaignGeneral` with different `CampaignBidderTrait` implementations
 
 ### New Pricing Models
 - Implement `SellerCharger` trait with new pricing logic
@@ -832,8 +823,8 @@ The framework is designed to be extended without modifying core logic:
 - Future possibilities: second-price auctions, marketplace fees or discounts
 
 ### New Convergence Strategies
-- Implement `ConvergeTargetAny<T>` for new convergence targets
-- Implement `ConvergeController` for new control algorithms
+- Implement `CampaignTargetTrait` or `SellerTargetTrait` for new convergence targets
+- Implement `ControllerTrait` for new control algorithms
 - Add new constraint types (time-based, inventory-based)
 - Experiment with different control algorithms (PID, adaptive, etc.)
 
