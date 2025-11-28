@@ -10,7 +10,7 @@ Marrakesh is a research tool designed to study marketplace phenomena under the a
 
 - **Two-party marketplace model**: Sellers (supply) and Campaigns (demand) with distinct objectives
 - **Multiple pricing models**: Fixed-price and first-price auction sellers
-- **Various bidding strategies**: Multiplicative pacing, optimal bidding, max margin, cheater/last look, and ALB (Auction Level Bid)
+- **Various bidding strategies**: Multiplicative pacing, optimal bidding, max margin, cheater/last look, and Median Bidding (also known as ALB - Auction Level Bid)
 - **Convergence framework**: Automatic calibration to optimal pacing and boost factors
 - **Deterministic simulations**: Seeded random number generation for reproducibility
 - **Comprehensive logging**: Structured logging with multiple receivers and event types
@@ -36,25 +36,27 @@ The simulation is run multiple times and the convergence mechanism is used to co
 - May converge boost factors to meet revenue targets
 
 **Campaigns (Demand Side)**:
-- Have objectives (impression targets or budget constraints)
+- Have objectives (impression targets, budget constraints, or average value targets)
 - Use different bidding strategies
 - Compete for impressions through auctions
 - Operate under optimal pacing (assumed)
+- Can converge on multiple targets simultaneously (e.g., impressions and average value)
 
 ### Bidding Strategies
 
 1. **Multiplicative Pacing**: Simple bid calculation `bid = pacing × value × seller_boost_factor`
 2. **Optimal Bidding**: Uses sigmoid functions to model win probability and finds optimal bids based on marginal utility of spend
-3. **Max Margin**: Maximizes expected margin `P(win) × (full_price - bid)` where `full_price = pacing × value × seller_boost_factor`
+3. **Max Margin**: Maximizes expected margin `P(win) × (full_price - bid)` where `full_price = pacing × value × seller_boost_factor` (equivalent to Optimal Bidding)
 4. **Cheater/Last Look**: Strategic bidding that exploits competition knowledge by bidding just above the competition
-5. **ALB (Auction Level Bid)**: Bids at the predicted offset point if the pacing bid exceeds it, otherwise doesn't bid
+5. **Median Bidding** (ALB): Bids at the predicted offset point if the pacing bid exceeds it, otherwise doesn't bid
 
 ### Convergence
 
 The system uses iterative feedback loops to find optimal pacing and boost factors:
-- Campaigns converge pacing multipliers to meet impression or budget targets
+- Campaigns converge control variables (pacing multipliers) to meet impression, budget, or average value targets
 - Sellers converge boost factors to balance supply costs with target costs
 - Convergence ensures campaigns and sellers operate optimally before observation
+- Uses proportional controllers for smooth adjustments and constant controllers for fixed values
 
 ## Usage Examples
 
@@ -62,10 +64,10 @@ The system uses iterative feedback loops to find optimal pacing and boost factor
 
 ```bash
 # Run a single scenario
-cargo run --release HBabundance
+cargo run --release scarcity_and_abundance
 
 # Run a scenario multiple times with different seeds
-cargo run --release HBabundance 10
+cargo run --release scarcity_and_abundance 10
 
 # Run all scenarios
 cargo run --release all
@@ -78,7 +80,7 @@ cargo run --release all 5
 
 ```bash
 # Enable verbose auction logging
-cargo run --release various --verbose auction
+cargo run --release basic_bidding_strategies --verbose auction
 ```
 
 ## Output
@@ -102,7 +104,7 @@ Simulation logs are organized in the `log/` directory:
 With optimal pacing assumed, researchers can study:
 
 - **Pricing Mechanisms**: Fixed-price vs. auction-based sellers
-- **Bidding Strategies**: Comparison of different bidding approaches (multiplicative, optimal, max margin, cheater, ALB)
+- **Bidding Strategies**: Comparison of different bidding approaches (multiplicative, optimal, max margin, cheater, median bidding)
 - **Marketplace Design**: Impact of floors, competition thresholds, and rules
 - **Supply and Demand Dynamics**: How supply composition affects outcomes
 - **Value Distribution**: How value is distributed between parties
