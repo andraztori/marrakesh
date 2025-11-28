@@ -37,7 +37,7 @@ The optimized binary will be located at `target/release/marrakesh`.
 
 ### Basic Execution
 
-Run the simulation (defaults to running the `s_mrg_boost` scenario):
+Run the simulation (defaults to running the `supply_simple_boost` scenario):
 
 ```bash
 cargo run
