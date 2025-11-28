@@ -1,14 +1,14 @@
-// ControllerProportional doesn't need any imports from controller_state
+// ControllerProportionalCore doesn't need any imports from controller_state
 
 /// Proportional controller for adjusting campaign pacing based on target vs actual performance
 /// Full PID was tried, but always something became unstable
-pub struct ControllerProportional {
+pub struct ControllerProportionalCore {
     tolerance_fraction: f64,      // Tolerance as a fraction of target (e.g., 0.005 = 0.5%)
     max_adjustment_factor: f64,   // Maximum adjustment factor (e.g., 0.2 = 20%)
     proportional_gain: f64,       // Proportional gain (e.g., 0.2 = 20% of error)
 }
 
-impl ControllerProportional {
+impl ControllerProportionalCore {
     /// Create a new proportional controller with default parameters
     pub fn new() -> Self {
         Self {

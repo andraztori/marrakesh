@@ -9,27 +9,6 @@ use crate::utils::VERBOSE_AUCTION;
 use std::sync::atomic::Ordering;
 pub use crate::controller_state::ControllerState;
 
-/// Trait for campaign convergence strategies
-pub trait ConvergeTargetAny<T> {
-    /// Get the actual and target values for convergence
-    /// 
-    /// # Arguments
-    /// * `stat` - Statistics from the current simulation run
-    /// 
-    /// # Returns
-    /// A tuple `(actual, target)` representing the actual value achieved and the target value
-    fn get_actual_and_target(&self, stat: &T) -> (f64, f64);
-    
-    /// Get the target value for convergence
-    /// 
-    /// # Returns
-    /// The target value that the campaign is trying to converge to
-    fn get_target_value(&self) -> f64;
-    
-    /// Get a string representation of the convergence target
-    fn converge_target_string(&self) -> String;
-}
-
 /// Container for campaign controller states
 /// Uses dynamic dispatch to support different campaign types
 /// Each campaign can have multiple controller states (e.g., CampaignGeneral can have 1 or more)
@@ -188,13 +167,11 @@ impl SimulationConverge {
             let mut pacing_changed = false;
             for (index, campaign) in self.marketplace.campaigns.campaigns.iter().enumerate() {
                 let campaign_stat = &stats.campaign_stats[index];
-                let previous_states_vec = &current_campaign_controller_states.campaign_controller_states[index];
-                let previous_states: Vec<&dyn ControllerState> = previous_states_vec.iter().map(|cs| cs.as_ref()).collect();
-                let next_states_vec = &mut next_campaign_controller_states.campaign_controller_states[index];
-                let mut next_states: Vec<&mut dyn ControllerState> = next_states_vec.iter_mut().map(|cs| cs.as_mut()).collect();
+                let previous_states = &current_campaign_controller_states.campaign_controller_states[index];
+                let next_states = &mut next_campaign_controller_states.campaign_controller_states[index];
                 
                 // Use the campaign's next_controller_state method (now part of CampaignTrait)
-                pacing_changed |= campaign.next_controller_state(&previous_states, &mut next_states, campaign_stat);
+                pacing_changed |= campaign.next_controller_state(previous_states, next_states, campaign_stat);
             }
             
             // Calculate next iteration's seller controller states based on current results
@@ -202,13 +179,11 @@ impl SimulationConverge {
             let mut boost_changed = false;
             for (index, seller) in self.marketplace.sellers.sellers.iter().enumerate() {
                 let seller_stat = &stats.seller_stats[index];
-                let previous_states_vec = &current_seller_controller_states.seller_controller_states[index];
-                let previous_states: Vec<&dyn ControllerState> = previous_states_vec.iter().map(|s| s.as_ref()).collect();
-                let next_states_vec = &mut next_seller_controller_states.seller_controller_states[index];
-                let mut next_states: Vec<&mut dyn ControllerState> = next_states_vec.iter_mut().map(|s| s.as_mut()).collect();
+                let previous_states = &current_seller_controller_states.seller_controller_states[index];
+                let next_states = &mut next_seller_controller_states.seller_controller_states[index];
                 
                 // Use the seller's next_controller_state method
-                boost_changed |= seller.next_controller_state(&previous_states, &mut next_states, seller_stat);
+                boost_changed |= seller.next_controller_state(previous_states, next_states, seller_stat);
             }
             
             // Output campaign statistics for each iteration (using the controller states that were actually used)

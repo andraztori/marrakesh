@@ -1,11 +1,11 @@
 // Re-export ControllerState types from controller_state module
 pub use crate::controller_state::*;
 
-// Re-export ControllerProportional from controller_core module
-pub use crate::controller_core::ControllerProportional;
+// Re-export ControllerProportionalCore from controller_core module
+pub use crate::controller_core::ControllerProportionalCore;
 
 /// Trait for controlling convergence behavior in campaigns
-pub trait ConvergeController {
+pub trait ControllerTrait {
     /// Calculate the next controller state
     /// 
     /// # Arguments
@@ -34,19 +34,19 @@ pub trait ConvergeController {
     fn controller_string(&self, converge: &dyn ControllerState) -> String;
 }
 
-/// Constant implementation of ConvergeController
-pub struct ConvergeControllerConstant {
+/// Constant implementation of ControllerTrait
+pub struct ControllerConstant {
     pub default_value: f64,
 }
 
-impl ConvergeControllerConstant {
-    /// Create a new ConvergeControllerConstant with the given default value
+impl ControllerConstant {
+    /// Create a new ControllerConstant with the given default value
     pub fn new(default_value: f64) -> Self {
         Self { default_value }
     }
 }
 
-impl ConvergeController for ConvergeControllerConstant {
+impl ControllerTrait for ControllerConstant {
     fn next_controller_state(&self, _previous_state: &dyn ControllerState, _next_state: &mut dyn ControllerState, _actual: f64, _target: f64) -> bool {
         // Constant controller - no convergence, always return false
         false
@@ -66,20 +66,20 @@ impl ConvergeController for ConvergeControllerConstant {
     }
 }
 
-/// Proportional controller implementation of ConvergeController
-pub struct ConvergeControllerProportional {
-    pub controller: ControllerProportional,
+/// Proportional controller implementation of ControllerTrait
+pub struct ControllerProportional {
+    pub controller: ControllerProportionalCore,
 }
 
-impl ConvergeControllerProportional {
-    /// Create a new ConvergeControllerProportional
+impl ControllerProportional {
+    /// Create a new ControllerProportional
     pub fn new() -> Self {
         Self {
-            controller: ControllerProportional::new(),
+            controller: ControllerProportionalCore::new(),
         }
     }
 
-    /// Create a new ConvergeControllerProportional with custom parameters
+    /// Create a new ControllerProportional with custom parameters
     /// 
     /// # Arguments
     /// * `tolerance_fraction` - Tolerance as a fraction of target (e.g., 0.005 = 0.5%)
@@ -87,12 +87,12 @@ impl ConvergeControllerProportional {
     /// * `proportional_gain` - Proportional gain (e.g., 0.1 = 10% of error)
     pub fn new_advanced(tolerance_fraction: f64, max_adjustment_factor: f64, proportional_gain: f64) -> Self {
         Self {
-            controller: ControllerProportional::new_advanced(tolerance_fraction, max_adjustment_factor, proportional_gain),
+            controller: ControllerProportionalCore::new_advanced(tolerance_fraction, max_adjustment_factor, proportional_gain),
         }
     }
 }
 
-impl ConvergeController for ConvergeControllerProportional {
+impl ControllerTrait for ControllerProportional {
     fn next_controller_state(&self, previous_state: &dyn ControllerState, next_state: &mut dyn ControllerState, actual: f64, target: f64) -> bool {
         // Extract previous state value
         let previous_state_value = previous_state.as_any().downcast_ref::<ControllerStateSingleVariable>().unwrap().converging_variable;

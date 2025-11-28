@@ -12,7 +12,8 @@
 ///   It uses value function of campaign_value * pacing + supply_boost_factor
 
 use crate::simulationrun::{Marketplace, SimulationType};
-use crate::sellers::{Sellers, SellerGeneral, SellerTrait};
+use crate::sellers::Sellers;
+use crate::seller::{SellerGeneral, SellerTrait};
 use crate::campaigns::{CampaignType, ConvergeTarget, Campaigns};
 use crate::converge::SimulationConverge;
 use crate::impressions::ImpressionsParam;
@@ -22,7 +23,7 @@ use crate::utils;
 use crate::logger::{Logger, LogEvent};
 use crate::logln;
 use crate::errln;
-use crate::seller_targets::{ConvergeNone, ConvergeTargetTotalCost};
+use crate::seller_targets::{SellerTargetNone, SellerTargetTotalCost};
 use crate::seller_chargers::{SellerChargerFirstPrice, SellerChargerFixedPrice};
 
 // Register this scenario in the catalog
@@ -59,31 +60,31 @@ fn prepare_variant(dynamic_boost: bool, campaign_type: CampaignType) -> Simulati
     let impressions_on_offer_mrg = 1000;
     
     // Create converge_target and converge_controller for MRG seller
-    let (converge_target_mrg, converge_controller_mrg): (Box<dyn crate::converge::ConvergeTargetAny<crate::simulationrun::SellerStat>>, Box<dyn crate::controllers::ConvergeController>) = if dynamic_boost {
+    let (converge_target_mrg, converge_controller_mrg): (Box<dyn crate::seller_targets::SellerTargetTrait>, Box<dyn crate::controllers::ControllerTrait>) = if dynamic_boost {
         // Converge when cost of impressions matches virtual price
         // fixed_cost_cpm is in CPM (cost per 1000 impressions), so divide by 1000 to get cost per impression
         let target_total_cost = (impressions_on_offer_mrg as f64) * fixed_cost_cpm / 1000.0;
         let controller = if is_multiplicative_additive {
             // Use advanced controller setup for MULTIPLICATIVE_ADDITIVE variant
             // This is needed due to additive bidding strategy for supply requiring larger adjustments to converge
-            crate::controllers::ConvergeControllerProportional::new_advanced(
+            crate::controllers::ControllerProportional::new_advanced(
                 0.005, // tolerance_fraction
                 0.5,   // max_adjustment_factor
                 1.0,   // proportional_gain
             )
         } else {
-            crate::controllers::ConvergeControllerProportional::new()
+            crate::controllers::ControllerProportional::new()
         };
         (
-            Box::new(ConvergeTargetTotalCost {
+            Box::new(SellerTargetTotalCost {
                 target_cost: target_total_cost,
             }),
             Box::new(controller),
         )
     } else {
         (
-            Box::new(ConvergeNone),
-            Box::new(crate::controllers::ConvergeControllerConstant::new(1.0)),
+            Box::new(SellerTargetNone),
+            Box::new(crate::controllers::ControllerConstant::new(1.0)),
         )
     };
     
@@ -107,8 +108,8 @@ fn prepare_variant(dynamic_boost: bool, campaign_type: CampaignType) -> Simulati
         seller_id: 0,  // Will be set by add_advanced
         seller_name: "HB".to_string(),
         impressions_on_offer: 10000,
-        converge_targets: vec![Box::new(ConvergeNone)],
-        converge_controllers: vec![Box::new(crate::controllers::ConvergeControllerConstant::new(1.0))],
+        converge_targets: vec![Box::new(SellerTargetNone)],
+        converge_controllers: vec![Box::new(crate::controllers::ControllerConstant::new(1.0))],
         competition_generator: CompetitionGeneratorLogNormal::new(10.0),
         floor_generator: floors::FloorGeneratorLogNormal::new(0.2, 3.0),
         seller_charger: Box::new(SellerChargerFirstPrice),

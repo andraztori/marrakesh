@@ -4,10 +4,12 @@ mod simulationrun;
 mod converge;
 mod utils;
 mod impressions;
+mod campaign;
 mod campaigns;
 mod campaign_targets;
 mod campaign_bidders_single;
 mod campaign_bidders_double;
+mod seller;
 mod sellers;
 mod seller_targets;
 mod seller_chargers;
@@ -94,27 +96,27 @@ fn main() {
     
     // Check if "test" argument is provided
     if args.len() > 1 && args[1] == "test" {
-        use campaigns::{CampaignGeneral, ConvergeNone, CampaignTrait};
+        use campaigns::{CampaignGeneral, CampaignTargetNone, CampaignTrait};
         use impressions::Impression;
         use competition::ImpressionCompetition;
         
         // Setup shared resources
         use campaigns::{CampaignBidderOptimal, BidderMaxMargin};
-        let bidder_optimal = Box::new(CampaignBidderOptimal) as Box<dyn campaigns::CampaignBidder>;
+        let bidder_optimal = Box::new(CampaignBidderOptimal) as Box<dyn campaign::CampaignBidderTrait>;
         let campaign_optimal = CampaignGeneral {
             campaign_id: 0,
             campaign_name: "Optimal".to_string(),
-            converge_targets: vec![Box::new(ConvergeNone)],
-            converge_controllers: vec![Box::new(crate::controllers::ConvergeControllerConstant::new(0.8298))],
+            converge_targets: vec![Box::new(CampaignTargetNone)],
+            converge_controllers: vec![Box::new(crate::controllers::ControllerConstant::new(0.8298))],
             bidder: bidder_optimal,
         };
         
-        let bidder_max_margin = Box::new(BidderMaxMargin) as Box<dyn campaigns::CampaignBidder>;
+        let bidder_max_margin = Box::new(BidderMaxMargin) as Box<dyn campaign::CampaignBidderTrait>;
         let campaign_max_margin = CampaignGeneral {
             campaign_id: 0,
             campaign_name: "MaxMargin".to_string(),
-            converge_targets: vec![Box::new(ConvergeNone)],
-            converge_controllers: vec![Box::new(crate::controllers::ConvergeControllerConstant::new(0.8298))],
+            converge_targets: vec![Box::new(CampaignTargetNone)],
+            converge_controllers: vec![Box::new(crate::controllers::ControllerConstant::new(0.8298))],
             bidder: bidder_max_margin,
         };
         

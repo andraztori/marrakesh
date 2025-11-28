@@ -33,7 +33,7 @@ impl Marketplace {
         // Finalize campaign groups before creating impressions
         campaigns.finalize_groups();
         // Generally all simulations run perfectly well with fractional auctions...
-//        let simulation_type = SimulationType::FractionalInternalAuction { softmax_temperature: 0.5 };
+        //        let simulation_type = SimulationType::FractionalInternalAuction { softmax_temperature: 0.5 };
         let impressions = Impressions::new(&sellers, impressions_params, &campaigns);
         Self {
             campaigns,
@@ -49,7 +49,7 @@ impl Marketplace {
         logln!(logger, LogEvent::Simulation, "Initialized {} sellers", self.sellers.sellers.len());
         logln!(logger, LogEvent::Simulation, "Initialized {} campaigns", self.campaigns.campaigns.len());
         logln!(logger, LogEvent::Simulation, "Initialized {} impressions", self.impressions.impressions.len());
-            }
+    }
 }
 
 /// Container for auction results
@@ -173,7 +173,7 @@ impl SimulationStat {
         };
 
         // Iterate through impressions once and accumulate all statistics
-            for (index, impression) in marketplace.impressions.impressions.iter().enumerate() {
+        for (index, impression) in marketplace.impressions.impressions.iter().enumerate() {
             let seller_id = impression.seller_id;
 
             // Condition on simulation type to handle different auction result types
@@ -181,35 +181,35 @@ impl SimulationStat {
                 SimulationType::Standard => {
                     let result = &simulation_run.results[index];
 
-            // Update overall statistics based on winner
-            match result.winner {
+                    // Update overall statistics based on winner
+                    match result.winner {
                         Winner::LOST => overall_stat.lost_count += 1,
-                Winner::NO_DEMAND => overall_stat.no_bids_count += 1,
-                Winner::Campaign { campaign_id, virtual_cost, buyer_charge, .. } => {
-                    // Update overall statistics
-                    overall_stat.total_supply_cost += result.supply_cost;
-                    overall_stat.total_virtual_cost += virtual_cost;
-                    overall_stat.total_buyer_charge += buyer_charge;
-                    let group_id = marketplace.campaigns.campaign_to_value_group_mapping[campaign_id];
-                    overall_stat.total_value += impression.value_to_campaign_group[group_id];
+                        Winner::NO_DEMAND => overall_stat.no_bids_count += 1,
+                        Winner::Campaign { campaign_id, virtual_cost, buyer_charge, .. } => {
+                            // Update overall statistics
+                            overall_stat.total_supply_cost += result.supply_cost;
+                            overall_stat.total_virtual_cost += virtual_cost;
+                            overall_stat.total_buyer_charge += buyer_charge;
+                            let group_id = marketplace.campaigns.campaign_to_value_group_mapping[campaign_id];
+                            overall_stat.total_value += impression.value_to_campaign_group[group_id];
 
-                    // Update seller statistics
-                    let seller_stat = &mut seller_stats[seller_id];
-                    seller_stat.impressions_sold += 1;
-                    seller_stat.total_supply_cost += result.supply_cost;
-                    seller_stat.total_virtual_cost += virtual_cost;
-                    seller_stat.total_buyer_charge += buyer_charge;
-                    let group_id = marketplace.campaigns.campaign_to_value_group_mapping[campaign_id];
-                    seller_stat.total_provided_value += impression.value_to_campaign_group[group_id];
+                            // Update seller statistics
+                            let seller_stat = &mut seller_stats[seller_id];
+                            seller_stat.impressions_sold += 1;
+                            seller_stat.total_supply_cost += result.supply_cost;
+                            seller_stat.total_virtual_cost += virtual_cost;
+                            seller_stat.total_buyer_charge += buyer_charge;
+                            let group_id = marketplace.campaigns.campaign_to_value_group_mapping[campaign_id];
+                            seller_stat.total_provided_value += impression.value_to_campaign_group[group_id];
 
-                    // Update campaign statistics
-                    let campaign_stat = &mut campaign_stats[campaign_id];
+                            // Update campaign statistics
+                            let campaign_stat = &mut campaign_stats[campaign_id];
                             campaign_stat.impressions_obtained += 1.0;
-                    campaign_stat.total_supply_cost += result.supply_cost;
-                    campaign_stat.total_virtual_cost += virtual_cost;
-                    campaign_stat.total_buyer_charge += buyer_charge;
-                    let group_id = marketplace.campaigns.campaign_to_value_group_mapping[campaign_id];
-                    campaign_stat.total_value += impression.value_to_campaign_group[group_id];
+                            campaign_stat.total_supply_cost += result.supply_cost;
+                            campaign_stat.total_virtual_cost += virtual_cost;
+                            campaign_stat.total_buyer_charge += buyer_charge;
+                            let group_id = marketplace.campaigns.campaign_to_value_group_mapping[campaign_id];
+                            campaign_stat.total_value += impression.value_to_campaign_group[group_id];
                         }
                     }
                 }

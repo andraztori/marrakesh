@@ -1,6 +1,7 @@
 use rand::{rngs::StdRng, SeedableRng};
 use rand_distr::Distribution;
-use crate::sellers::{Sellers, SellerTrait};
+use crate::sellers::Sellers;
+use crate::seller::SellerTrait;
 use crate::campaigns::Campaigns;
 use crate::competition::ImpressionCompetition;
 use crate::logger::LogEvent;

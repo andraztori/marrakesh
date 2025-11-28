@@ -1,16 +1,26 @@
+/// This is a file where campaign bidders reside
+/// Bidder is a sub-component that calculates the value of an impressino to a campaign and based on it 
+/// calculates the bid for the campaign.
+/// 
+/// In this file specifically we place bidders that take two control variables on the demand side
+/// (plus possibly the sell side control variable)
+
 use crate::impressions::Impression;
 use crate::sigmoid::Sigmoid;
 use crate::logger::{Logger, LogEvent};
 use crate::warnln;
-use crate::converge::ConvergeTargetAny;
-use crate::campaign_bidders_single::CampaignBidder;
+use crate::campaign_targets::CampaignTargetTrait;
+use crate::campaign::CampaignBidderTrait;
+
+
+
 
 /// Bidder for dual control factor bidding strategy (max margin with lambda and mu)
 /// Used by CampaignGeneral for campaigns that converge to both primary and secondary targets
 pub struct CampaignBidderDouble;
 
-impl CampaignBidder for CampaignBidderDouble {
-    fn get_bid(&self, value_to_campaign: f64, impression: &Impression, control_variables: &[f64], converge_targets: &Vec<Box<dyn ConvergeTargetAny<crate::simulationrun::CampaignStat>>>, seller_control_factor: f64, logger: &mut Logger) -> Option<f64> {
+impl CampaignBidderTrait for CampaignBidderDouble {
+    fn get_bid(&self, value_to_campaign: f64, impression: &Impression, control_variables: &[f64], converge_targets: &Vec<Box<dyn CampaignTargetTrait>>, seller_control_factor: f64, logger: &mut Logger) -> Option<f64> {
         assert_eq!(control_variables.len(), 2, "CampaignBidderDouble requires exactly 2 control variables");
         // Get control variables (lambda and mu)
         let lambda = control_variables[0];
