@@ -1,3 +1,12 @@
+/// This file contains the SimulationRun struct, which is used to run one single iteration of simulation (which is then run multiple times by converge.rs)
+/// The SimulationRun struct is used to run the simulation and collect the results.
+/// 
+/// We support two different auction types
+/// - Standard: First price auction
+/// - Fractional auction: Fractional auction where multiple impressions that bid more than "generated competition" can win the auction fractionally
+///     what fraction of auction they win is handled by softmax with its temperature
+
+
 use crate::impressions::{AuctionResult, FractionalAuctionResult, FractionalWinners, Winner, Impressions, ImpressionsParam};
 use crate::sellers::Sellers;
 use crate::campaigns::Campaigns;
