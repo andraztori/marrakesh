@@ -57,6 +57,7 @@ pub struct AuctionResult {
 #[derive(Debug, Clone, PartialEq)]
 pub struct FractionalAuctionResult {
     pub winner: FractionalWinners,
+    pub supply_cost: f64,
 }
 
 /// Object-safe wrapper for Distribution<f64> that works with StdRng
@@ -328,22 +329,29 @@ impl Impression {
 
         // Determine the result based on collected winners
         // Check all failure conditions first, then create winner in one place
-        let winner = if fractional_winners.is_empty() {
+        let (winner, supply_cost) = if fractional_winners.is_empty() {
             // Distinguish between no bids (NO_DEMAND) and bids below threshold (LOST)
-            if any_bids_made {
+            // Even when impression is not sold, calculate supply cost (0.0 for first price, fixed_cost_cpm for fixed price)
+            let supply_cost = seller.get_supply_cost_cpm(0.0) / 1000.0;
+            let winner = if any_bids_made {
                 FractionalWinners::LOST
             } else {
                 FractionalWinners::NO_DEMAND
-            }
+            };
+            (winner, supply_cost)
         } else {
             // Valid winners - all passed the minimum_cpm_to_win threshold
-            FractionalWinners::Campaigns {
+            // For fractional auctions with winners, supply cost is calculated per winner
+            // We'll use 0.0 here as a placeholder since supply cost is calculated per fractional winner
+            // The actual supply cost will be aggregated from individual winners in statistics
+            (FractionalWinners::Campaigns {
                 winners: fractional_winners,
-            }
+            }, 0.0)
         };
 
         FractionalAuctionResult {
             winner,
+            supply_cost,
         }
     }
 }

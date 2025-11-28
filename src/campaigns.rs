@@ -14,6 +14,7 @@ pub enum CampaignType {
     OPTIMAL,
     CHEATER,
     MAX_MARGIN,
+    MAX_MARGIN_ADDITIVE_SUPPLY,
     MAX_MARGIN_DOUBLE_TARGET,
     MEDIAN,
 }
@@ -33,7 +34,7 @@ pub enum ConvergeTarget {
 pub use crate::campaign_targets::{CampaignTargetTotalImpressions, CampaignTargetTotalBudget, CampaignTargetAvgValue, CampaignTargetNone};
 
 // Re-export bidder types for convenience
-pub use crate::campaign_bidders_single::{CampaignBidderMultiplicative, CampaignBidderMultiplicativeAdditive, CampaignBidderOptimal, BidderMaxMargin, CampaignBidderCheaterLastLook};
+pub use crate::campaign_bidders_single::{CampaignBidderMultiplicative, CampaignBidderMultiplicativeAdditive, CampaignBidderOptimal, BidderMaxMargin, BidderMaxMarginAdditiveSupply, CampaignBidderCheaterLastLook};
 
 /// Container for campaigns with methods to add campaigns
 /// Uses trait objects to support different campaign types
@@ -166,6 +167,18 @@ impl Campaigns {
                 assert_eq!(converge_targets.len(), 1, "MAX_MARGIN requires exactly one converge target");
                 let (converge_target_box, converge_controller) = Self::convert_converge_target(converge_targets[0].clone());
                 let bidder = Box::new(BidderMaxMargin) as Box<dyn CampaignBidderTrait>;
+                self.campaigns.push(Box::new(CampaignGeneral {
+                    campaign_id,
+                    campaign_name,
+                    converge_targets: vec![converge_target_box],
+                    converge_controllers: vec![converge_controller],
+                    bidder,
+                }));
+            }
+            CampaignType::MAX_MARGIN_ADDITIVE_SUPPLY => {
+                assert_eq!(converge_targets.len(), 1, "MAX_MARGIN_ADDITIVE_SUPPLY requires exactly one converge target");
+                let (converge_target_box, converge_controller) = Self::convert_converge_target(converge_targets[0].clone());
+                let bidder = Box::new(BidderMaxMarginAdditiveSupply) as Box<dyn CampaignBidderTrait>;
                 self.campaigns.push(Box::new(CampaignGeneral {
                     campaign_id,
                     campaign_name,

@@ -28,7 +28,7 @@ use crate::seller_chargers::{SellerChargerFirstPrice, SellerChargerFixedPrice};
 
 // Register this scenario in the catalog
 inventory::submit!(crate::scenarios::ScenarioEntry {
-    short_name: "supply_controller_boost",
+    short_name: "supply_controlled_boost",
     run,
 });
 

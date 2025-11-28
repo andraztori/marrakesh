@@ -175,6 +175,44 @@ impl CampaignBidderTrait for BidderMaxMargin {
     }
 }
 
+/// Bidder for max margin bidding strategy with additive supply factor
+/// Similar to BidderMaxMargin but uses additive supply boost: full_price = campaign_control_factor * value_to_campaign + seller_control_factor
+pub struct BidderMaxMarginAdditiveSupply;
+
+impl CampaignBidderTrait for BidderMaxMarginAdditiveSupply {
+    fn get_bid(&self, value_to_campaign: f64, impression: &Impression, control_variables: &[f64], _converge_targets: &Vec<Box<dyn CampaignTargetTrait>>, seller_control_factor: f64, logger: &mut Logger) -> Option<f64> {
+        assert_eq!(control_variables.len(), 1, "BidderMaxMarginAdditiveSupply requires exactly 1 control variable");
+        let campaign_control_factor = control_variables[0];
+        
+        // Calculate full_price (maximum we're willing to pay) with additive supply boost
+        let boosted_price = campaign_control_factor * value_to_campaign + seller_control_factor;
+        
+        // Get competition data (required for max margin bidding)
+        let competition = match &impression.competition {
+            Some(comp) => comp,
+            None => {
+                warnln!(logger, LogEvent::Simulation, 
+                    "Max margin bidding (additive supply) requires competition data. This impression has no competition data.");
+                return None;
+            }
+        };
+        
+        // Initialize sigmoid with competition parameters
+        let sigmoid = Sigmoid::new(
+            competition.win_rate_prediction_sigmoid_offset,
+            competition.win_rate_prediction_sigmoid_scale,
+            1.0,  // Using normalized value of 1.0
+        );
+        
+
+        sigmoid.max_margin_bid_bisection(boosted_price, impression.floor_cpm)
+    }
+    
+    fn get_bidding_type(&self) -> String {
+        "Max margin bidding (additive supply)".to_string()
+    }
+}
+
 /// Bidder for cheater/last look bidding strategy
 pub struct CampaignBidderCheaterLastLook;
 

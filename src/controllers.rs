@@ -116,7 +116,7 @@ impl ControllerTrait for ControllerProportional {
     }
     
     fn controller_string(&self, converge: &dyn ControllerState) -> String {
-        format!("Proportional, pacing: {:.4}", self.get_control_variable(converge))
+        format!("Proportional cntrl: {:.4}", self.get_control_variable(converge))
     }
 }
 

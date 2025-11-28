@@ -192,8 +192,22 @@ impl SimulationStat {
 
                     // Update overall statistics based on winner
                     match result.winner {
-                        Winner::LOST => overall_stat.lost_count += 1,
-                        Winner::NO_DEMAND => overall_stat.no_bids_count += 1,
+                        Winner::LOST => {
+                            overall_stat.lost_count += 1;
+                            // Even when impression is not sold, count supply cost (0.0 for first price, fixed_cost_cpm for fixed price)
+                            overall_stat.total_supply_cost += result.supply_cost;
+                            // Update seller statistics
+                            let seller_stat = &mut seller_stats[seller_id];
+                            seller_stat.total_supply_cost += result.supply_cost;
+                        }
+                        Winner::NO_DEMAND => {
+                            overall_stat.no_bids_count += 1;
+                            // Even when there's no demand, count supply cost (0.0 for first price, fixed_cost_cpm for fixed price)
+                            overall_stat.total_supply_cost += result.supply_cost;
+                            // Update seller statistics
+                            let seller_stat = &mut seller_stats[seller_id];
+                            seller_stat.total_supply_cost += result.supply_cost;
+                        }
                         Winner::Campaign { campaign_id, virtual_cost, buyer_charge, .. } => {
                             // Update overall statistics
                             overall_stat.total_supply_cost += result.supply_cost;
@@ -227,8 +241,22 @@ impl SimulationStat {
 
                     // Update overall statistics based on fractional winners
                     match &result_fractional.winner {
-                        FractionalWinners::LOST => overall_stat.lost_count += 1,
-                        FractionalWinners::NO_DEMAND => overall_stat.no_bids_count += 1,
+                        FractionalWinners::LOST => {
+                            overall_stat.lost_count += 1;
+                            // Even when impression is not sold, count supply cost (0.0 for first price, fixed_cost_cpm for fixed price)
+                            overall_stat.total_supply_cost += result_fractional.supply_cost;
+                            // Update seller statistics
+                            let seller_stat = &mut seller_stats[seller_id];
+                            seller_stat.total_supply_cost += result_fractional.supply_cost;
+                        }
+                        FractionalWinners::NO_DEMAND => {
+                            overall_stat.no_bids_count += 1;
+                            // Even when there's no demand, count supply cost (0.0 for first price, fixed_cost_cpm for fixed price)
+                            overall_stat.total_supply_cost += result_fractional.supply_cost;
+                            // Update seller statistics
+                            let seller_stat = &mut seller_stats[seller_id];
+                            seller_stat.total_supply_cost += result_fractional.supply_cost;
+                        }
                         FractionalWinners::Campaigns { winners } => {
                             // Calculate total supply cost from fractional winners (weighted by win_fraction)
                             let mut total_supply_cost = 0.0;
@@ -300,12 +328,12 @@ impl SimulationStat {
                      campaign_stat.total_supply_cost, 
                      campaign_stat.total_virtual_cost, 
                      campaign_stat.total_buyer_charge);
-            let value_per_impression = if campaign_stat.impressions_obtained > 0.0 {
-                campaign_stat.total_value / campaign_stat.impressions_obtained
+            let value_per_spend = if campaign_stat.total_buyer_charge > 0.0 {
+                campaign_stat.total_value / campaign_stat.total_buyer_charge
             } else {
                 0.0
             };
-            logln!(logger, event, "  Obtained Value: {:.2} (per M impressions: {:.4})", campaign_stat.total_value, value_per_impression * 1000.0);
+            logln!(logger, event, "  Obtained Value: {:.2} (per spend: {:.4})", campaign_stat.total_value, value_per_spend);
         }
     }
 
@@ -356,14 +384,13 @@ impl SimulationStat {
                  self.overall_stat.total_virtual_cost, 
                  self.overall_stat.total_buyer_charge);
         
-        // Calculate total impressions from all campaigns
-        let total_impressions: f64 = self.campaign_stats.iter().map(|cs| cs.impressions_obtained).sum();
-        let value_per_impression = if total_impressions > 0.0 {
-            self.overall_stat.total_value / total_impressions
+        // Calculate value per spend
+        let value_per_spend = if self.overall_stat.total_buyer_charge > 0.0 {
+            self.overall_stat.total_value / self.overall_stat.total_buyer_charge
         } else {
             0.0
         };
-        logln!(logger, LogEvent::Variant, "Total Obtained Value: {:.2} (per M impressions: {:.4})", self.overall_stat.total_value, value_per_impression * 1000.0);
+        logln!(logger, LogEvent::Variant, "Total Obtained Value: {:.2} (per spend: {:.4})", self.overall_stat.total_value, value_per_spend);
     }
 }
 

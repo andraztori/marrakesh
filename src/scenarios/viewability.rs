@@ -5,7 +5,10 @@
 /// - Variant A: Max margin bidding converging to 1000 impressions
 ///
 /// - Variant B: Max margin double target bidding converging to 1000 impressions and avg value of 0.8
-
+/// This is very much the example of needing to buy certain amount of impressions
+/// while hitting 80% viewability rate
+/// 
+/// In order to model viewability as "value", we use beta distribution for base impression value
 
 use crate::simulationrun::{Marketplace, SimulationType};
 use crate::sellers::{SellerType, SellerConvergeStrategy, Sellers};
