@@ -26,11 +26,6 @@ impl CampaignBidderTrait for CampaignBidderMultiplicative {
         let campaign_control_factor = control_variables[0];
         let bid = campaign_control_factor * value_to_campaign * seller_control_factor;
         
-        // Don't bid if bid is below floor
-        if bid < impression.floor_cpm {
-            return None;
-        }
-        
         Some(bid)
     }
     
@@ -47,11 +42,6 @@ impl CampaignBidderTrait for CampaignBidderMultiplicativeAdditive {
         assert_eq!(control_variables.len(), 1, "CampaignBidderMultiplicativeAdditive requires exactly 1 control variable");
         let campaign_control_factor = control_variables[0];
         let bid = campaign_control_factor * value_to_campaign + seller_control_factor;
-        
-        // Don't bid if bid is below floor
-        if bid < impression.floor_cpm {
-            return None;
-        }
         
         Some(bid)
     }
@@ -82,23 +72,12 @@ impl CampaignBidderTrait for CampaignBidderOptimal {
         }
         
         // a) Calculate marginal_utility_of_spend as 1.0 / campaign_control_factor
-        // In campaign control factor converger we assume higher campaign_control_factor leads to more spend
-        // but marginal utility of spend actually has to decrease to have more spend
-        // so we do this non-linear transform. works well enough, but could probably be improved.
         let marginal_utility_of_spend = 1.0 / campaign_control_factor;
-        
-        // b) Calculate value as multiplication between seller_control_factor and impression value to campaign
         let value = seller_control_factor * value_to_campaign;
         
         // Get competition data (required for optimal bidding)
-        let competition = match &impression.competition {
-            Some(comp) => comp,
-            None => {
-                warnln!(logger, LogEvent::Simulation, 
-                    "Optimal bidding is only possible when competition can be modeled. This impression has no competition data.");
-                return None;
-            }
-        };
+        let competition = impression.competition.as_ref()
+            .expect("Optimal bidding requires competition data. This impression has no competition data.");
         
         // c) Initialize sigmoid with offset and scale from impression competition predicted offset and scale, and value from value
         let sigmoid = Sigmoid::new(
@@ -126,10 +105,6 @@ impl CampaignBidderTrait for CampaignBidderOptimal {
             }
         };
         
-        if bid < impression.floor_cpm { 
-            return None;
-        }
-        
         Some(bid)
     }
     
@@ -146,27 +121,17 @@ impl CampaignBidderTrait for BidderMaxMargin {
         assert_eq!(control_variables.len(), 1, "BidderMaxMargin requires exactly 1 control variable");
         let campaign_control_factor = control_variables[0];
         
-        // Calculate full_price (maximum we're willing to pay)
         let boosted_price = campaign_control_factor * seller_control_factor * value_to_campaign;
         
-        // Get competition data (required for max margin bidding)
-        let competition = match &impression.competition {
-            Some(comp) => comp,
-            None => {
-                warnln!(logger, LogEvent::Simulation, 
-                    "Max margin bidding requires competition data. This impression has no competition data.");
-                return None;
-            }
-        };
+        let competition = impression.competition.as_ref()
+            .expect("Max margin bidding requires competition data. This impression has no competition data.");
         
-        // Initialize sigmoid with competition parameters
         let sigmoid = Sigmoid::new(
             competition.win_rate_prediction_sigmoid_offset,
             competition.win_rate_prediction_sigmoid_scale,
             1.0,  // Using normalized value of 1.0
         );
         
-
         sigmoid.max_margin_bid_bisection(boosted_price, impression.floor_cpm)
     }
     
@@ -184,20 +149,11 @@ impl CampaignBidderTrait for BidderMaxMarginAdditiveSupply {
         assert_eq!(control_variables.len(), 1, "BidderMaxMarginAdditiveSupply requires exactly 1 control variable");
         let campaign_control_factor = control_variables[0];
         
-        // Calculate full_price (maximum we're willing to pay) with additive supply boost
         let boosted_price = campaign_control_factor * value_to_campaign + seller_control_factor;
         
-        // Get competition data (required for max margin bidding)
-        let competition = match &impression.competition {
-            Some(comp) => comp,
-            None => {
-                warnln!(logger, LogEvent::Simulation, 
-                    "Max margin bidding (additive supply) requires competition data. This impression has no competition data.");
-                return None;
-            }
-        };
+        let competition = impression.competition.as_ref()
+            .expect("Max margin bidding (additive supply) requires competition data. This impression has no competition data.");
         
-        // Initialize sigmoid with competition parameters
         let sigmoid = Sigmoid::new(
             competition.win_rate_prediction_sigmoid_offset,
             competition.win_rate_prediction_sigmoid_scale,
@@ -221,7 +177,6 @@ impl CampaignBidderTrait for CampaignBidderCheaterLastLook {
         assert_eq!(control_variables.len(), 1, "CampaignBidderCheaterLastLook requires exactly 1 control variable");
         let campaign_control_factor = control_variables[0];
         
-        // Calculate value as multiplication between seller_control_factor and impression value to campaign
         let max_affordable_bid = campaign_control_factor * seller_control_factor * value_to_campaign;
         
         // Calculate minimum winning bid as minimum of floor and competing bid, plus 0.00001
@@ -258,22 +213,13 @@ impl CampaignBidderTrait for CampaignBidderMedian {
         assert_eq!(control_variables.len(), 1, "CampaignBidderMedian requires exactly 1 control variable");
         let campaign_control_factor = control_variables[0];
         
-        // Calculate multiplicative bid
         let campaign_control_bid = campaign_control_factor * value_to_campaign * seller_control_factor;
         
-        // Get competition data (required for Median Bidding)
-        let competition = match &impression.competition {
-            Some(comp) => comp,
-            None => {
-                warnln!(logger, LogEvent::Simulation, 
-                    "Median Bidding requires competition data. This impression has no competition data.");
-                return None;
-            }
-        };
+        let competition = impression.competition.as_ref()
+            .expect("Median Bidding requires competition data. This impression has no competition data.");
         
-        // Get the predicted offset point
         let predicted_offset = competition.win_rate_prediction_sigmoid_offset;
-        //println!("actual offset: {:.4}, predicted offset: {:.4}", competition.win_rate_actual_sigmoid_offset, competition.win_rate_prediction_sigmoid_offset);
+
         // Only bid if campaign control bid is above predicted offset point
         if campaign_control_bid <= predicted_offset {
             return None;

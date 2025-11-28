@@ -34,14 +34,8 @@ impl CampaignBidderTrait for CampaignBidderDouble {
         let base_value = lambda * seller_control_factor + mu * (value_to_campaign - secondary_target);
         
         // Get competition data (required for max margin bidding)
-        let competition = match &impression.competition {
-            Some(comp) => comp,
-            None => {
-                warnln!(logger, LogEvent::Simulation, 
-                    "Max margin bidding requires competition data. This impression has no competition data.");
-                return None;
-            }
-        };
+        let competition = impression.competition.as_ref()
+            .expect("Max margin bidding (dual control) requires competition data. This impression has no competition data.");
         
         // Initialize sigmoid with competition parameters
         let sigmoid = Sigmoid::new(
