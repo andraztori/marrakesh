@@ -22,7 +22,7 @@ use crate::errln;
 
 // Register this scenario in the catalog
 inventory::submit!(crate::scenarios::ScenarioEntry {
-    short_name: "HBabundance",
+    short_name: "scarcity_and_abundance",
     run,
 });
 

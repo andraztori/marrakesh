@@ -902,3 +902,4 @@ The framework does not focus on:
 ---
 
 *This document focuses on conceptual understanding. For implementation details, see the code and inline documentation.*
+*This project was written with lots of AI help, including this doc.

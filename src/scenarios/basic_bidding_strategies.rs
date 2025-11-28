@@ -6,7 +6,7 @@
 ///
 /// - Variant A: Multiplicative pacing (baseline)
 ///
-/// - Variant B: ALB (Auction Level Bid) bidding
+/// - Variant B: Median Bidding
 ///
 /// - Variant C: Optimal bidding (optimizes marginal utility of spend - equivalent of Max Margin Bidding)
 ///
@@ -76,9 +76,9 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
     let simulation_converge_a = prepare_simulationconverge(CampaignType::MULTIPLICATIVE_PACING);
     let stats_a = simulation_converge_a.run_variant("Running with multiplicative pacing", scenario_name, "multiplicative", 100, logger);
     
-    // Run variant B with ALB bidding
-    let simulation_converge_b = prepare_simulationconverge(CampaignType::ALB);
-    let stats_b = simulation_converge_b.run_variant("Running with ALB bidding", scenario_name, "alb", 100, logger);
+    // Run variant B with Median Bidding
+    let simulation_converge_b = prepare_simulationconverge(CampaignType::MEDIAN);
+    let stats_b = simulation_converge_b.run_variant("Running with Median Bidding", scenario_name, "median", 100, logger);
     
     // Run variant C with optimal bidding
     let simulation_converge_c = prepare_simulationconverge(CampaignType::OPTIMAL);
@@ -94,7 +94,7 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
     
     // Validate expected marketplace behavior
     // Variant A (multiplicative pacing) uses MULTIPLICATIVE_PACING with TOTAL_BUDGET
-    // Variant B (ALB bidding) uses ALB with TOTAL_BUDGET
+    // Variant B (Median Bidding) uses MEDIAN with TOTAL_BUDGET
     // Variant C (optimal bidding) uses OPTIMAL with TOTAL_BUDGET
     // Variant D (max margin bidding) uses MAX_MARGIN with TOTAL_BUDGET
     // Variant E (cheater bidding) uses CHEATER with TOTAL_BUDGET
@@ -103,10 +103,10 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
     
     let mut errors: Vec<String> = Vec::new();
     
-    // Check: Variant B (ALB) obtained value > Variant A (multiplicative pacing) obtained value
+    // Check: Variant B (Median Bidding) obtained value > Variant A (multiplicative pacing) obtained value
     // Note: This validation is true only when operating in regime of low fill rates
     let msg = format!(
-        "Variant B (ALB bidding) obtained value is greater than Variant A (Multiplicative pacing): {:.2} > {:.2} (Note: true only in low fill rate regime)",
+        "Variant B (Median Bidding) obtained value is greater than Variant A (Multiplicative pacing): {:.2} > {:.2} (Note: true only in low fill rate regime)",
         stats_b.overall_stat.total_value,
         stats_a.overall_stat.total_value
     );

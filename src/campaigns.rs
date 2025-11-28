@@ -15,7 +15,7 @@ pub enum CampaignType {
     CHEATER,
     MAX_MARGIN,
     MAX_MARGIN_DOUBLE_TARGET,
-    ALB,
+    MEDIAN,
 }
 
 /// Convergence target determining what the campaign converges on
@@ -196,10 +196,10 @@ impl Campaigns {
                     bidder,
                 }));
             }
-            CampaignType::ALB => {
-                assert_eq!(converge_targets.len(), 1, "ALB requires exactly one converge target");
+            CampaignType::MEDIAN => {
+                assert_eq!(converge_targets.len(), 1, "MEDIAN requires exactly one converge target");
                 let (converge_target_box, converge_controller) = Self::convert_converge_target(converge_targets[0].clone());
-                let bidder = Box::new(crate::campaign_bidders_single::CampaignBidderALB) as Box<dyn CampaignBidderTrait>;
+                let bidder = Box::new(crate::campaign_bidders_single::CampaignBidderMedian) as Box<dyn CampaignBidderTrait>;
                 self.campaigns.push(Box::new(CampaignGeneral {
                     campaign_id,
                     campaign_name,

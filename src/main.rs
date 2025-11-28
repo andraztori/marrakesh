@@ -23,15 +23,6 @@ mod controller_state;
 mod controller_core;
 mod controllers;
 
-// Include scenario files so their constructors run
-mod s_one;
-mod s_basic_bidding_strategies;
-mod s_mrg_boost;
-mod s_mrg_dynamic_boost;
-mod s_maxmargin_equality;
-mod s_alb;
-mod s_viewability;
-mod s_value_groups;
 
 use sellers::{SellerType, SellerConvergeStrategy, Sellers};
 use campaigns::{CampaignType, ConvergeTarget, Campaigns};
@@ -291,11 +282,11 @@ fn main() {
         // Remove validation receiver
         logger.remove_receiver(summary_receiver_id);
     } else {
-        // Default behavior: Run the first scenario (or s_mrg_boost) with summary verbosity
-        // For now, default to s_mrg_boost, but could be made configurable
+        // Default behavior: Run the first scenario (or mrg_boost) with summary verbosity
+        // For now, default to mrg_boost, but could be made configurable
         let mut logger = Logger::new();
         logger.add_receiver(ConsoleReceiver::new(vec![LogEvent::Simulation, LogEvent::Convergence, LogEvent::Variant]));
-        if let Err(e) = s_mrg_boost::run("MRGboost", &mut logger) {
+        if let Err(e) = scenarios::supply_simple_boost::run("MRGboost", &mut logger) {
             eprintln!("Error running scenario: {}", e);
             std::process::exit(1);
         }

@@ -29,3 +29,13 @@ pub fn get_scenario_catalog() -> Vec<ScenarioEntry> {
 //     run: function,
 // });
 
+// Scenario modules
+pub mod scarcity_and_abundance;
+pub mod basic_bidding_strategies;
+pub mod supply_simple_boost;
+pub mod supply_controlled_boost;
+pub mod maxmargin_equality;
+pub mod median_bidder;
+pub mod viewability;
+pub mod value_groups;
+

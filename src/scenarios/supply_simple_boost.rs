@@ -20,7 +20,7 @@ use crate::errln;
 
 // Register this scenario in the catalog
 inventory::submit!(crate::scenarios::ScenarioEntry {
-    short_name: "MRGboost",
+    short_name: "supply_simple_boost",
     run,
 });
 

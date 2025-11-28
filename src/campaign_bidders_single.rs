@@ -207,28 +207,28 @@ impl CampaignBidderTrait for CampaignBidderCheaterLastLook {
     }
 }
 
-/// Bidder for ALB (Auction Level Bid) strategy
+/// Bidder for Median Bidding strategy, sometimes called ALB (Auction Level Bid)
 /// Uses multiplicative pacing, but if the bid is above the predicted offset point,
 /// bids with the predicted offset point instead. Otherwise, does not bid.
 /// Interesting observation from this research:
-/// ALB improves vs. multiplicative bidding when there is abundance of impressions
-/// ALB is worse than multiplicative bidding when there is scarcity of impressions and we have high fill rates
-pub struct CampaignBidderALB;
+/// Median Bidding improves vs. multiplicative bidding when there is abundance of impressions
+/// Median Bidding is worse than multiplicative bidding when there is scarcity of impressions and we have high fill rates
+pub struct CampaignBidderMedian;
 
-impl CampaignBidderTrait for CampaignBidderALB {
+impl CampaignBidderTrait for CampaignBidderMedian {
     fn get_bid(&self, value_to_campaign: f64, impression: &Impression, control_variables: &[f64], _converge_targets: &Vec<Box<dyn CampaignTargetTrait>>, seller_control_factor: f64, logger: &mut Logger) -> Option<f64> {
-        assert_eq!(control_variables.len(), 1, "CampaignBidderALB requires exactly 1 control variable");
+        assert_eq!(control_variables.len(), 1, "CampaignBidderMedian requires exactly 1 control variable");
         let campaign_control_factor = control_variables[0];
         
         // Calculate multiplicative bid
         let campaign_control_bid = campaign_control_factor * value_to_campaign * seller_control_factor;
         
-        // Get competition data (required for ALB bidding)
+        // Get competition data (required for Median Bidding)
         let competition = match &impression.competition {
             Some(comp) => comp,
             None => {
                 warnln!(logger, LogEvent::Simulation, 
-                    "ALB bidding requires competition data. This impression has no competition data.");
+                    "Median Bidding requires competition data. This impression has no competition data.");
                 return None;
             }
         };
@@ -251,7 +251,7 @@ impl CampaignBidderTrait for CampaignBidderALB {
     }
     
     fn get_bidding_type(&self) -> String {
-        "ALB (Auction Level Bid)".to_string()
+        "Median Bidding".to_string()
     }
 }
 

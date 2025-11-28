@@ -1,12 +1,13 @@
-/// This scenario compares MAX_MARGIN, ALB, and MULTIPLICATIVE_PACING bidding strategies
+/// This scenario compares MAX_MARGIN, MEDIAN, and MULTIPLICATIVE_PACING bidding strategies
 /// with varying numbers of impressions on offer.
+/// Median is sometimes called Auction Level Bid (ALB)
 ///
 /// It validates two scenarios:
-/// - When number of impressions on offer is low (5000): ALB works worse (obtains less value) than multiplicative bidding
-/// - When number of impressions on offer is high (50000): ALB works better (obtains more value) than multiplicative bidding
-/// - In both cases, ALB should capture less value than max margin
+/// - When number of impressions on offer is low (5000): Median Bidding works worse (obtains less value) than multiplicative bidding
+/// - When number of impressions on offer is high (50000): Median Bidding works better (obtains more value) than multiplicative bidding
+/// - In both cases, Median Bidding should capture less value than max margin
 /// 
-/// This shows that ALB works as a strategy when we are in a regime with low win rates and does not work in regime with high win rates.
+/// This shows that Median Bidding works as a strategy when we are in a regime with low win rates and does not work in regime with high win rates.
 /// This is because for low win rates, it functions as a limit on how high our bids go,
 /// but in high win rate regime it forces bids for valueable impressions to be lower than they should be
 
@@ -25,7 +26,7 @@ use crate::errln;
 
 // Register this scenario in the catalog
 inventory::submit!(crate::scenarios::ScenarioEntry {
-    short_name: "alb",
+    short_name: "median",
     run,
 });
 
@@ -38,7 +39,7 @@ fn prepare_simulationconverge(hb_impressions: usize, campaign_type: CampaignType
     // Add campaign (ID is automatically set to match Vec index)
     campaigns.add(
         "Campaign 0".to_string(),  // campaign_name
-        campaign_type,  // campaign_type - either multiplicative pacing, ALB, or max margin
+        campaign_type,  // campaign_type - either multiplicative pacing, Median Bidding, or max margin
         vec![ConvergeTarget::TOTAL_BUDGET { target_total_budget: 30.0 }],  // converge_target
     );
 
@@ -66,9 +67,9 @@ fn prepare_simulationconverge(hb_impressions: usize, campaign_type: CampaignType
 }
 
 pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::error::Error>> {
-    logln!(logger, LogEvent::Scenario, "=== Scenario: ALB Comparison with Low Impressions (5000) ===");
+    logln!(logger, LogEvent::Scenario, "=== Scenario: Median Bidding Comparison with Low Impressions (5000) ===");
     
-    // Scenario 1: Low impressions (5000) - ALB should work worse than multiplicative
+    // Scenario 1: Low impressions (5000) - Median Bidding should work worse than multiplicative
     let num_impressions_low = 4000;
     
     // Run with max margin bidding
@@ -84,16 +85,16 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
         logger
     );
     
-    // Run with ALB bidding
-    let simulation_converge_alb_low = prepare_simulationconverge(
+    // Run with Median Bidding
+    let simulation_converge_median_low = prepare_simulationconverge(
         num_impressions_low,
-        CampaignType::ALB,
+        CampaignType::MEDIAN,
     );
     // TODO figure out better controller to not need 2500 here
-    let stats_alb_low = simulation_converge_alb_low.run_variant(
-        "Running with ALB bidding (low impressions)", 
+    let stats_median_low = simulation_converge_median_low.run_variant(
+        "Running with Median Bidding (low impressions)", 
         scenario_name, 
-        "alb-low", 
+        "median-low", 
         2500, 
         logger
     );
@@ -112,9 +113,9 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
     );
     
     logln!(logger, LogEvent::Scenario, "");
-    logln!(logger, LogEvent::Scenario, "=== Scenario: ALB Comparison with High Impressions (50000) ===");
+    logln!(logger, LogEvent::Scenario, "=== Scenario: Median Bidding Comparison with High Impressions (50000) ===");
     
-    // Scenario 2: High impressions (50000) - ALB should work better than multiplicative
+    // Scenario 2: High impressions (50000) - Median Bidding should work better than multiplicative
     let num_impressions_high = 50000;
     
     // Run with max margin bidding
@@ -130,15 +131,15 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
         logger
     );
     
-    // Run with ALB bidding
-    let simulation_converge_alb_high = prepare_simulationconverge(
+    // Run with Median Bidding
+    let simulation_converge_median_high = prepare_simulationconverge(
         num_impressions_high,
-        CampaignType::ALB,
+        CampaignType::MEDIAN,
     );
-    let stats_alb_high = simulation_converge_alb_high.run_variant(
-        "Running with ALB bidding (high impressions)", 
+    let stats_median_high = simulation_converge_median_high.run_variant(
+        "Running with Median Bidding (high impressions)", 
         scenario_name, 
-        "alb-high", 
+        "median-high", 
         100, 
         logger
     );
@@ -162,52 +163,52 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
     
     let mut errors: Vec<String> = Vec::new();
     
-    // Validation 1: Low impressions (5000) - ALB should work worse than multiplicative
+    // Validation 1: Low impressions (5000) - Median Bidding should work worse than multiplicative
     let msg = format!(
-        "Low impressions (5000): Multiplicative pacing obtained value > ALB obtained value: {:.2} > {:.2}",
+        "Low impressions (5000): Multiplicative pacing obtained value > Median Bidding obtained value: {:.2} > {:.2}",
         stats_mult_low.overall_stat.total_value,
-        stats_alb_low.overall_stat.total_value
+        stats_median_low.overall_stat.total_value
     );
-    if stats_mult_low.overall_stat.total_value > stats_alb_low.overall_stat.total_value {
+    if stats_mult_low.overall_stat.total_value > stats_median_low.overall_stat.total_value {
         logln!(logger, LogEvent::Scenario, "✓ {}", msg);
     } else {
         errors.push(msg.clone());
         errln!(logger, LogEvent::Scenario, "✗ {}", msg);
     }
     
-    // Validation 2: High impressions (50000) - ALB should work better than multiplicative
+    // Validation 2: High impressions (50000) - Median Bidding should work better than multiplicative
     let msg = format!(
-        "High impressions (50000): ALB obtained value > Multiplicative pacing obtained value: {:.2} > {:.2}",
-        stats_alb_high.overall_stat.total_value,
+        "High impressions (50000): Median Bidding obtained value > Multiplicative pacing obtained value: {:.2} > {:.2}",
+        stats_median_high.overall_stat.total_value,
         stats_mult_high.overall_stat.total_value
     );
-    if stats_alb_high.overall_stat.total_value > stats_mult_high.overall_stat.total_value {
+    if stats_median_high.overall_stat.total_value > stats_mult_high.overall_stat.total_value {
         logln!(logger, LogEvent::Scenario, "✓ {}", msg);
     } else {
         errors.push(msg.clone());
         errln!(logger, LogEvent::Scenario, "✗ {}", msg);
     }
     
-    // Validation 3: Low impressions - Max margin should capture more value than ALB
+    // Validation 3: Low impressions - Max margin should capture more value than Median Bidding
     let msg = format!(
-        "Low impressions (5000): Max margin obtained value > ALB obtained value: {:.2} > {:.2}",
+        "Low impressions (5000): Max margin obtained value > Median Bidding obtained value: {:.2} > {:.2}",
         stats_maxmargin_low.overall_stat.total_value,
-        stats_alb_low.overall_stat.total_value
+        stats_median_low.overall_stat.total_value
     );
-    if stats_maxmargin_low.overall_stat.total_value > stats_alb_low.overall_stat.total_value {
+    if stats_maxmargin_low.overall_stat.total_value > stats_median_low.overall_stat.total_value {
         logln!(logger, LogEvent::Scenario, "✓ {}", msg);
     } else {
         errors.push(msg.clone());
         errln!(logger, LogEvent::Scenario, "✗ {}", msg);
     }
     
-    // Validation 4: High impressions - Max margin should capture more value than ALB
+    // Validation 4: High impressions - Max margin should capture more value than Median Bidding
     let msg = format!(
-        "High impressions (50000): Max margin obtained value > ALB obtained value: {:.2} > {:.2}",
+        "High impressions (50000): Max margin obtained value > Median Bidding obtained value: {:.2} > {:.2}",
         stats_maxmargin_high.overall_stat.total_value,
-        stats_alb_high.overall_stat.total_value
+        stats_median_high.overall_stat.total_value
     );
-    if stats_maxmargin_high.overall_stat.total_value > stats_alb_high.overall_stat.total_value {
+    if stats_maxmargin_high.overall_stat.total_value > stats_median_high.overall_stat.total_value {
         logln!(logger, LogEvent::Scenario, "✓ {}", msg);
     } else {
         errors.push(msg.clone());
