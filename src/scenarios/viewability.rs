@@ -36,7 +36,7 @@ fn prepare_simulationconverge(hb_impressions: usize, campaign_type: CampaignType
 
     // Add campaign (ID is automatically set to match Vec index)
     campaigns.add(
-        "Campaign 0".to_string(),  // campaign_name
+        "C0".to_string(),  // campaign_name
         campaign_type,  // campaign_type
         converge_targets,  // converge_targets
     );
