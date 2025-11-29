@@ -36,7 +36,7 @@ impl CampaignTargetTrait for CampaignTargetTotalImpressions {
     }
     
     fn converge_target_string(&self) -> String {
-        format!("Fixed impressions ({})", self.total_impressions_target)
+        format!("Impressions ({})", self.total_impressions_target)
     }
 }
 
@@ -55,7 +55,7 @@ impl CampaignTargetTrait for CampaignTargetTotalBudget {
     }
     
     fn converge_target_string(&self) -> String {
-        format!("Fixed budget: {:.2}", self.total_budget_target)
+        format!("Budget: {:.2}", self.total_budget_target)
     }
 }
 
@@ -82,7 +82,7 @@ impl CampaignTargetTrait for CampaignTargetAvgValue {
     }
     
     fn converge_target_string(&self) -> String {
-        format!("Average value: {:.4}", self.avg_impression_value_to_campaign)
+        format!("Avg value: {:.4}", self.avg_impression_value_to_campaign)
     }
 }
 
