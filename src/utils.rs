@@ -9,6 +9,10 @@ pub static RAND_SEED: AtomicU64 = AtomicU64::new(0);
 /// Global flag for verbose logging of auction data
 pub static VERBOSE_AUCTION: AtomicBool = AtomicBool::new(false);
 
+/// Global counter for total simulation runs completed
+/// This tracks the number of completed simulation iterations across all scenarios
+pub static TOTAL_SIMULATION_RUNS: AtomicU64 = AtomicU64::new(0);
+
 /// Get a seed value by XORing the global RAND_SEED with a local seed
 pub fn get_seed(local_seed: u64) -> u64 {
     RAND_SEED.load(Ordering::Relaxed) ^ local_seed

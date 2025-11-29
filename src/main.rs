@@ -33,7 +33,7 @@ use logger::{Logger, LogEvent, ConsoleReceiver, FileReceiver, sanitize_filename}
 use std::path::PathBuf;
 
 use scenarios::get_scenario_catalog;
-use utils::RAND_SEED;
+use utils::{RAND_SEED, TOTAL_SIMULATION_RUNS};
 use std::sync::atomic::Ordering;
 
 fn main() {
@@ -223,18 +223,22 @@ fn main() {
         // Add validation receiver (for validation events)
         let summary_receiver_id = logger.add_receiver(FileReceiver::new(&PathBuf::from("log/summary.log"), vec![LogEvent::Validation]));
         
+        // Reset and log initial simulation run count
+        TOTAL_SIMULATION_RUNS.store(0, Ordering::Relaxed);
+        let initial_count = TOTAL_SIMULATION_RUNS.load(Ordering::Relaxed);
+        
         // Log appropriate message
         if scenario_arg == "all" {
             if iterations > 1 {
-                logln!(&mut logger, LogEvent::Validation, "Running all scenarios {} times...\n", iterations);
+                logln!(&mut logger, LogEvent::Validation, "Running all scenarios {} times... (Total simulation runs: {})\n", iterations, initial_count);
             } else {
-                logln!(&mut logger, LogEvent::Validation, "Running all scenarios...\n");
+                logln!(&mut logger, LogEvent::Validation, "Running all scenarios... (Total simulation runs: {})\n", initial_count);
             }
         } else {
             if iterations > 1 {
-                logln!(&mut logger, LogEvent::Validation, "Running scenario '{}' {} times...\n", scenario_arg, iterations);
+                logln!(&mut logger, LogEvent::Validation, "Running scenario '{}' {} times... (Total simulation runs: {})\n", scenario_arg, iterations, initial_count);
             } else {
-                logln!(&mut logger, LogEvent::Validation, "Running scenario '{}'...\n", scenario_arg);
+                logln!(&mut logger, LogEvent::Validation, "Running scenario '{}'... (Total simulation runs: {})\n", scenario_arg, initial_count);
             }
         }
         
@@ -278,6 +282,10 @@ fn main() {
             // Remove scenario-level receiver
             logger.remove_receiver(scenario_receiver_id);
         }
+        
+        // Log final simulation run count
+        let final_count = TOTAL_SIMULATION_RUNS.load(Ordering::Relaxed);
+        logln!(&mut logger, LogEvent::Validation, "\nTotal simulation runs completed: {}", final_count);
         
         // Remove validation receiver
         logger.remove_receiver(summary_receiver_id);

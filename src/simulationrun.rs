@@ -13,6 +13,8 @@ use crate::campaigns::Campaigns;
 use crate::converge::{CampaignControllerStates, SellerControllerStates};
 use crate::logger::{Logger, LogEvent};
 use crate::logln;
+use crate::utils::TOTAL_SIMULATION_RUNS;
+use std::sync::atomic::Ordering;
 
 /// Simulation type determining the auction mechanism
 #[derive(Debug, Clone, PartialEq)]
@@ -97,6 +99,9 @@ impl SimulationRun {
                 }
             }
         }
+        
+        // Increment global counter for completed simulation run
+        TOTAL_SIMULATION_RUNS.fetch_add(1, Ordering::Relaxed);
         
         Self { results, results_fractional }
     }

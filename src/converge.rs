@@ -3,7 +3,6 @@ use crate::campaigns::Campaigns;
 use crate::sellers::Sellers;
 use crate::logger::{Logger, LogEvent, FileReceiver, sanitize_filename};
 use crate::logln;
-use crate::warnln;
 use std::path::PathBuf;
 use crate::utils::VERBOSE_AUCTION;
 use std::sync::atomic::Ordering;
@@ -212,7 +211,7 @@ impl SimulationConverge {
         
         // Log if we reached max iterations
         if !converged {
-            warnln!(logger, LogEvent::Convergence, "{}: Reached maximum iterations ({})", variant_name, max_iterations);
+            logln!(logger, LogEvent::Convergence, "{}: Reached maximum iterations ({})", variant_name, max_iterations);
         }
         
         

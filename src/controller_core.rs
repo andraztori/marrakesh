@@ -18,8 +18,8 @@ impl ControllerProportionalDerivativeCore {
     pub fn new() -> Self {
         Self {
             tolerance_fraction: 0.005,  // 0.5% tolerance
-            max_adjustment_factor: 0.1,  // Max 20% adjustment
-            proportional_gain: 0.1,      // 10% of error
+            max_adjustment_factor: 0.15,  // Max 20% adjustment
+            proportional_gain: 0.15,      // 10% of error
             derivative_gain: 0.05,       // 5% of error rate
             rescaling: true,             // Enable rescaling by default
         }
