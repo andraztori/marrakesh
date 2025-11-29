@@ -101,7 +101,7 @@ impl CampaignTrait for CampaignGeneral {
     fn type_target_and_controller_state_string(&self, controller_states: &[&dyn crate::controllers::ControllerState]) -> String {
         let mut parts = Vec::new();
         for (index, (converge_target, converge_controller)) in self.converge_targets.iter().zip(self.converge_controllers.iter()).enumerate() {
-            parts.push(format!("Target {}: {} ({})", 
+            parts.push(format!("T{}: {} ({})", 
                 index + 1,
                 converge_target.converge_target_string(),
                 converge_controller.controller_string(controller_states[index])

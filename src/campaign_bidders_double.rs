@@ -48,7 +48,7 @@ impl CampaignBidderTrait for CampaignBidderDouble {
     }
     
     fn get_bidding_type(&self) -> String {
-        "Max margin bidding (dual control)".to_string()
+        "Max margin dual opt)".to_string()
     }
 }
 
