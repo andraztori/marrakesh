@@ -39,9 +39,10 @@ use std::sync::atomic::Ordering;
 fn main() {
     let raw_args: Vec<String> = std::env::args().collect();
     
-    // Parse and filter out --verbose argument
+    // Parse and filter out --verbose and --fastbreak arguments
     let mut args = Vec::new();
     let mut skip_next = false;
+    let mut fastbreak = false;
     for (i, arg) in raw_args.iter().enumerate() {
         if skip_next {
             skip_next = false;
@@ -52,6 +53,10 @@ fn main() {
                 utils::VERBOSE_AUCTION.store(true, Ordering::Relaxed);
                 skip_next = true;
             }
+            continue;
+        }
+        if arg == "--fastbreak" {
+            fastbreak = true;
             continue;
         }
         args.push(arg.clone());
@@ -189,6 +194,19 @@ fn main() {
             1
         };
         
+        // Parse optional starting iteration index if present
+        let start_iteration = if args.len() > 3 {
+            match args[3].parse::<u64>() {
+                Ok(n) => n,
+                Err(_) => {
+                    eprintln!("Error: Invalid start iteration parameter '{}'. Expected a number.", args[3]);
+                    std::process::exit(1);
+                }
+            }
+        } else {
+            0
+        };
+        
         // Get all scenarios from the catalog
         let all_scenarios = get_scenario_catalog();
         
@@ -212,12 +230,18 @@ fn main() {
         };
         
         // Set up logger with console and validation file receivers
-        // When running a specific scenario (not "all"), also enable Scenario logging to show individual validations
+        // When running a specific scenario (not "all") with single iteration, also enable Scenario logging to show individual validations
+        // When running multiple iterations, suppress Scenario logging to avoid cluttering output
         let mut logger = Logger::new();
         if scenario_arg == "all" {
             logger.add_receiver(ConsoleReceiver::new(vec![LogEvent::Validation]));
         } else {
-            logger.add_receiver(ConsoleReceiver::new(vec![LogEvent::Validation, LogEvent::Scenario]));
+            // Only show Scenario events on console for single iteration runs
+            if iterations == 1 {
+                logger.add_receiver(ConsoleReceiver::new(vec![LogEvent::Validation, LogEvent::Scenario]));
+            } else {
+                logger.add_receiver(ConsoleReceiver::new(vec![LogEvent::Validation]));
+            }
         }
         
         // Add validation receiver (for validation events)
@@ -243,16 +267,17 @@ fn main() {
         }
         
         // Outer loop for scenarios
-        for scenario in &scenarios {
+        'scenarios: for scenario in &scenarios {
             log!(&mut logger, LogEvent::Validation, "{}: ", scenario.short_name);
             
             // Add scenario-level receiver
             let scenario_receiver_id = logger.add_receiver(FileReceiver::new(&PathBuf::from(format!("log/{}/scenario.log", sanitize_filename(scenario.short_name))), vec![LogEvent::Scenario]));
             
             // Inner loop for iterations
-            for i in 0..iterations {
+            for i in start_iteration..(start_iteration + iterations) {
                 if iterations > 1 {
-                    log!(&mut logger, LogEvent::Validation, "[{}/{}] ", i + 1, iterations);
+                    let iteration_num = i - start_iteration + 1;
+                    log!(&mut logger, LogEvent::Validation, "[{}/{}] ", iteration_num, iterations);
                 }
                 
                 // Set RAND_SEED to iteration number
@@ -271,6 +296,21 @@ fn main() {
                             logln!(&mut logger, LogEvent::Validation, "✗");
                         } else {
                             logln!(&mut logger, LogEvent::Validation, "✗ FAILED: {}", e);
+                        }
+                        
+                        // If fastbreak is enabled, stop immediately on first failure
+                        if fastbreak {
+                            // Remove scenario-level receiver before breaking
+                            logger.remove_receiver(scenario_receiver_id);
+                            logln!(&mut logger, LogEvent::Validation, "\nStopping scenario execution due to failure (--fastbreak enabled)");
+                            // Always log the full error message when fastbreak stops execution
+                            if iterations > 1 {
+                                let iteration_num = i - start_iteration + 1;
+                                logln!(&mut logger, LogEvent::Validation, "Error at iteration {}/{} (seed {}): {}", iteration_num, iterations, i, e);
+                            } else {
+                                logln!(&mut logger, LogEvent::Validation, "Error: {}", e);
+                            }
+                            break 'scenarios;
                         }
                     }
                 }
@@ -329,6 +369,7 @@ fn main() {
             1000,  // impressions_on_offer
             CompetitionGeneratorNone::new(),  // competition_generator
             FloorGeneratorFixed::new(0.0),  // floor_generator
+            
         );
 
         sellers.add(
@@ -338,6 +379,7 @@ fn main() {
             1000,  // impressions_on_offer
             CompetitionGeneratorLogNormal::new(10.0),  // competition_generator
             FloorGeneratorLogNormal::new(0.2, 3.0),  // floor_generator
+            
         );
 
         // Create impressions parameters

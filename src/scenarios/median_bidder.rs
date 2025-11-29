@@ -51,6 +51,7 @@ fn prepare_simulationconverge(hb_impressions: usize, campaign_type: CampaignType
         hb_impressions,  // impressions_on_offer
         CompetitionGeneratorLogNormal::new(10.0),  // competition_generator
         floors::FloorGeneratorLogNormal::new(1.0, 3.0),  // floor_generator
+        
     );
 
     // Create impressions parameters
@@ -70,7 +71,7 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
     logln!(logger, LogEvent::Scenario, "=== Scenario: Median Bidding Comparison with Low Impressions (5000) ===");
     
     // Scenario 1: Low impressions (5000) - Median Bidding should work worse than multiplicative
-    let num_impressions_low = 4000;
+    let num_impressions_low = 5000;
     
     // Run with max margin bidding
     let simulation_converge_maxmargin_low = prepare_simulationconverge(
