@@ -64,7 +64,7 @@ impl Sellers {
                     Box::new(SellerTargetTotalCost {
                         target_cost: target_total_cost,
                     }),
-                    Box::new(crate::controllers::ControllerProportional::new())
+                    Box::new(crate::controllers::ControllerProportionalDerivative::new())
                 )
             }
         };

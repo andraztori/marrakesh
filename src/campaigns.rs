@@ -72,7 +72,7 @@ impl Campaigns {
                     Box::new(CampaignTargetTotalImpressions {
                         total_impressions_target: target_total_impressions,
                     }),
-                    Box::new(crate::controllers::ControllerProportional::new())
+                    Box::new(crate::controllers::ControllerProportionalDerivative::new())
                 )
             }
             ConvergeTarget::TOTAL_BUDGET { target_total_budget } => {
@@ -80,7 +80,7 @@ impl Campaigns {
                     Box::new(CampaignTargetTotalBudget {
                         total_budget_target: target_total_budget,
                     }),
-                    Box::new(crate::controllers::ControllerProportional::new())
+                    Box::new(crate::controllers::ControllerProportionalDerivative::new())
                 )
             }
             ConvergeTarget::AVG_VALUE { avg_impression_value_to_campaign } => {
@@ -88,7 +88,7 @@ impl Campaigns {
                     Box::new(CampaignTargetAvgValue {
                         avg_impression_value_to_campaign: avg_impression_value_to_campaign,
                     }),
-                    Box::new(crate::controllers::ControllerProportional::new())
+                    Box::new(crate::controllers::ControllerProportionalDerivative::new())
                 )
             }
             ConvergeTarget::NONE { default_pacing } => {
@@ -194,11 +194,12 @@ impl Campaigns {
                     .collect();
                 let bidder = Box::new(CampaignBidderDouble) as Box<dyn CampaignBidderTrait>;
                 let converge_controllers = vec![
-                    Box::new(crate::controllers::ControllerProportional::new()) as Box<dyn crate::controllers::ControllerTrait>,
-                    Box::new(crate::controllers::ControllerProportional::new_advanced(
+                    Box::new(crate::controllers::ControllerProportionalDerivative::new()) as Box<dyn crate::controllers::ControllerTrait>,
+                    Box::new(crate::controllers::ControllerProportionalDerivative::new_advanced(
                         0.005, // tolerance_fraction
                         0.03,   // max_adjustment_factor
                         0.03,   // proportional_gain
+                        0.015,  // derivative_gain (half of proportional_gain)
                     )) as Box<dyn crate::controllers::ControllerTrait>,
                 ];
                 self.campaigns.push(Box::new(CampaignGeneral {

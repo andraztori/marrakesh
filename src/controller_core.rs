@@ -95,7 +95,7 @@ impl ControllerProportionalDerivativeCore {
             tolerance_fraction: 0.005,  // 0.5% tolerance
             max_adjustment_factor: 0.1,  // Max 20% adjustment
             proportional_gain: 0.1,      // 10% of error
-            derivative_gain: 0.1,       // 5% of error rate
+            derivative_gain: 0.05,       // 5% of error rate
         }
     }
 
@@ -129,11 +129,10 @@ impl ControllerProportionalDerivativeCore {
     /// - `next_state` is the new controller state value (pacing)
     /// - `next_error` is the new error value to store for next iteration
     pub fn controller_next_state(&self, mut target: f64, mut actual: f64, mut previous_state: f64, previous_error: Option<f64>) -> (bool, f64, f64) {
-        let mut invert:bool = false;
-
+        
         let tolerance = target * self.tolerance_fraction;
         // target is never zero
-        
+//        println!("target: {}, actual: {}, previous_state: {}, previous_error: {:?}", target, actual, previous_state, previous_error);
         // Calculate current error (normalized)
         let current_error = if actual < target {
             (target - actual) / target  // Positive error when below target
@@ -159,19 +158,24 @@ impl ControllerProportionalDerivativeCore {
             // Below target - increase pacing
             let proportional_term = current_error * self.proportional_gain;
             // Derivative term: negative when error decreasing (reduces adjustment), positive when error increasing (increases adjustment)
-            let adjustment_factor = (proportional_term + derivative_term).min(self.max_adjustment_factor).max(0.0);
+            let adjustment_factor = (proportional_term + derivative_term).min(self.max_adjustment_factor).min(self.max_adjustment_factor);
+    //        println!("Below target - increase pacing: {}", adjustment_factor);
             previous_state * adjustment_factor
         } else if actual > target + tolerance {
             // Above target - decrease pacing
             let proportional_term = current_error * self.proportional_gain;
+  //          println!("proportional_term: {}, current_error: {}, derivative_term: {}", proportional_term, current_error, derivative_term);
             // Derivative term: negative when error decreasing (reduces adjustment), positive when error increasing (increases adjustment)
-            let adjustment_factor = (proportional_term + derivative_term).min(self.max_adjustment_factor).max(0.0);
+            let adjustment_factor = (proportional_term + derivative_term).min(self.max_adjustment_factor).min(self.max_adjustment_factor);
+   //         println!("Above target - decrease pacing: {}", adjustment_factor);
             -previous_state * adjustment_factor
+
         } else {
             // Within tolerance - no change
+     //       println!("Within tolerance - no change");
             0.0
         };
-        
+   //     println!("change_in_pacing: {}", change_in_pacing);        
         if previous_state > 1.0 {
             change_in_pacing *= previous_state;
         } else {

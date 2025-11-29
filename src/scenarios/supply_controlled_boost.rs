@@ -67,13 +67,14 @@ fn prepare_variant(dynamic_boost: bool, campaign_type: CampaignType) -> Simulati
         let controller = if is_multiplicative_additive {
             // Use advanced controller setup for MULTIPLICATIVE_ADDITIVE variant
             // This is needed due to additive bidding strategy for supply requiring larger adjustments to converge
-            crate::controllers::ControllerProportional::new_advanced(
+            crate::controllers::ControllerProportionalDerivative::new_advanced(
                 0.005, // tolerance_fraction
                 0.5,   // max_adjustment_factor
                 1.0,   // proportional_gain
+                0.5,   // derivative_gain (half of proportional_gain)
             )
         } else {
-            crate::controllers::ControllerProportional::new()
+            crate::controllers::ControllerProportionalDerivative::new()
         };
         (
             Box::new(SellerTargetTotalCost {

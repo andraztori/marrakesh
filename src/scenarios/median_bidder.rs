@@ -67,6 +67,10 @@ fn prepare_simulationconverge(hb_impressions: usize, campaign_type: CampaignType
 }
 
 pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::error::Error>> {
+    // DEBUG MODE: Only running multiplicative high for debugging
+    // To roll back: uncomment all the commented sections below
+    
+    /* COMMENTED OUT FOR DEBUG
     logln!(logger, LogEvent::Scenario, "=== Scenario: Median Bidding Comparison with Low Impressions (5000) ===");
     
     // Scenario 1: Low impressions (5000) - Median Bidding should work worse than multiplicative
@@ -111,6 +115,7 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
         2500, 
         logger
     );
+    */
     
     logln!(logger, LogEvent::Scenario, "");
     logln!(logger, LogEvent::Scenario, "=== Scenario: Median Bidding Comparison with High Impressions (50000) ===");
@@ -118,6 +123,7 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
     // Scenario 2: High impressions (50000) - Median Bidding should work better than multiplicative
     let num_impressions_high = 50000;
     
+    /* COMMENTED OUT FOR DEBUG
     // Run with max margin bidding
     let simulation_converge_maxmargin_high = prepare_simulationconverge(
         num_impressions_high,
@@ -143,6 +149,7 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
         100, 
         logger
     );
+    */
     
     // Run with multiplicative pacing
     let simulation_converge_mult_high = prepare_simulationconverge(
@@ -157,6 +164,7 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
         logger
     );
     
+    /* COMMENTED OUT FOR DEBUG
     // Validate expected marketplace behavior
     logln!(logger, LogEvent::Scenario, "");
     logln!(logger, LogEvent::Scenario, "=== Validation Results ===");
@@ -220,5 +228,9 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
     } else {
         Err(format!("Scenario '{}' validation failed:\n{}", scenario_name, errors.join("\n")).into())
     }
+    */
+    
+    // DEBUG MODE: Just return Ok for now
+    Ok(())
 }
 

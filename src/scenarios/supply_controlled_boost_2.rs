@@ -61,10 +61,11 @@ fn prepare_variant(campaign_type: CampaignType) -> SimulationConverge {
     // fixed_cost_cpm is in CPM (cost per 1000 impressions), so divide by 1000 to get cost per impression
     let target_total_cost = (impressions_on_offer_mrg as f64) * fixed_cost_cpm / 1000.0;
     // Use aggressive controller setup for both variants to ensure faster convergence
-    let controller = crate::controllers::ControllerProportional::new_advanced(
+    let controller = crate::controllers::ControllerProportionalDerivative::new_advanced(
         0.005, // tolerance_fraction
         0.5,   // max_adjustment_factor
         0.5,   // proportional_gain (aggressive: 100% of error)
+        0.25,  // derivative_gain (half of proportional_gain)
     );
     let (converge_target_mrg, converge_controller_mrg): (Box<dyn crate::seller_targets::SellerTargetTrait>, Box<dyn crate::controllers::ControllerTrait>) = (
         Box::new(SellerTargetTotalCost {
