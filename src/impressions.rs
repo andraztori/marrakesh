@@ -280,13 +280,13 @@ impl Impression {
             let value_to_campaign = self.value_to_campaign_group[group_id];
             // Use the trait method for get_bid
             if let Some(bid) = campaign.get_bid(self, &campaign_converge, seller_control_factor, value_to_campaign, logger) {
+                
                 any_bids_made = true;
                 // Check if bid is below zero - skip negative bids
                 if bid < 0.0 {
                     errln!(logger, LogEvent::Simulation, "Bid below zero: {:.4} from campaign_id: {}, skipping", bid, campaign_id);
                     continue;
-                }
-                
+                }                
                 // If bid is above minimum_cpm_to_win, add to winners list
                 if bid >= minimum_cpm_to_win {
                     let virtual_cost = bid / 1000.0;
@@ -348,7 +348,6 @@ impl Impression {
                 winners: fractional_winners,
             }, 0.0)
         };
-
         FractionalAuctionResult {
             winner,
             supply_cost,

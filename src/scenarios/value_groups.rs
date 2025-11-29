@@ -92,6 +92,7 @@ fn prepare_simulationconverge(variant: VariantConfig) -> SimulationConverge {
         10000,
         CompetitionGeneratorLogNormal::new(10.0),
         floors::FloorGeneratorLogNormal::new(0.2, 3.0),
+        
     );
 
     // Create impressions parameters

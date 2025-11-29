@@ -55,6 +55,7 @@ fn prepare_simulationconverge(hb_impressions: usize) -> SimulationConverge {
         1000,  // impressions_on_offer
         CompetitionGeneratorNone::new(),  // competition_generator
         floors::FloorGeneratorFixed::new(0.0),  // floor_generator
+        
     );
 
     sellers.add(
@@ -64,6 +65,7 @@ fn prepare_simulationconverge(hb_impressions: usize) -> SimulationConverge {
         hb_impressions,  // impressions_on_offer
         CompetitionGeneratorLogNormal::new(10.0),  // competition_generator
         floors::FloorGeneratorLogNormal::new(0.2, 3.0),  // floor_generator
+        
     );
 
     // Create impressions parameters

@@ -13,6 +13,8 @@ pub use crate::controller_state::ControllerStateTrait;
 /// Each campaign can have multiple controller states (e.g., CampaignGeneral can have 1 or more)
 pub struct CampaignControllerStates {
     pub campaign_controller_states: Vec<Vec<Box<dyn ControllerStateTrait>>>,
+    /// Tracks whether each campaign has converged (true = converged, false = not converged)
+    pub converged: Vec<bool>,
 }
 
 impl Clone for CampaignControllerStates {
@@ -21,6 +23,7 @@ impl Clone for CampaignControllerStates {
             campaign_controller_states: self.campaign_controller_states.iter()
                 .map(|states| states.iter().map(|p| p.clone_box()).collect())
                 .collect(),
+            converged: self.converged.clone(),
         }
     }
 }
@@ -32,7 +35,8 @@ impl CampaignControllerStates {
         for campaign in &campaigns.campaigns {
             campaign_controller_states.push(campaign.create_controller_state());
         }
-        Self { campaign_controller_states }
+        let converged = vec![false; campaigns.campaigns.len()];
+        Self { campaign_controller_states, converged }
     }
 }
 
@@ -41,6 +45,8 @@ impl CampaignControllerStates {
 /// Each seller can have multiple controller states (e.g., SellerGeneral can have 1 or more)
 pub struct SellerControllerStates {
     pub seller_controller_states: Vec<Vec<Box<dyn ControllerStateTrait>>>,
+    /// Tracks whether each seller has converged (true = converged, false = not converged)
+    pub converged: Vec<bool>,
 }
 
 impl Clone for SellerControllerStates {
@@ -49,6 +55,7 @@ impl Clone for SellerControllerStates {
             seller_controller_states: self.seller_controller_states.iter()
                 .map(|states| states.iter().map(|p| p.clone_box()).collect())
                 .collect(),
+            converged: self.converged.clone(),
         }
     }
 }
@@ -60,7 +67,8 @@ impl SellerControllerStates {
         for seller in &sellers.sellers {
             seller_controller_states.push(seller.create_controller_state());
         }
-        Self { seller_controller_states }
+        let converged = vec![false; sellers.sellers.len()];
+        Self { seller_controller_states, converged }
     }
 }
 
@@ -170,7 +178,12 @@ impl SimulationConverge {
                 let next_states = &mut next_campaign_controller_states.campaign_controller_states[index];
                 
                 // Use the campaign's next_controller_state method (now part of CampaignTrait)
-                pacing_changed |= campaign.next_controller_state(previous_states, next_states, campaign_stat);
+                let campaign_pacing_changed = campaign.next_controller_state(previous_states, next_states, campaign_stat);
+                pacing_changed |= campaign_pacing_changed;
+                // Track convergence: if pacing didn't change, this campaign converged
+                // Update in current states for printing, and also in next states for next iteration
+                current_campaign_controller_states.converged[index] = !campaign_pacing_changed;
+                next_campaign_controller_states.converged[index] = !campaign_pacing_changed;
             }
             
             // Calculate next iteration's seller controller states based on current results
@@ -182,7 +195,12 @@ impl SimulationConverge {
                 let next_states = &mut next_seller_controller_states.seller_controller_states[index];
                 
                 // Use the seller's next_controller_state method
-                boost_changed |= seller.next_controller_state(previous_states, next_states, seller_stat);
+                let seller_boost_changed = seller.next_controller_state(previous_states, next_states, seller_stat);
+                boost_changed |= seller_boost_changed;
+                // Track convergence: if boost didn't change, this seller converged
+                // Update in current states for printing, and also in next states for next iteration
+                current_seller_controller_states.converged[index] = !seller_boost_changed;
+                next_seller_controller_states.converged[index] = !seller_boost_changed;
             }
             
             // Output campaign statistics for each iteration (using the controller states that were actually used)

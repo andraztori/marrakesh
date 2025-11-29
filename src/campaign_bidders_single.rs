@@ -219,19 +219,18 @@ impl CampaignBidderTrait for CampaignBidderMedian {
             .expect("Median Bidding requires competition data. This impression has no competition data.");
         
         let predicted_offset = competition.win_rate_prediction_sigmoid_offset;
-
         // Only bid if campaign control bid is above predicted offset point
         if campaign_control_bid <= predicted_offset {
             return None;
         }
-        
+                
         // If floor is above predicted_offset but below campaign control bid, bid with floor
         if impression.floor_cpm > predicted_offset && impression.floor_cpm < campaign_control_bid {
-            return Some(impression.floor_cpm);
+            return Some(impression.floor_cpm + 0.00001);
         }
         
         // Otherwise, bid with predicted offset
-        Some(predicted_offset)
+        Some(predicted_offset + 0.00001)
     }
     
     fn get_bidding_type(&self) -> String {

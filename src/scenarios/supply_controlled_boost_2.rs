@@ -63,9 +63,9 @@ fn prepare_variant(campaign_type: CampaignType) -> SimulationConverge {
     // Use aggressive controller setup for both variants to ensure faster convergence
     let controller = crate::controllers::ControllerProportionalDerivative::new_advanced(
         0.005, // tolerance_fraction
-        0.5,   // max_adjustment_factor
-        0.5,   // proportional_gain (aggressive: 100% of error)
-        0.25,  // derivative_gain (half of proportional_gain)
+        0.3,   // max_adjustment_factor
+        0.2,   // proportional_gain (aggressive: 100% of error)
+        0.05,  // derivative_gain (half of proportional_gain)
         true,  // rescaling (default)
     );
     let (converge_target_mrg, converge_controller_mrg): (Box<dyn crate::seller_targets::SellerTargetTrait>, Box<dyn crate::controllers::ControllerTrait>) = (

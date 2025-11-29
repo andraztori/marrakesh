@@ -294,6 +294,25 @@ impl Campaigns {
             }
         }
     }
+    
+    /// Add a campaign using an advanced method that accepts a pre-constructed CampaignTrait
+    /// 
+    /// # Arguments
+    /// * `campaign` - A boxed CampaignTrait object. The campaign_id will be set to the current length of campaigns.
+    /// 
+    /// # Returns
+    /// The campaign_id of the just added campaign
+    pub fn add_advanced(&mut self, mut campaign: Box<dyn CampaignTrait>) -> usize {
+        let campaign_id = self.campaigns.len();
+        
+        // Try to downcast to CampaignGeneral to set the campaign_id
+        if let Some(campaign_general) = campaign.as_mut().as_any_mut().downcast_mut::<CampaignGeneral>() {
+            campaign_general.campaign_id = campaign_id;
+        }
+        
+        self.campaigns.push(campaign);
+        campaign_id
+    }
 }
 
 #[cfg(test)]

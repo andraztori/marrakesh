@@ -2,12 +2,13 @@ use crate::impressions::Impression;
 use crate::campaign_targets::CampaignTargetTrait;
 use crate::controllers::ControllerTrait;
 use crate::logger::Logger;
+use std::any::Any;
 
 /// Maximum number of controllers supported by campaigns
 const MAX_CONTROLLERS: usize = 10;
 
 /// Trait for campaigns participating in auctions
-pub trait CampaignTrait {
+pub trait CampaignTrait: Any {
     /// Get the campaign ID
     fn campaign_id(&self) -> usize;
     
@@ -39,6 +40,12 @@ pub trait CampaignTrait {
     /// # Arguments
     /// * `controller_states` - Controller states to include pacing information
     fn type_target_and_controller_state_string(&self, controller_states: &[&dyn crate::controllers::ControllerStateTrait]) -> String;
+    
+    /// Get a reference to the underlying Any type for downcasting
+    fn as_any(&self) -> &dyn Any;
+    
+    /// Get a mutable reference to the underlying Any type for downcasting
+    fn as_any_mut(&mut self) -> &mut dyn Any;
 }
 
 /// Trait for campaign bidding strategies
@@ -112,6 +119,14 @@ impl CampaignTrait for CampaignGeneral {
     
     fn create_controller_state(&self) -> Vec<Box<dyn crate::controllers::ControllerStateTrait>> {
         self.converge_controllers.iter().map(|c| c.create_controller_state()).collect()
+    }
+    
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
     }
 }
 

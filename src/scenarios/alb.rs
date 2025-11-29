@@ -50,6 +50,7 @@ fn prepare_simulationconverge(hb_impressions: usize, campaign_type: CampaignType
         hb_impressions,  // impressions_on_offer
         CompetitionGeneratorLogNormal::new(10.0),  // competition_generator
         floors::FloorGeneratorLogNormal::new(1.0, 3.0),  // floor_generator
+        
     );
 
     // Create impressions parameters

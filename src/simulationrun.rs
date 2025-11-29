@@ -326,8 +326,9 @@ impl SimulationStat {
             let controller_states: Vec<&dyn crate::controllers::ControllerStateTrait> = controller_states_vec.iter().map(|cs| cs.as_ref()).collect();
             let type_target_and_controller_string = campaign.type_target_and_controller_state_string(&controller_states);
             
-            logln!(logger, event, "\nCampaign {} ({}) - {}", 
-                     campaign.campaign_id(), campaign.campaign_name(), type_target_and_controller_string);
+            let converged_status = if campaign_controller_states.converged[index] { " [CONVERGED]" } else { " [NOT CONVERGED]" };
+            logln!(logger, event, "\nCampaign {} ({}) - {}{}", 
+                     campaign.campaign_id(), campaign.campaign_name(), type_target_and_controller_string, converged_status);
             logln!(logger, event, "  Impressions Obtained: {:.2}", campaign_stat.impressions_obtained);
             logln!(logger, event, "  Costs (supply/virtual/buyer): {:.2} / {:.2} / {:.2}", 
                      campaign_stat.total_supply_cost, 
@@ -338,7 +339,12 @@ impl SimulationStat {
             } else {
                 0.0
             };
-            logln!(logger, event, "  Obtained Value: {:.2} (per spend: {:.4})", campaign_stat.total_value, value_per_spend);
+            let avg_value_per_impression = if campaign_stat.impressions_obtained > 0.0 {
+                campaign_stat.total_value / campaign_stat.impressions_obtained
+            } else {
+                0.0
+            };
+            logln!(logger, event, "  Obtained Value: {:.2} (per spend: {:.4}, per impression: {:.4})", campaign_stat.total_value, value_per_spend, avg_value_per_impression);
         }
     }
 
@@ -350,8 +356,9 @@ impl SimulationStat {
             let controller_states: Vec<&dyn crate::controllers::ControllerStateTrait> = seller_controller_states.seller_controller_states[index].iter().map(|s| s.as_ref()).collect();
             let type_target_and_controller_string = seller.type_target_and_controller_state_string(&controller_states);
             
-            logln!(logger, event, "\nSeller {} ({}) - {}", 
-                     seller.seller_id(), seller.seller_name(), type_target_and_controller_string);
+            let converged_status = if seller_controller_states.converged[index] { " [CONVERGED]" } else { " [NOT CONVERGED]" };
+            logln!(logger, event, "\nSeller {} ({}) - {}{}", 
+                     seller.seller_id(), seller.seller_name(), type_target_and_controller_string, converged_status);
             logln!(logger, event, "  Impressions (sold/on offer): {} / {}", seller_stat.impressions_sold, seller.get_impressions_on_offer());
             logln!(logger, event, "  Total Costs (supply/virtual/buyer): {:.2} / {:.2} / {:.2}", 
                      seller_stat.total_supply_cost, 
@@ -395,7 +402,14 @@ impl SimulationStat {
         } else {
             0.0
         };
-        logln!(logger, LogEvent::Variant, "Total Obtained Value: {:.2} (per spend: {:.4})", self.overall_stat.total_value, value_per_spend);
+        // Calculate total impressions obtained (sum across all campaigns)
+        let total_impressions_obtained: f64 = self.campaign_stats.iter().map(|cs| cs.impressions_obtained).sum();
+        let avg_value_per_impression = if total_impressions_obtained > 0.0 {
+            self.overall_stat.total_value / total_impressions_obtained
+        } else {
+            0.0
+        };
+        logln!(logger, LogEvent::Variant, "Total Obtained Value: {:.2} (per spend: {:.4}, per impression: {:.4})", self.overall_stat.total_value, value_per_spend, avg_value_per_impression);
     }
 }
 

@@ -55,6 +55,7 @@ fn prepare_simulationconverge(campaign_type: CampaignType) -> SimulationConverge
         10000,  // impressions_on_offer
         CompetitionGeneratorLogNormal::new(10.0),  // competition_generator
       floors::FloorGeneratorLogNormal::new(1.0, 3.0),  // floor_generator
+        
     //   floors::FloorGeneratorFixed::new(0.0),
     );
 
