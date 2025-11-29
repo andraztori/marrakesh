@@ -197,8 +197,8 @@ impl Campaigns {
                     Box::new(crate::controllers::ControllerProportional::new()) as Box<dyn crate::controllers::ControllerTrait>,
                     Box::new(crate::controllers::ControllerProportional::new_advanced(
                         0.005, // tolerance_fraction
-                        0.5,   // max_adjustment_factor
-                        1.0,   // proportional_gain
+                        0.03,   // max_adjustment_factor
+                        0.03,   // proportional_gain
                     )) as Box<dyn crate::controllers::ControllerTrait>,
                 ];
                 self.campaigns.push(Box::new(CampaignGeneral {
@@ -211,7 +211,8 @@ impl Campaigns {
             }
             CampaignType::MEDIAN => {
                 assert_eq!(converge_targets.len(), 1, "MEDIAN requires exactly one converge target");
-                let (converge_target_box, converge_controller) = Self::convert_converge_target(converge_targets[0].clone());
+                let (converge_target_box, _) = Self::convert_converge_target(converge_targets[0].clone());
+                let converge_controller = Box::new(crate::controllers::ControllerProportionalDerivative::new()) as Box<dyn crate::controllers::ControllerTrait>;
                 let bidder = Box::new(crate::campaign_bidders_single::CampaignBidderMedian) as Box<dyn CampaignBidderTrait>;
                 self.campaigns.push(Box::new(CampaignGeneral {
                     campaign_id,

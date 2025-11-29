@@ -30,3 +30,16 @@ impl ControllerState for ControllerStateSingleVariable {
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
 }
 
+/// Controller state with two variables (e.g., for PD controller: pacing and previous error)
+#[derive(Clone)]
+pub struct ControllerStateDoubleVariable {
+    pub variable1: f64,
+    pub variable2: Option<f64>,
+}
+
+impl ControllerState for ControllerStateDoubleVariable {
+    fn clone_box(&self) -> Box<dyn ControllerState> { Box::new(self.clone()) }
+    fn as_any(&self) -> &dyn std::any::Any { self }
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
+}
+

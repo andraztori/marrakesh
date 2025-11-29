@@ -26,7 +26,7 @@ use crate::errln;
 
 // Register this scenario in the catalog
 inventory::submit!(crate::scenarios::ScenarioEntry {
-    short_name: "median",
+    short_name: "median_bidder",
     run,
 });
 
