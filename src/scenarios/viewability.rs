@@ -77,7 +77,7 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
         CampaignType::MAX_MARGIN,
         vec![ConvergeTarget::TOTAL_IMPRESSIONS { target_total_impressions: TARGET_IMPRESSIONS }],
     );
-    let stats_a = simulation_converge_a.run_variant(&format!("Running with max margin bidding ({} impressions)", TARGET_IMPRESSIONS), scenario_name, "max-margin-impressions", 100, logger);
+    let stats_a = simulation_converge_a.run_variant(&format!("Running with max margin bidding ({} impressions)", TARGET_IMPRESSIONS), scenario_name, "max-margin-impressions", 100, logger)?;
     
     // Run variant B with max margin double target bidding
     // Converging to TARGET_IMPRESSIONS impressions and avg value of TARGET_AVG_VALUE
@@ -89,7 +89,7 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
             ConvergeTarget::AVG_VALUE { avg_impression_value_to_campaign: TARGET_AVG_VALUE },
         ],
     );
-    let stats_b = simulation_converge_b.run_variant(&format!("Running with max margin double target ({} impressions, avg value {})", TARGET_IMPRESSIONS, TARGET_AVG_VALUE), scenario_name, "max-margin-double", 1000, logger);
+    let stats_b = simulation_converge_b.run_variant(&format!("Running with max margin double target ({} impressions, avg value {})", TARGET_IMPRESSIONS, TARGET_AVG_VALUE), scenario_name, "max-margin-double", 1000, logger)?;
     
     logln!(logger, LogEvent::Scenario, "");
     

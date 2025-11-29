@@ -7,13 +7,13 @@ use crate::warnln;
 use std::path::PathBuf;
 use crate::utils::VERBOSE_AUCTION;
 use std::sync::atomic::Ordering;
-pub use crate::controller_state::ControllerState;
+pub use crate::controller_state::ControllerStateTrait;
 
 /// Container for campaign controller states
 /// Uses dynamic dispatch to support different campaign types
 /// Each campaign can have multiple controller states (e.g., CampaignGeneral can have 1 or more)
 pub struct CampaignControllerStates {
-    pub campaign_controller_states: Vec<Vec<Box<dyn ControllerState>>>,
+    pub campaign_controller_states: Vec<Vec<Box<dyn ControllerStateTrait>>>,
 }
 
 impl Clone for CampaignControllerStates {
@@ -41,7 +41,7 @@ impl CampaignControllerStates {
 /// Uses dynamic dispatch to support different seller types
 /// Each seller can have multiple controller states (e.g., SellerGeneral can have 1 or more)
 pub struct SellerControllerStates {
-    pub seller_controller_states: Vec<Vec<Box<dyn ControllerState>>>,
+    pub seller_controller_states: Vec<Vec<Box<dyn ControllerStateTrait>>>,
 }
 
 impl Clone for SellerControllerStates {
@@ -99,14 +99,14 @@ impl SimulationConverge {
     /// * `logger` - Logger for event-based logging
     /// 
     /// # Returns
-    /// Returns a tuple of (final SimulationRun, final SimulationStat, final CampaignControllerStates, final SellerControllerStates)
+    /// Returns a tuple of (final SimulationRun, final SimulationStat, final CampaignControllerStates, final SellerControllerStates, converged)
     pub fn run(
         &self,
         max_iterations: usize,
         scenario_name: &str,
         variant_name: &str,
         logger: &mut Logger,
-    ) -> (SimulationRun, SimulationStat, CampaignControllerStates, SellerControllerStates) {
+    ) -> (SimulationRun, SimulationStat, CampaignControllerStates, SellerControllerStates, bool) {
         
         let mut final_simulation_run = None;
         let mut final_stats = None;
@@ -216,12 +216,13 @@ impl SimulationConverge {
         }
         
         
-        // Return the final simulation run, stats, and controller states
+        // Return the final simulation run, stats, controller states, and convergence status
         (
             final_simulation_run.expect("Should have at least one iteration"),
             final_stats.expect("Should have at least one iteration"),
             final_campaign_controller_states.expect("Should have at least one iteration"),
             final_seller_controller_states.expect("Should have at least one iteration"),
+            converged,
         )
     }
     
@@ -235,7 +236,7 @@ impl SimulationConverge {
     /// * `logger` - Logger for event-based logging
     /// 
     /// # Returns
-    /// Returns the final SimulationStat
+    /// Returns a Result with the final SimulationStat, or an error if convergence failed
     pub fn run_variant(
         &self,
         variant_description: &str,
@@ -243,7 +244,7 @@ impl SimulationConverge {
         variant_name: &str,
         max_iterations: usize,
         logger: &mut Logger,
-    ) -> SimulationStat {
+    ) -> Result<SimulationStat, Box<dyn std::error::Error>> {
         // Add variant iterations receiver (for simulation and convergence events)
         let iterations_receiver_id = logger.add_receiver(FileReceiver::new(&PathBuf::from(format!("log/{}/iterations-{}.log", sanitize_filename(scenario_name), sanitize_filename(variant_name))), vec![LogEvent::Simulation, LogEvent::Convergence]));
         
@@ -258,7 +259,15 @@ impl SimulationConverge {
         self.marketplace.printout(logger);
         
         // Run simulation loop with pacing adjustments
-        let (_final_simulation_run, stats, final_campaign_controller_states, final_seller_controller_states) = self.run(max_iterations, scenario_name, variant_name, logger);
+        let (_final_simulation_run, stats, final_campaign_controller_states, final_seller_controller_states, converged) = self.run(max_iterations, scenario_name, variant_name, logger);
+        
+        // Check for convergence failure
+        if !converged {
+            // Remove variant-specific receivers before returning error
+            logger.remove_receiver(variant_receiver_id);
+            logger.remove_receiver(iterations_receiver_id);
+            return Err(format!("Variant '{}' failed to converge within {} iterations", variant_name, max_iterations).into());
+        }
         
         // Print final stats (variant-level output)
         stats.printout(&self.marketplace.campaigns, &self.marketplace.sellers, &final_campaign_controller_states, &final_seller_controller_states, logger);
@@ -268,7 +277,7 @@ impl SimulationConverge {
         logger.remove_receiver(variant_receiver_id);
         logger.remove_receiver(iterations_receiver_id);
         
-        stats
+        Ok(stats)
     }
 }
 

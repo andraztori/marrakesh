@@ -75,7 +75,7 @@ impl SimulationRun {
         let mut results_fractional = Vec::with_capacity(marketplace.impressions.impressions.len());
         
         // Create campaign_converge slices for all campaigns (once, outside the loop)
-        let campaign_converges: Vec<Vec<&dyn crate::controllers::ControllerState>> = campaign_controller_states.campaign_controller_states.iter()
+        let campaign_converges: Vec<Vec<&dyn crate::controllers::ControllerStateTrait>> = campaign_controller_states.campaign_controller_states.iter()
             .map(|campaign_states_vec| campaign_states_vec.iter().map(|cs| cs.as_ref()).collect())
             .collect();
         
@@ -318,7 +318,7 @@ impl SimulationStat {
         for (index, campaign_stat) in self.campaign_stats.iter().enumerate() {
             let campaign = &campaigns.campaigns[index];
             let controller_states_vec = &campaign_controller_states.campaign_controller_states[index];
-            let controller_states: Vec<&dyn crate::controllers::ControllerState> = controller_states_vec.iter().map(|cs| cs.as_ref()).collect();
+            let controller_states: Vec<&dyn crate::controllers::ControllerStateTrait> = controller_states_vec.iter().map(|cs| cs.as_ref()).collect();
             let type_target_and_controller_string = campaign.type_target_and_controller_state_string(&controller_states);
             
             logln!(logger, event, "\nCampaign {} ({}) - {}", 
@@ -342,7 +342,7 @@ impl SimulationStat {
         
         for (index, seller_stat) in self.seller_stats.iter().enumerate() {
             let seller = &sellers.sellers[index];
-            let controller_states: Vec<&dyn crate::controllers::ControllerState> = seller_controller_states.seller_controller_states[index].iter().map(|s| s.as_ref()).collect();
+            let controller_states: Vec<&dyn crate::controllers::ControllerStateTrait> = seller_controller_states.seller_controller_states[index].iter().map(|s| s.as_ref()).collect();
             let type_target_and_controller_string = seller.type_target_and_controller_state_string(&controller_states);
             
             logln!(logger, event, "\nSeller {} ({}) - {}", 

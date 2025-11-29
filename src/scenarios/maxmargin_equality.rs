@@ -73,7 +73,7 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
         num_impressions,
         CampaignType::OPTIMAL,
     );
-    let stats_b = simulation_converge_b.run_variant("Running with optimal bidding", scenario_name, "optimal", 100, logger);
+    let stats_b = simulation_converge_b.run_variant("Running with optimal bidding", scenario_name, "optimal", 100, logger)?;
     
     // Run variant D with max margin bidding
     // Converging to $20 spend
@@ -81,7 +81,7 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
         num_impressions,
         CampaignType::MAX_MARGIN,
     );
-    let stats_d = simulation_converge_d.run_variant("Running with max margin bidding", scenario_name, "max-margin", 100, logger);
+    let stats_d = simulation_converge_d.run_variant("Running with max margin bidding", scenario_name, "max-margin", 100, logger)?;
     
     logln!(logger, LogEvent::Scenario, "");
     

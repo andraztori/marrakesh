@@ -9,3 +9,5 @@ __pycache__
 *.pdb
 charts
 log
+marrakesh.code-workspace
+Cargo.lock

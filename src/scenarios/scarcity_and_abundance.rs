@@ -82,11 +82,11 @@ fn prepare_simulationconverge(hb_impressions: usize) -> SimulationConverge {
 pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::error::Error>> {
     // Run variant with 100 HB impressions
     let simulation_converge_a = prepare_simulationconverge(1000);
-    let stats_a = simulation_converge_a.run_variant("Running with Scarce HB impressions", scenario_name, "scarce", 100, logger);
+    let stats_a = simulation_converge_a.run_variant("Running with Scarce HB impressions", scenario_name, "scarce", 100, logger)?;
     
     // Run variant with 1000 HB impressions
     let simulation_converge_b = prepare_simulationconverge(10000);
-    let stats_b = simulation_converge_b.run_variant("Running with Abundant HB impressions", scenario_name, "abundant", 100, logger);
+    let stats_b = simulation_converge_b.run_variant("Running with Abundant HB impressions", scenario_name, "abundant", 100, logger)?;
     
     // Compare the two variants to verify expected marketplace behavior
     // Variant A (100 HB) should have:

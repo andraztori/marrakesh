@@ -67,10 +67,6 @@ fn prepare_simulationconverge(hb_impressions: usize, campaign_type: CampaignType
 }
 
 pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::error::Error>> {
-    // DEBUG MODE: Only running multiplicative high for debugging
-    // To roll back: uncomment all the commented sections below
-    
-    /* COMMENTED OUT FOR DEBUG
     logln!(logger, LogEvent::Scenario, "=== Scenario: Median Bidding Comparison with Low Impressions (5000) ===");
     
     // Scenario 1: Low impressions (5000) - Median Bidding should work worse than multiplicative
@@ -87,7 +83,7 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
         "max-margin-low", 
         200, 
         logger
-    );
+    )?;
     
     // Run with Median Bidding
     let simulation_converge_median_low = prepare_simulationconverge(
@@ -101,7 +97,7 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
         "median-low", 
         2500, 
         logger
-    );
+    )?;
     
     // Run with multiplicative pacing
     let simulation_converge_mult_low = prepare_simulationconverge(
@@ -114,8 +110,7 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
         "multiplicative-low", 
         2500, 
         logger
-    );
-    */
+    )?;
     
     logln!(logger, LogEvent::Scenario, "");
     logln!(logger, LogEvent::Scenario, "=== Scenario: Median Bidding Comparison with High Impressions (50000) ===");
@@ -123,7 +118,6 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
     // Scenario 2: High impressions (50000) - Median Bidding should work better than multiplicative
     let num_impressions_high = 50000;
     
-    /* COMMENTED OUT FOR DEBUG
     // Run with max margin bidding
     let simulation_converge_maxmargin_high = prepare_simulationconverge(
         num_impressions_high,
@@ -135,7 +129,7 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
         "max-margin-high", 
         100, 
         logger
-    );
+    )?;
     
     // Run with Median Bidding
     let simulation_converge_median_high = prepare_simulationconverge(
@@ -148,8 +142,7 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
         "median-high", 
         100, 
         logger
-    );
-    */
+    )?;
     
     // Run with multiplicative pacing
     let simulation_converge_mult_high = prepare_simulationconverge(
@@ -162,15 +155,15 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
         "multiplicative-high", 
         100, 
         logger
-    );
+    )?;
     
-    /* COMMENTED OUT FOR DEBUG
     // Validate expected marketplace behavior
     logln!(logger, LogEvent::Scenario, "");
     logln!(logger, LogEvent::Scenario, "=== Validation Results ===");
     
     let mut errors: Vec<String> = Vec::new();
     
+    // Low impressions validations
     // Validation 1: Low impressions (5000) - Median Bidding should work worse than multiplicative
     let msg = format!(
         "Low impressions (5000): Multiplicative pacing obtained value > Median Bidding obtained value: {:.2} > {:.2}",
@@ -184,26 +177,27 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
         errln!(logger, LogEvent::Scenario, "✗ {}", msg);
     }
     
-    // Validation 2: High impressions (50000) - Median Bidding should work better than multiplicative
-    let msg = format!(
-        "High impressions (50000): Median Bidding obtained value > Multiplicative pacing obtained value: {:.2} > {:.2}",
-        stats_median_high.overall_stat.total_value,
-        stats_mult_high.overall_stat.total_value
-    );
-    if stats_median_high.overall_stat.total_value > stats_mult_high.overall_stat.total_value {
-        logln!(logger, LogEvent::Scenario, "✓ {}", msg);
-    } else {
-        errors.push(msg.clone());
-        errln!(logger, LogEvent::Scenario, "✗ {}", msg);
-    }
-    
-    // Validation 3: Low impressions - Max margin should capture more value than Median Bidding
+    // Validation 2: Low impressions - Max margin should capture more value than Median Bidding
     let msg = format!(
         "Low impressions (5000): Max margin obtained value > Median Bidding obtained value: {:.2} > {:.2}",
         stats_maxmargin_low.overall_stat.total_value,
         stats_median_low.overall_stat.total_value
     );
     if stats_maxmargin_low.overall_stat.total_value > stats_median_low.overall_stat.total_value {
+        logln!(logger, LogEvent::Scenario, "✓ {}", msg);
+    } else {
+        errors.push(msg.clone());
+        errln!(logger, LogEvent::Scenario, "✗ {}", msg);
+    }
+    
+    // High impressions validations
+    // Validation 3: High impressions (50000) - Median Bidding should work better than multiplicative
+    let msg = format!(
+        "High impressions (50000): Median Bidding obtained value > Multiplicative pacing obtained value: {:.2} > {:.2}",
+        stats_median_high.overall_stat.total_value,
+        stats_mult_high.overall_stat.total_value
+    );
+    if stats_median_high.overall_stat.total_value > stats_mult_high.overall_stat.total_value {
         logln!(logger, LogEvent::Scenario, "✓ {}", msg);
     } else {
         errors.push(msg.clone());
@@ -228,9 +222,5 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
     } else {
         Err(format!("Scenario '{}' validation failed:\n{}", scenario_name, errors.join("\n")).into())
     }
-    */
-    
-    // DEBUG MODE: Just return Ok for now
-    Ok(())
 }
 

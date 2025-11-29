@@ -1,5 +1,5 @@
 pub use crate::campaign_targets::CampaignTargetTrait;
-pub use crate::controller_state::ControllerState;
+pub use crate::controller_state::ControllerStateTrait;
 pub use crate::campaign::CampaignTrait;
 pub use crate::campaign::CampaignGeneral;
 pub use crate::campaign::CampaignBidderTrait;
@@ -200,6 +200,7 @@ impl Campaigns {
                         0.03,   // max_adjustment_factor
                         0.03,   // proportional_gain
                         0.015,  // derivative_gain (half of proportional_gain)
+                        true,   // rescaling (default)
                     )) as Box<dyn crate::controllers::ControllerTrait>,
                 ];
                 self.campaigns.push(Box::new(CampaignGeneral {
@@ -315,7 +316,7 @@ mod tests {
         };
 
         // Create a campaign converge with pacing = 0.5
-        let campaign_converge: Box<dyn crate::controllers::ControllerState> = Box::new(ControllerStateSingleVariable {
+        let campaign_converge: Box<dyn crate::controllers::ControllerStateTrait> = Box::new(ControllerStateSingleVariable {
             converging_variable: 0.5,
         });
 
@@ -358,7 +359,7 @@ mod tests {
         };
 
         // Create a campaign converge with pacing = 1.0
-        let campaign_converge: Box<dyn crate::controllers::ControllerState> = Box::new(ControllerStateSingleVariable {
+        let campaign_converge: Box<dyn crate::controllers::ControllerStateTrait> = Box::new(ControllerStateSingleVariable {
             converging_variable: 1.0,
         });
 
@@ -400,7 +401,7 @@ mod tests {
         };
 
         // Create a campaign converge with pacing = 0.0
-        let campaign_converge: Box<dyn crate::controllers::ControllerState> = Box::new(ControllerStateSingleVariable {
+        let campaign_converge: Box<dyn crate::controllers::ControllerStateTrait> = Box::new(ControllerStateSingleVariable {
             converging_variable: 0.0,
         });
 
@@ -459,8 +460,8 @@ mod tests {
             total_value: 200.0,
         };
         let mut next_state = campaign.create_controller_state();
-        let previous_states: Vec<&dyn crate::controllers::ControllerState> = converge_vars.iter().map(|cs| cs.as_ref()).collect();
-        let next_states: Vec<&mut dyn crate::controllers::ControllerState> = next_state.iter_mut().map(|cs| cs.as_mut()).collect();
+        let previous_states: Vec<&dyn crate::controllers::ControllerStateTrait> = converge_vars.iter().map(|cs| cs.as_ref()).collect();
+        let next_states: Vec<&mut dyn crate::controllers::ControllerStateTrait> = next_state.iter_mut().map(|cs| cs.as_mut()).collect();
         let converged = campaign.next_controller_state(&previous_states, &mut next_states, &campaign_stat);
         assert_eq!(converged, false);
 
@@ -490,7 +491,7 @@ mod tests {
 
         // Expected bid = 0.75 * 30.0 * 1.0 = 22.5
         let mut logger = crate::logger::Logger::new();
-        let controller_states: Vec<&dyn crate::controllers::ControllerState> = converge_vars.iter().map(|cs| cs.as_ref()).collect();
+        let controller_states: Vec<&dyn crate::controllers::ControllerStateTrait> = converge_vars.iter().map(|cs| cs.as_ref()).collect();
         let bid = campaign.get_bid(&impression, &controller_states, 1.0, 30.0, &mut logger);
         assert_eq!(bid, Some(22.5));
     }

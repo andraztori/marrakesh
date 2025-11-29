@@ -74,23 +74,23 @@ fn prepare_simulationconverge(campaign_type: CampaignType) -> SimulationConverge
 pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::error::Error>> {
     // Run variant A with multiplicative pacing
     let simulation_converge_a = prepare_simulationconverge(CampaignType::MULTIPLICATIVE_PACING);
-    let stats_a = simulation_converge_a.run_variant("Running with multiplicative pacing", scenario_name, "multiplicative", 100, logger);
+    let stats_a = simulation_converge_a.run_variant("Running with multiplicative pacing", scenario_name, "multiplicative", 100, logger)?;
     
     // Run variant B with Median Bidding
     let simulation_converge_b = prepare_simulationconverge(CampaignType::MEDIAN);
-    let stats_b = simulation_converge_b.run_variant("Running with Median Bidding", scenario_name, "median", 100, logger);
+    let stats_b = simulation_converge_b.run_variant("Running with Median Bidding", scenario_name, "median", 100, logger)?;
     
     // Run variant C with optimal bidding
     let simulation_converge_c = prepare_simulationconverge(CampaignType::OPTIMAL);
-    let stats_c = simulation_converge_c.run_variant("Running with optimal bidding", scenario_name, "optimal", 100, logger);
+    let stats_c = simulation_converge_c.run_variant("Running with optimal bidding", scenario_name, "optimal", 100, logger)?;
     
     // Run variant D with max margin bidding
     let simulation_converge_d = prepare_simulationconverge(CampaignType::MAX_MARGIN);
-    let stats_d = simulation_converge_d.run_variant("Running with max margin bidding", scenario_name, "max-margin", 100, logger);
+    let stats_d = simulation_converge_d.run_variant("Running with max margin bidding", scenario_name, "max-margin", 100, logger)?;
     
     // Run variant E with cheater bidding
     let simulation_converge_e = prepare_simulationconverge(CampaignType::CHEATER);
-    let stats_e = simulation_converge_e.run_variant("Running with cheater bidding", scenario_name, "cheater", 100, logger);
+    let stats_e = simulation_converge_e.run_variant("Running with cheater bidding", scenario_name, "cheater", 100, logger)?;
     
     // Validate expected marketplace behavior
     // Variant A (multiplicative pacing) uses MULTIPLICATIVE_PACING with TOTAL_BUDGET

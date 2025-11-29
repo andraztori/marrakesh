@@ -72,6 +72,7 @@ fn prepare_variant(dynamic_boost: bool, campaign_type: CampaignType) -> Simulati
                 0.5,   // max_adjustment_factor
                 1.0,   // proportional_gain
                 0.5,   // derivative_gain (half of proportional_gain)
+                true,  // rescaling (default)
             )
         } else {
             crate::controllers::ControllerProportionalDerivative::new()
@@ -139,15 +140,15 @@ fn prepare_variant(dynamic_boost: bool, campaign_type: CampaignType) -> Simulati
 pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::error::Error>> {
     // Run variant A with fixed boost (no convergence) for MRG seller, using MULTIPLICATIVE_PACING
     let simulation_converge_a = prepare_variant(false, CampaignType::MULTIPLICATIVE_PACING);
-    let stats_a = simulation_converge_a.run_variant("Running with Abundant HB impressions (Multiplicative)", scenario_name, "no_boost", 100, logger);
+    let stats_a = simulation_converge_a.run_variant("Running with Abundant HB impressions (Multiplicative)", scenario_name, "no_boost", 100, logger)?;
     
     // Run variant B with dynamic boost (convergence) for MRG seller, using MULTIPLICATIVE_PACING
     let simulation_converge_b = prepare_variant(true, CampaignType::MULTIPLICATIVE_PACING);
-    let stats_b = simulation_converge_b.run_variant("Running with Abundant HB impressions (MRG Dynamic boost, Multiplicative)", scenario_name, "dynamic_boost", 100, logger);
+    let stats_b = simulation_converge_b.run_variant("Running with Abundant HB impressions (MRG Dynamic boost, Multiplicative)", scenario_name, "dynamic_boost", 100, logger)?;
     
     // Run variant C with dynamic boost (convergence) for MRG seller, using MULTIPLICATIVE_ADDITIVE
     let simulation_converge_c = prepare_variant(true, CampaignType::MULTIPLICATIVE_ADDITIVE);
-    let stats_c = simulation_converge_c.run_variant("Running with Abundant HB impressions (MRG Dynamic boost, Multiplicative Additive)", scenario_name, "dynamic_boost_additive", 100, logger);
+    let stats_c = simulation_converge_c.run_variant("Running with Abundant HB impressions (MRG Dynamic boost, Multiplicative Additive)", scenario_name, "dynamic_boost_additive", 100, logger)?;
     
     // Validate expected marketplace behavior
     logln!(logger, LogEvent::Scenario, "");

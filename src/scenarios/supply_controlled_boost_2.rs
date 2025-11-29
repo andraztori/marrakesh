@@ -66,6 +66,7 @@ fn prepare_variant(campaign_type: CampaignType) -> SimulationConverge {
         0.5,   // max_adjustment_factor
         0.5,   // proportional_gain (aggressive: 100% of error)
         0.25,  // derivative_gain (half of proportional_gain)
+        true,  // rescaling (default)
     );
     let (converge_target_mrg, converge_controller_mrg): (Box<dyn crate::seller_targets::SellerTargetTrait>, Box<dyn crate::controllers::ControllerTrait>) = (
         Box::new(SellerTargetTotalCost {
@@ -126,11 +127,11 @@ fn prepare_variant(campaign_type: CampaignType) -> SimulationConverge {
 pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::error::Error>> {
     // Run variant A with MAX_MARGIN (multiplicative supply boost)
     let simulation_converge_a = prepare_variant(CampaignType::MAX_MARGIN);
-    let stats_a = simulation_converge_a.run_variant("Running MAX_MARGIN with multiplicative supply boost", scenario_name, "max_margin", 100, logger);
+    let stats_a = simulation_converge_a.run_variant("Running MAX_MARGIN with multiplicative supply boost", scenario_name, "max_margin", 100, logger)?;
     
     // Run variant B with MAX_MARGIN_ADDITIVE_SUPPLY (additive supply boost)
     let simulation_converge_b = prepare_variant(CampaignType::MAX_MARGIN_ADDITIVE_SUPPLY);
-    let stats_b = simulation_converge_b.run_variant("Running MAX_MARGIN_ADDITIVE_SUPPLY with additive supply boost", scenario_name, "max_margin_additive_supply", 100, logger);
+    let stats_b = simulation_converge_b.run_variant("Running MAX_MARGIN_ADDITIVE_SUPPLY with additive supply boost", scenario_name, "max_margin_additive_supply", 100, logger)?;
     
     // Validate expected marketplace behavior
     logln!(logger, LogEvent::Scenario, "");

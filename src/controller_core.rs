@@ -1,101 +1,27 @@
-// ControllerProportionalCore doesn't need any imports from controller_state
-
-/// Proportional controller for adjusting campaign pacing based on target vs actual performance
-/// Full PID was tried, but always something became unstable
-pub struct ControllerProportionalCore {
-    tolerance_fraction: f64,      // Tolerance as a fraction of target (e.g., 0.005 = 0.5%)
-    max_adjustment_factor: f64,   // Maximum adjustment factor (e.g., 0.2 = 20%)
-    proportional_gain: f64,       // Proportional gain (e.g., 0.2 = 20% of error)
-}
-
-impl ControllerProportionalCore {
-    /// Create a new proportional controller with default parameters
-    pub fn new() -> Self {
-        Self {
-            tolerance_fraction: 0.005,  // 0.5% tolerance
-            max_adjustment_factor: 0.1,  // Max 20% adjustment
-            proportional_gain: 0.1,      // 20% of error
-    }
-        }
-
-    /// Create a new proportional controller with custom parameters
-    /// 
-    /// # Arguments
-    /// * `tolerance_fraction` - Tolerance as a fraction of target (e.g., 0.005 = 0.5%)
-    /// * `max_adjustment_factor` - Maximum adjustment factor (e.g., 0.2 = 20%)
-    /// * `proportional_gain` - Proportional gain (e.g., 0.1 = 10% of error)
-    pub fn new_advanced(tolerance_fraction: f64, max_adjustment_factor: f64, proportional_gain: f64) -> Self {
-        Self {
-            tolerance_fraction,
-            max_adjustment_factor,
-            proportional_gain,
-    }
-    }
-
-    /// Calculate pacing for next iteration based on target and actual values
-    /// 
-    /// # Arguments
-    /// * `target` - Target value to achieve
-    /// * `actual` - Actual value achieved
-    /// * `previous_state` - Previous controller state value (f64)
-    /// 
-    /// # Returns
-    /// A tuple `(changed, next_state)` where:
-    /// - `changed` is `true` if pacing was changed, `false` if it remained the same
-    /// - `next_state` is the new controller state value
-    pub fn controller_next_state(&self, target: f64, actual: f64, previous_state: f64) -> (bool, f64) {
-        let tolerance = target * self.tolerance_fraction;
-        // target is never zero
-        
-        // Calculate change in pacing
-        let mut change_in_pacing = if actual < target - tolerance {
-            // Below target - increase pacing
-            let error_ratio = (target - actual) / target;
-            let adjustment_factor = (error_ratio * self.proportional_gain).min(self.max_adjustment_factor);
-            previous_state * adjustment_factor
-        } else if actual > target + tolerance {
-            // Above target - decrease pacing
-            let error_ratio = (actual - target) / target;
-            let adjustment_factor = (error_ratio * self.proportional_gain).min(self.max_adjustment_factor);
-            -previous_state * adjustment_factor
-        } else {
-            // Within tolerance - no change
-            0.0
-        };
-        
-        // Now this is a trick we do here given how cotrollers behave 
-        if previous_state > 1.0 {
-            change_in_pacing *= previous_state;
-        } else {
-            change_in_pacing /= previous_state;
-        }
-        
-        // Calculate next state by adding change
-        let next_state = previous_state + change_in_pacing;
-        let changed = change_in_pacing != 0.0;
-        
-        // Return the calculated values
-        (changed, next_state)
-    }
-}
-
 /// Proportional-Derivative controller for adjusting campaign pacing based on target vs actual performance
 /// Adds derivative term to reduce overshoot and improve stability
+/// 
+/// Note: To get proportional-only behavior (no derivative term), set `derivative_gain = 0.0`
+/// when creating the controller. This makes the controller equivalent to a pure proportional controller.
 pub struct ControllerProportionalDerivativeCore {
     tolerance_fraction: f64,      // Tolerance as a fraction of target (e.g., 0.005 = 0.5%)
     max_adjustment_factor: f64,   // Maximum adjustment factor (e.g., 0.2 = 20%)
     proportional_gain: f64,       // Proportional gain (e.g., 0.1 = 10% of error)
     derivative_gain: f64,         // Derivative gain (e.g., 0.05 = 5% of error rate)
+    rescaling: bool,              // Whether to apply rescaling (reversal of proportions) based on previous_state
 }
 
 impl ControllerProportionalDerivativeCore {
     /// Create a new proportional-derivative controller with default parameters
+    /// 
+    /// Note: To get proportional-only behavior, use `new_advanced()` with `derivative_gain = 0.0`
     pub fn new() -> Self {
         Self {
             tolerance_fraction: 0.005,  // 0.5% tolerance
             max_adjustment_factor: 0.1,  // Max 20% adjustment
             proportional_gain: 0.1,      // 10% of error
             derivative_gain: 0.05,       // 5% of error rate
+            rescaling: true,             // Enable rescaling by default
         }
     }
 
@@ -105,13 +31,15 @@ impl ControllerProportionalDerivativeCore {
     /// * `tolerance_fraction` - Tolerance as a fraction of target (e.g., 0.005 = 0.5%)
     /// * `max_adjustment_factor` - Maximum adjustment factor (e.g., 0.2 = 20%)
     /// * `proportional_gain` - Proportional gain (e.g., 0.1 = 10% of error)
-    /// * `derivative_gain` - Derivative gain (e.g., 0.05 = 5% of error rate)
-    pub fn new_advanced(tolerance_fraction: f64, max_adjustment_factor: f64, proportional_gain: f64, derivative_gain: f64) -> Self {
+    /// * `derivative_gain` - Derivative gain (e.g., 0.05 = 5% of error rate). Set to 0.0 for proportional-only behavior.
+    /// * `rescaling` - Whether to apply rescaling (reversal of proportions) based on previous_state. Default is true.
+    pub fn new_advanced(tolerance_fraction: f64, max_adjustment_factor: f64, proportional_gain: f64, derivative_gain: f64, rescaling: bool) -> Self {
         Self {
             tolerance_fraction,
             max_adjustment_factor,
             proportional_gain,
             derivative_gain,
+            rescaling,
         }
     }
 
@@ -175,11 +103,15 @@ impl ControllerProportionalDerivativeCore {
      //       println!("Within tolerance - no change");
             0.0
         };
-   //     println!("change_in_pacing: {}", change_in_pacing);        
-        if previous_state > 1.0 {
-            change_in_pacing *= previous_state;
-        } else {
-            change_in_pacing /= previous_state;
+   
+        // Apply rescaling (reversal of proportions) if enabled
+        // This is a weird reversal of proportions, however it works nicely
+        if self.rescaling {
+            if previous_state > 1.0 {
+                change_in_pacing *= previous_state;
+            } else {
+                change_in_pacing /= previous_state;
+            }
         }
         // Calculate next state by adding change
         let mut next_state = previous_state + change_in_pacing;

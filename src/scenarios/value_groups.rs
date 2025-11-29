@@ -111,15 +111,15 @@ fn prepare_simulationconverge(variant: VariantConfig) -> SimulationConverge {
 pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::error::Error>> {
     // Run variant A: Single campaign with $20 budget
     let simulation_converge_a = prepare_simulationconverge(VariantConfig::Single20);
-    let stats_a = simulation_converge_a.run_variant("Running with single $20 campaign", scenario_name, "single_20", 100, logger);
+    let stats_a = simulation_converge_a.run_variant("Running with single $20 campaign", scenario_name, "single_20", 100, logger)?;
     
     // Run variant B: Two campaigns with $10 budget each
     let simulation_converge_b = prepare_simulationconverge(VariantConfig::Two10);
-    let stats_b = simulation_converge_b.run_variant("Running with two $10 campaigns", scenario_name, "two_10", 100, logger);
+    let stats_b = simulation_converge_b.run_variant("Running with two $10 campaigns", scenario_name, "two_10", 100, logger)?;
     
     // Run variant C: Two campaigns with $10 budget each in the same value group
     let simulation_converge_c = prepare_simulationconverge(VariantConfig::Two10ValueGroup);
-    let stats_c = simulation_converge_c.run_variant("Running with two $10 campaigns in value group", scenario_name, "two_10_value_group", 100, logger);
+    let stats_c = simulation_converge_c.run_variant("Running with two $10 campaigns in value group", scenario_name, "two_10_value_group", 100, logger)?;
     
     // Compare the three variants to verify expected marketplace behavior
     // Variant B (two $10 campaigns) should have:

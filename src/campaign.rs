@@ -17,10 +17,10 @@ pub trait CampaignTrait {
     /// Calculate the bid for this campaign given an impression, convergence parameter, and seller control factor
     /// Bid = campaign_control_factor * value_to_campaign * seller_control_factor
     /// Returns None if bid cannot be calculated (logs warning via logger)
-    fn get_bid(&self, impression: &Impression, controller_states: &[&dyn crate::controllers::ControllerState], seller_control_factor: f64, value_to_campaign: f64, logger: &mut crate::logger::Logger) -> Option<f64>;
+    fn get_bid(&self, impression: &Impression, controller_states: &[&dyn crate::controllers::ControllerStateTrait], seller_control_factor: f64, value_to_campaign: f64, logger: &mut crate::logger::Logger) -> Option<f64>;
     
     /// Create a new convergence parameter for this campaign type
-    fn create_controller_state(&self) -> Vec<Box<dyn crate::controllers::ControllerState>>;
+    fn create_controller_state(&self) -> Vec<Box<dyn crate::controllers::ControllerStateTrait>>;
 
     /// Perform one iteration of convergence, updating the next convergence parameter
     /// This method encapsulates the convergence logic for each campaign type
@@ -32,13 +32,13 @@ pub trait CampaignTrait {
     /// 
     /// # Returns
     /// `true` if pacing was changed, `false` if it remained the same
-    fn next_controller_state(&self, previous_states: &[Box<dyn crate::controllers::ControllerState>], next_states: &mut [Box<dyn crate::controllers::ControllerState>], campaign_stat: &crate::simulationrun::CampaignStat) -> bool;
+    fn next_controller_state(&self, previous_states: &[Box<dyn crate::controllers::ControllerStateTrait>], next_states: &mut [Box<dyn crate::controllers::ControllerStateTrait>], campaign_stat: &crate::simulationrun::CampaignStat) -> bool;
 
     /// Get a string representation of the campaign type and convergence strategy
     /// 
     /// # Arguments
     /// * `controller_states` - Controller states to include pacing information
-    fn type_target_and_controller_state_string(&self, controller_states: &[&dyn crate::controllers::ControllerState]) -> String;
+    fn type_target_and_controller_state_string(&self, controller_states: &[&dyn crate::controllers::ControllerStateTrait]) -> String;
 }
 
 /// Trait for campaign bidding strategies
@@ -77,7 +77,7 @@ impl CampaignTrait for CampaignGeneral {
         &self.campaign_name
     }
     
-    fn get_bid(&self, impression: &Impression, controller_states: &[&dyn crate::controllers::ControllerState], seller_control_factor: f64, value_to_campaign: f64, logger: &mut crate::logger::Logger) -> Option<f64> {
+    fn get_bid(&self, impression: &Impression, controller_states: &[&dyn crate::controllers::ControllerStateTrait], seller_control_factor: f64, value_to_campaign: f64, logger: &mut crate::logger::Logger) -> Option<f64> {
         // Setup control variables in a static array
         let mut control_variables = [0.0; MAX_CONTROLLERS];
         for (i, (converge_controller, controller_state)) in self.converge_controllers.iter().zip(controller_states.iter()).enumerate() {
@@ -88,7 +88,7 @@ impl CampaignTrait for CampaignGeneral {
         self.bidder.get_bid(value_to_campaign, impression, &control_variables[..self.converge_controllers.len()], &self.converge_targets, seller_control_factor, logger)
     }
     
-    fn next_controller_state(&self, previous_states: &[Box<dyn crate::controllers::ControllerState>], next_states: &mut [Box<dyn crate::controllers::ControllerState>], campaign_stat: &crate::simulationrun::CampaignStat) -> bool {
+    fn next_controller_state(&self, previous_states: &[Box<dyn crate::controllers::ControllerStateTrait>], next_states: &mut [Box<dyn crate::controllers::ControllerStateTrait>], campaign_stat: &crate::simulationrun::CampaignStat) -> bool {
         let mut any_changed = false;
         for (index, (converge_target, converge_controller)) in self.converge_targets.iter().zip(self.converge_controllers.iter()).enumerate() {
             let (actual, target) = converge_target.get_actual_and_target(campaign_stat);
@@ -98,7 +98,7 @@ impl CampaignTrait for CampaignGeneral {
         any_changed
     }
     
-    fn type_target_and_controller_state_string(&self, controller_states: &[&dyn crate::controllers::ControllerState]) -> String {
+    fn type_target_and_controller_state_string(&self, controller_states: &[&dyn crate::controllers::ControllerStateTrait]) -> String {
         let mut parts = Vec::new();
         for (index, (converge_target, converge_controller)) in self.converge_targets.iter().zip(self.converge_controllers.iter()).enumerate() {
             parts.push(format!("T{}: {} ({})", 
@@ -110,7 +110,7 @@ impl CampaignTrait for CampaignGeneral {
         format!("{} ({})", self.bidder.get_bidding_type(), parts.join(", "))
     }
     
-    fn create_controller_state(&self) -> Vec<Box<dyn crate::controllers::ControllerState>> {
+    fn create_controller_state(&self) -> Vec<Box<dyn crate::controllers::ControllerStateTrait>> {
         self.converge_controllers.iter().map(|c| c.create_controller_state()).collect()
     }
 }

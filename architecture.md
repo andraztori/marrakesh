@@ -315,27 +315,28 @@ Campaigns can use one of seven bidding strategies (implemented as `CampaignBidde
    - Uses max margin bidding strategy with dual control variables (lambda and mu)
    - Converges on two targets simultaneously using `CampaignGeneral` with two targets and controllers
    - Requires two convergence targets (e.g., total impressions and average value)
-   - Uses two independent `ControllerProportional` instances to manage dual convergence
+   - Uses two independent `ControllerProportionalDerivative` instances to manage dual convergence
    - Useful for campaigns with multiple objectives (e.g., reach and quality targets)
 ### Convergence Mechanism
 
 The system uses an **iterative feedback loop** to find optimal pacing and boost factors:
 - Run auctions with current pacing and boost factors
 - Measure actual performance vs. targets
-- Adjust pacing/boost proportionally to error using proportional controllers
+- Adjust pacing/boost proportionally to error using proportional-derivative controllers
 - Check if any pacing or boost factors changed
 - Repeat until convergence (no changes in any pacing or boost factor in an iteration)
-- If maximum iterations reached without convergence, log a warning
+- If maximum iterations reached without convergence, the scenario exits with an error
 
 **Campaign Convergence**:
 - Campaigns converge their control variables (pacing multipliers) to meet impression, budget, or average value targets
-- Uses `ControllerProportional` (which wraps `ControllerProportionalCore`) for smooth adjustments
+- Uses `ControllerProportionalDerivative` (which wraps `ControllerProportionalDerivativeCore`) for smooth adjustments
 - Each convergence target (`CampaignTargetTotalImpressions`, `CampaignTargetTotalBudget`, `CampaignTargetAvgValue`) defines what to converge to
-- The controller (`ControllerProportional` or `ControllerConstant`) handles how to converge
+- The controller (`ControllerProportionalDerivative` or `ControllerConstant`) handles how to converge
 - Convergence tracks the number of iterations taken to converge, stored in `SimulationStat`
+- **Non-convergence is treated as an error**: If a variant fails to converge within the maximum iterations, the scenario exits with an error
 
 **Seller Convergence**:
-- Sellers with `TOTAL_COST` strategy converge boost factors to balance supply costs with target costs using `ControllerProportional`
+- Sellers with `TOTAL_COST` strategy converge boost factors to balance supply costs with target costs using `ControllerProportionalDerivative`
 - Sellers with `NONE` strategy maintain constant boost factors using `ControllerConstant`
 - First-price sellers typically use boost factor of 1.0 (no effect)
 
@@ -346,7 +347,7 @@ This is not a pacing algorithm to be studied—it's a **simulation calibration t
 The system uses a **strategy pattern** for convergence with trait-based dynamic dispatch. Both campaigns and sellers use `Vec`s to support multiple convergence targets and controllers:
 
 **Core Traits and Types**:
-- `ControllerState`: Trait for controller state (replaces `ConvergingVariables`)
+- `ControllerStateTrait`: Trait for controller state (replaces `ConvergingVariables`)
 - `ControllerStateSingleVariable`: Concrete type storing a single `f64` value (pacing or boost)
 - `CampaignTargetTrait`: Trait for campaign convergence targets (works with `CampaignStat`)
   - Methods: `get_actual_and_target`, `converge_target_string`
@@ -362,14 +363,19 @@ The system uses a **strategy pattern** for convergence with trait-based dynamic 
 - `ControllerConstant`: Constant controller that maintains a fixed value
   - Used for campaigns/sellers with no convergence target
   - Initializes controller state with the specified default value
-- `ControllerProportional`: Proportional controller that adjusts based on error between target and actual
-  - Uses `ControllerProportionalCore` internally for the control algorithm
-  - Default parameters: tolerance_fraction=0.005 (0.5%), max_adjustment_factor=0.2 (20%), proportional_gain=0.1 (10%)
-  - Initializes controller state with pacing/boost = 1.0
+- `ControllerProportionalDerivative`: Proportional-Derivative (PD) controller that adjusts based on error between target and actual, with derivative term to reduce overshoot
+  - Uses `ControllerProportionalDerivativeCore` internally for the control algorithm
+  - Default parameters: tolerance_fraction=0.005 (0.5%), max_adjustment_factor=0.1 (10%), proportional_gain=0.1 (10%), derivative_gain=0.05 (5%), rescaling=true
+  - Initializes controller state with pacing/boost = 1.0 and no previous error
+  - **Proportional-only behavior**: Set `derivative_gain = 0.0` to get pure proportional control (equivalent to the old `ControllerProportional`)
   - Provides `new_advanced()` method for custom parameter configuration:
     - `tolerance_fraction`: Tolerance as a fraction of target (e.g., 0.005 = 0.5%)
     - `max_adjustment_factor`: Maximum adjustment factor (e.g., 0.5 = 50%)
     - `proportional_gain`: Proportional gain (e.g., 1.0 = 100% of error)
+    - `derivative_gain`: Derivative gain (e.g., 0.05 = 5% of error rate). Set to 0.0 for proportional-only behavior.
+    - `rescaling`: Whether to apply rescaling (reversal of proportions) based on previous_state. Default is true.
+  - The derivative term helps reduce overshoot and improve stability during convergence
+  - Rescaling applies a reversal of proportions when `previous_state > 1.0` (multiply) or `previous_state <= 1.0` (divide), which improves convergence behavior
   - Useful for scenarios requiring more aggressive convergence (e.g., additive bidding strategies)
 
 **Campaign Convergence Targets**:
@@ -388,7 +394,7 @@ The system uses a **strategy pattern** for convergence with trait-based dynamic 
 - Clear separation: Convergence targets define what to converge to, controllers define how to converge
 - Extensibility: New convergence targets and controllers can be added independently
 - Flexibility: Any combination of target and controller can be used, with support for multiple targets per campaign/seller
-- Uniform interface: All campaigns and sellers work with `ControllerState` trait objects
+- Uniform interface: All campaigns and sellers work with `ControllerStateTrait` trait objects
 - Performance: Uses stack-allocated arrays for control variables to avoid heap allocations
 
 ---
@@ -584,9 +590,10 @@ Iteratively adjust pacing and boost factors until campaigns and sellers meet the
 - Run full auction simulation with current controller states
 - Calculate performance metrics for campaigns and sellers
 - Use `next_controller_state()` to calculate new controller states based on targets
-- Adjust campaign control variables based on impression/budget/average value targets using `ControllerProportional`
-- Adjust seller boost factors based on cost balance (for dynamic boost sellers) using `ControllerProportional`
+- Adjust campaign control variables based on impression/budget/average value targets using `ControllerProportionalDerivative`
+- Adjust seller boost factors based on cost balance (for dynamic boost sellers) using `ControllerProportionalDerivative`
 - Repeat until convergence (no changes in an iteration)
+- If maximum iterations reached without convergence, the scenario exits with an error
 
 This phase ensures campaigns and sellers operate optimally before observation begins. The `SimulationConverge` struct manages this process, encapsulating the marketplace and controller states.
 
@@ -739,8 +746,8 @@ The system separates:
 - **Seller convergence targets** (`seller_targets.rs`): Seller convergence target implementations
 - **Simulation execution** (`simulationrun.rs`): Running auctions, calculating statistics, marketplace structure
 - **Convergence logic** (`converge.rs`): Finding optimal pacing and boost factors, controller state management
-- **Controller logic** (`controllers.rs`): Controller implementations (proportional, constant), unified controller state types
-- **Controller core** (`controller_core.rs`): Core proportional controller algorithm with configurable parameters
+- **Controller logic** (`controllers.rs`): Controller implementations (proportional-derivative, constant), unified controller state types
+- **Controller core** (`controller_core.rs`): Core proportional-derivative controller algorithm with configurable parameters (proportional gain, derivative gain, rescaling)
 - **Controller state** (`controller_state.rs`): Controller state trait and implementations
 - **Competition generation** (`competition.rs`): Generating competition data for impressions
 - **Floor generation** (`floors.rs`): Generating floor prices for impressions
@@ -774,7 +781,7 @@ The system uses Rust traits for extensibility:
 - `CampaignTargetTrait`: Trait for campaign convergence targets (works with `CampaignStat`)
 - `SellerTargetTrait`: Trait for seller convergence targets (works with `SellerStat`)
 - `ControllerTrait`: Trait for controlling convergence behavior (used by both campaigns and sellers)
-- `ControllerState`: Trait for controller state representation (unified for campaigns and sellers)
+- `ControllerStateTrait`: Trait for controller state representation (unified for campaigns and sellers)
 - `CompetitionGeneratorTrait`: Extensible competition generation
 - `FloorGeneratorTrait`: Extensible floor generation
 - Dynamic dispatch via trait objects enables different implementations while maintaining uniform interfaces
@@ -791,7 +798,7 @@ The convergence system uses the strategy pattern with two layers:
 - **Convergence Controllers** (`ControllerTrait`): Define how to converge (e.g., proportional control, constant)
   - Campaigns and sellers hold a `Vec<Box<dyn ControllerTrait>>` to control convergence behavior for each target
   - Handles state management and adjustment logic
-- All controllers work with `ControllerState` trait objects for uniform interface
+- All controllers work with `ControllerStateTrait` trait objects for uniform interface
 - Enables flexible combination of targets and controllers (e.g., proportional control for budget targets, constant control for fixed pacing)
 - Supports multiple targets per campaign/seller (e.g., dual-target campaigns with two independent controllers)
 
@@ -858,23 +865,7 @@ The framework is designed to be extended without modifying core logic:
 
 ---
 
-## Limitations and Scope
-
-### What Marrakesh Is
-
-- A framework for studying marketplace dynamics under optimal pacing
-- A tool for comparing pricing mechanisms and bidding strategies
-- A controlled environment for experimentation
-- A foundation for building more complex simulations
-
-### What Marrakesh Is Not
-
-- A pacing optimization system (pacing is assumed optimal)
-- A real-time marketplace simulator (executes in batch)
-- A production system (designed for research, not deployment)
-- A complete marketplace model (focuses on core dynamics)
-
-### Scope Boundaries
+## Scope
 
 The framework focuses on:
 - ✅ Auction mechanics and winner determination

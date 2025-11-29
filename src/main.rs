@@ -163,7 +163,7 @@ fn main() {
             
             println!("{}: {:#?}", test_case.name, impression);
             
-            let controller_states: Vec<&dyn campaigns::ControllerState> = converge_vars.iter().map(|cs| cs.as_ref()).collect();
+            let controller_states: Vec<&dyn campaigns::ControllerStateTrait> = converge_vars.iter().map(|cs| cs.as_ref()).collect();
             let bid_optimal = campaign_optimal.get_bid(&impression, &controller_states, 1.0, test_case.value, &mut logger);
             let bid_max_margin = campaign_max_margin.get_bid(&impression, &controller_states, 1.0, test_case.value, &mut logger);
             
@@ -350,7 +350,7 @@ fn main() {
         let simulation_converge = SimulationConverge::new(marketplace);
         
         // Run simulation loop with pacing adjustments (maximum 100 iterations)
-        let (_final_simulation_run, final_stats, final_campaign_controller_states, final_seller_controller_states) = simulation_converge.run(100, "main", "test", &mut logger);
+        let (_final_simulation_run, final_stats, final_campaign_controller_states, final_seller_controller_states, _converged) = simulation_converge.run(100, "main", "test", &mut logger);
         logln!(&mut logger, LogEvent::Variant, "\n=== Final Results ===");
         final_stats.printout(&simulation_converge.marketplace.campaigns, &simulation_converge.marketplace.sellers, &final_campaign_controller_states, &final_seller_controller_states, &mut logger);
     }

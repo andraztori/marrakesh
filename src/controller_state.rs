@@ -1,7 +1,7 @@
 /// Unified trait for controller state
 /// Used for both campaigns and sellers
-pub trait ControllerState: std::any::Any {
-    fn clone_box(&self) -> Box<dyn ControllerState>;
+pub trait ControllerStateTrait: std::any::Any {
+    fn clone_box(&self) -> Box<dyn ControllerStateTrait>;
     fn as_any(&self) -> &dyn std::any::Any;
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any;
 }
@@ -11,8 +11,8 @@ pub trait ControllerState: std::any::Any {
 #[derive(Clone)]
 pub struct ControllerStateEmpty;
 
-impl ControllerState for ControllerStateEmpty {
-    fn clone_box(&self) -> Box<dyn ControllerState> { Box::new(ControllerStateEmpty) }
+impl ControllerStateTrait for ControllerStateEmpty {
+    fn clone_box(&self) -> Box<dyn ControllerStateTrait> { Box::new(ControllerStateEmpty) }
     fn as_any(&self) -> &dyn std::any::Any { self }
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
 }
@@ -24,8 +24,8 @@ pub struct ControllerStateSingleVariable {
     pub converging_variable: f64,
 }
 
-impl ControllerState for ControllerStateSingleVariable {
-    fn clone_box(&self) -> Box<dyn ControllerState> { Box::new(self.clone()) }
+impl ControllerStateTrait for ControllerStateSingleVariable {
+    fn clone_box(&self) -> Box<dyn ControllerStateTrait> { Box::new(self.clone()) }
     fn as_any(&self) -> &dyn std::any::Any { self }
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
 }
@@ -37,8 +37,8 @@ pub struct ControllerStateDoubleVariable {
     pub variable2: Option<f64>,
 }
 
-impl ControllerState for ControllerStateDoubleVariable {
-    fn clone_box(&self) -> Box<dyn ControllerState> { Box::new(self.clone()) }
+impl ControllerStateTrait for ControllerStateDoubleVariable {
+    fn clone_box(&self) -> Box<dyn ControllerStateTrait> { Box::new(self.clone()) }
     fn as_any(&self) -> &dyn std::any::Any { self }
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
 }

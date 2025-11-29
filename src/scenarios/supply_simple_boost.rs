@@ -88,11 +88,11 @@ fn prepare_simulationconverge(mrg_boost_factor: f64) -> SimulationConverge {
 pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::error::Error>> {
     // Run variant with boost_factor = 1.0 (default) for MRG seller
     let simulation_converge_a = prepare_simulationconverge(1.0);
-    let stats_a = simulation_converge_a.run_variant("Running with Abundant HB impressions (MRG boost: 1.0)", scenario_name, "boost_1.0", 100, logger);
+    let stats_a = simulation_converge_a.run_variant("Running with Abundant HB impressions (MRG boost: 1.0)", scenario_name, "boost_1.0", 100, logger)?;
     
     // Run variant with boost_factor = 2.0 for MRG seller
     let simulation_converge_b = prepare_simulationconverge(2.0);
-    let stats_b = simulation_converge_b.run_variant("Running with Abundant HB impressions (MRG boost: 2.0)", scenario_name, "boost_2.0", 100, logger);
+    let stats_b = simulation_converge_b.run_variant("Running with Abundant HB impressions (MRG boost: 2.0)", scenario_name, "boost_2.0", 100, logger)?;
     
     // Compare the two variants to verify expected marketplace behavior
     // Variant A (boost 1.0) vs Variant B (boost 2.0):

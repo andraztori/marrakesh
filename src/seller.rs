@@ -31,10 +31,10 @@ pub trait SellerTrait: Any {
     fn generate_impression(&self, base_value: f64, rng_competition: &mut StdRng, rng_floor: &mut StdRng) -> (Option<ImpressionCompetition>, f64);
     
     /// Get a string representation of the seller type and convergence for logging
-    fn type_target_and_controller_state_string(&self, controller_states: &[&dyn crate::controllers::ControllerState]) -> String;
+    fn type_target_and_controller_state_string(&self, controller_states: &[&dyn crate::controllers::ControllerStateTrait]) -> String;
     
     /// Create a new convergence parameter for this seller type
-    fn create_controller_state(&self) -> Vec<Box<dyn crate::controllers::ControllerState>>;
+    fn create_controller_state(&self) -> Vec<Box<dyn crate::controllers::ControllerStateTrait>>;
     
     /// Calculate the next controller state
     /// This method encapsulates the convergence logic for each seller type
@@ -46,7 +46,7 @@ pub trait SellerTrait: Any {
     /// 
     /// # Returns
     /// `true` if boost_factor was changed, `false` if it remained the same
-    fn next_controller_state(&self, previous_states: &[Box<dyn crate::controllers::ControllerState>], next_states: &mut [Box<dyn crate::controllers::ControllerState>], seller_stat: &crate::simulationrun::SellerStat) -> bool;
+    fn next_controller_state(&self, previous_states: &[Box<dyn crate::controllers::ControllerStateTrait>], next_states: &mut [Box<dyn crate::controllers::ControllerStateTrait>], seller_stat: &crate::simulationrun::SellerStat) -> bool;
     
     /// Get the control variable (boost factor) from the controller state
     /// 
@@ -55,7 +55,7 @@ pub trait SellerTrait: Any {
     /// 
     /// # Returns
     /// The control variable value (boost factor)
-    fn get_control_variable(&self, controller_state: &dyn crate::controllers::ControllerState) -> f64;
+    fn get_control_variable(&self, controller_state: &dyn crate::controllers::ControllerStateTrait) -> f64;
     
     /// Get reference to Any for downcasting
     fn as_any(&self) -> &dyn Any;
@@ -92,7 +92,7 @@ impl SellerTrait for SellerGeneral {
         (competition, floor_cpm)
     }
     
-    fn type_target_and_controller_state_string(&self, controller_states: &[&dyn crate::controllers::ControllerState]) -> String {
+    fn type_target_and_controller_state_string(&self, controller_states: &[&dyn crate::controllers::ControllerStateTrait]) -> String {
         let mut parts = Vec::new();
         for (index, (converge_target, converge_controller)) in self.converge_targets.iter().zip(self.converge_controllers.iter()).enumerate() {
             parts.push(format!("Target {}: {} ({})", 
@@ -104,11 +104,11 @@ impl SellerTrait for SellerGeneral {
         format!("{} ({})", self.seller_charger.get_charging_type(), parts.join(", "))
     }
     
-    fn create_controller_state(&self) -> Vec<Box<dyn crate::controllers::ControllerState>> {
+    fn create_controller_state(&self) -> Vec<Box<dyn crate::controllers::ControllerStateTrait>> {
         self.converge_controllers.iter().map(|c| c.create_controller_state()).collect()
     }
     
-    fn next_controller_state(&self, previous_states: &[Box<dyn crate::controllers::ControllerState>], next_states: &mut [Box<dyn crate::controllers::ControllerState>], seller_stat: &crate::simulationrun::SellerStat) -> bool {
+    fn next_controller_state(&self, previous_states: &[Box<dyn crate::controllers::ControllerStateTrait>], next_states: &mut [Box<dyn crate::controllers::ControllerStateTrait>], seller_stat: &crate::simulationrun::SellerStat) -> bool {
         let mut any_changed = false;
         for (index, (converge_target, converge_controller)) in self.converge_targets.iter().zip(self.converge_controllers.iter()).enumerate() {
             let (actual, target) = converge_target.get_actual_and_target(seller_stat);
@@ -118,7 +118,7 @@ impl SellerTrait for SellerGeneral {
         any_changed
     }
     
-    fn get_control_variable(&self, controller_state: &dyn crate::controllers::ControllerState) -> f64 {
+    fn get_control_variable(&self, controller_state: &dyn crate::controllers::ControllerStateTrait) -> f64 {
         // For sellers, we typically use the first controller's control variable
         // This maintains backward compatibility with existing code
         self.converge_controllers[0].get_control_variable(controller_state)
