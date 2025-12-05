@@ -7,8 +7,8 @@ mod impressions;
 mod campaign;
 mod campaigns;
 mod campaign_targets;
-mod campaign_bidders_single;
-mod campaign_bidders_double;
+mod bid_valuers_single;
+mod bid_valuers_double;
 mod seller;
 mod sellers;
 mod seller_targets;
@@ -22,6 +22,7 @@ mod sigmoid;
 mod controller_state;
 mod controller_core;
 mod controllers;
+mod bid_optimizers;
 
 
 use sellers::{SellerType, SellerConvergeStrategy, Sellers};
@@ -97,14 +98,17 @@ fn main() {
         use competition::ImpressionCompetition;
         
         // Setup shared resources
-        use campaigns::BidderMaxMargin;
-        let bidder_max_margin = Box::new(BidderMaxMargin) as Box<dyn campaign::CampaignBidderTrait>;
+        use crate::bid_valuers_single::BidValuerMultiplicative;
+        use crate::bid_optimizers::{BidOptimizerTrait, BidOptimizerMaximumMargin};
+        let bid_valuer = Box::new(BidValuerMultiplicative) as Box<dyn campaign::BidValuerTrait>;
+        let bid_optimizer = Box::new(BidOptimizerMaximumMargin) as Box<dyn BidOptimizerTrait>;
         let campaign_max_margin = CampaignGeneral {
             campaign_id: 0,
             campaign_name: "MaxMargin".to_string(),
             converge_targets: vec![Box::new(CampaignTargetNone)],
             converge_controllers: vec![Box::new(crate::controllers::ControllerConstant::new(0.8298))],
-            bidder: bidder_max_margin,
+            bid_valuer,
+            bid_optimizer,
         };
         
         let converge_vars = campaign_max_margin.create_controller_state();

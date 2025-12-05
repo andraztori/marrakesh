@@ -14,8 +14,8 @@ use crate::simulationrun::{Marketplace, SimulationType};
 use crate::sellers::{SellerType, SellerConvergeStrategy, Sellers};
 use crate::campaigns::{Campaigns, CampaignGeneral};
 use crate::campaign::CampaignTrait;
-use crate::campaign_bidders_single::BidderMaxMargin;
-use crate::campaign_bidders_double::CampaignBidderDouble;
+use crate::bid_valuers_single::BidValuerMultiplicative;
+use crate::bid_valuers_double::BidValuerDualTarget;
 use crate::campaign_targets::{CampaignTargetTotalImpressions, CampaignTargetAvgValue};
 use crate::converge::SimulationConverge;
 use crate::impressions::ImpressionsParam;
@@ -73,12 +73,14 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
     
     // Run variant A with max margin bidding
     // Converging to TARGET_IMPRESSIONS impressions
+    use crate::bid_optimizers::{BidOptimizerTrait, BidOptimizerMaximumMargin};
     let campaign_a: Box<dyn CampaignTrait> = Box::new(CampaignGeneral {
         campaign_id: 0, // Will be set by add_advanced
         campaign_name: "C0".to_string(),
         converge_targets: vec![Box::new(CampaignTargetTotalImpressions { total_impressions_target: TARGET_IMPRESSIONS })],
         converge_controllers: vec![Box::new(crate::controllers::ControllerProportionalDerivative::new())],
-        bidder: Box::new(BidderMaxMargin),
+        bid_valuer: Box::new(BidValuerMultiplicative),
+        bid_optimizer: Box::new(BidOptimizerMaximumMargin) as Box<dyn BidOptimizerTrait>,
     });
     let simulation_converge_a = prepare_simulationconverge(num_impressions, campaign_a);
     let stats_a = simulation_converge_a.run_variant(&format!("Running with max margin bidding ({} impressions)", TARGET_IMPRESSIONS), scenario_name, "max-margin-impressions", 100, logger)?;
@@ -101,7 +103,8 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
                  0.35, // derivative_gain
                  true,  // rescaling
              ))],
-        bidder: Box::new(CampaignBidderDouble),
+        bid_valuer: Box::new(BidValuerDualTarget),
+        bid_optimizer: Box::new(BidOptimizerMaximumMargin) as Box<dyn BidOptimizerTrait>,
     });
     let simulation_converge_b = prepare_simulationconverge(num_impressions, campaign_b);
     let stats_b = simulation_converge_b.run_variant(&format!("Running with max margin double target ({} impressions, avg value {})", TARGET_IMPRESSIONS, TARGET_AVG_VALUE), scenario_name, "max-margin-double", 1000, logger)?;

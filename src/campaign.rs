@@ -2,6 +2,7 @@ use crate::impressions::Impression;
 use crate::campaign_targets::CampaignTargetTrait;
 use crate::controllers::ControllerTrait;
 use crate::logger::Logger;
+use crate::bid_optimizers::BidOptimizerTrait;
 use std::any::Any;
 
 /// Maximum number of controllers supported by campaigns
@@ -48,15 +49,15 @@ pub trait CampaignTrait: Any {
     fn as_any_mut(&mut self) -> &mut dyn Any;
 }
 
-/// Trait for campaign bidding strategies
-pub trait CampaignBidderTrait {
-    /// Calculate the bid for this campaign given an impression, control variables slice, converge targets, and seller control factor
+/// Trait for bid valuation strategies
+pub trait BidValuerTrait {
+    /// Calculate the bid value for this campaign given an impression, control variables slice, converge targets, and seller control factor
     /// Returns None if bid cannot be calculated (logs warning via logger)
-    /// Must be implemented by specific bidder types
+    /// Must be implemented by specific bid valuer types
     fn get_bid(&self, value_to_campaign: f64, impression: &Impression, control_variables: &[f64], converge_targets: &Vec<Box<dyn CampaignTargetTrait>>, seller_control_factor: f64, logger: &mut Logger) -> Option<f64>;
     
-    /// Get a string representation of the bidding type
-    fn get_bidding_type(&self) -> String;
+    /// Get a string representation of the valuer type
+    fn get_valuer_type(&self) -> String;
 }
 
 /// While in theory one can write any kind of campaign, in practice it is possible to break it down to key elements
@@ -72,7 +73,8 @@ pub struct CampaignGeneral {
     pub campaign_name: String,
     pub converge_targets: Vec<Box<dyn CampaignTargetTrait>>,
     pub converge_controllers: Vec<Box<dyn ControllerTrait>>,
-    pub bidder: Box<dyn CampaignBidderTrait>,
+    pub bid_valuer: Box<dyn BidValuerTrait>,
+    pub bid_optimizer: Box<dyn BidOptimizerTrait>,
 }
 
 impl CampaignTrait for CampaignGeneral {
@@ -91,8 +93,11 @@ impl CampaignTrait for CampaignGeneral {
             control_variables[i] = converge_controller.get_control_variable(*controller_state);
         }
         
-        // Delegate to the bidder
-        self.bidder.get_bid(value_to_campaign, impression, &control_variables[..self.converge_controllers.len()], &self.converge_targets, seller_control_factor, logger)
+        // Get initial bid from the bid valuer
+        let initial_bid = self.bid_valuer.get_bid(value_to_campaign, impression, &control_variables[..self.converge_controllers.len()], &self.converge_targets, seller_control_factor, logger)?;
+        
+        // Optimize the bid using the optimizer
+        self.bid_optimizer.get_optimized_bid(initial_bid, impression)
     }
     
     fn next_controller_state(&self, previous_states: &[Box<dyn crate::controllers::ControllerStateTrait>], next_states: &mut [Box<dyn crate::controllers::ControllerStateTrait>], campaign_stat: &crate::simulationrun::CampaignStat) -> bool {
@@ -114,7 +119,7 @@ impl CampaignTrait for CampaignGeneral {
                 converge_controller.controller_string(controller_states[index])
             ));
         }
-        format!("{} ({})", self.bidder.get_bidding_type(), parts.join(", "))
+        format!("{} / {} ({})", self.bid_optimizer.get_optimizer_type(), self.bid_valuer.get_valuer_type(), parts.join(", "))
     }
     
     fn create_controller_state(&self) -> Vec<Box<dyn crate::controllers::ControllerStateTrait>> {

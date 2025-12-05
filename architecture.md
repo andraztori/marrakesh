@@ -245,7 +245,7 @@ These models represent the fundamental trade-offs in advertising:
 - **Different optimization objectives**: Impression targets optimize for volume; budget targets optimize for cost control
 - **Quality vs. Quantity**: Average value targets optimize for quality metrics while maintaining volume
 
-**Dual-Target Campaigns**: The `MAX_MARGIN_DOUBLE_TARGET` campaign type can converge on two targets simultaneously (e.g., total impressions AND average value), using independent control variables (lambda and mu) for each target via `CampaignBidderDouble`.
+**Dual-Target Campaigns**: The `MAX_MARGIN_DOUBLE_TARGET` campaign type can converge on two targets simultaneously (e.g., total impressions AND average value), using independent control variables (lambda and mu) for each target via `BidValuerDualTarget`.
 
 ### Campaign Architecture
 
@@ -261,10 +261,10 @@ All campaigns use the unified `CampaignGeneral` structure, which supports any nu
    - Uses a stack-allocated array (`[f64; MAX_CONTROLLERS]`) for control variables to avoid heap allocations
 
 **Bidding Strategies**:
-   - Single-control bidders (in `campaign_bidders_single.rs`): Use one control variable (pacing)
+   - Single-control bid valuers (in `bid_valuers_single.rs`): Use one control variable (pacing)
      - CampaignBidderMultiplicative, CampaignBidderMultiplicativeAdditive, BidderMaxMargin, BidderMaxMarginAdditiveSupply, BidderMaxMarginExponentialSupply, CampaignBidderCheaterLastLook, CampaignBidderMedian
-   - Dual-control bidders (in `campaign_bidders_double.rs`): Use two control variables (lambda and mu)
-     - CampaignBidderDouble: Used for MAX_MARGIN_DOUBLE_TARGET campaigns
+   - Dual-control bid valuers (in `bid_valuers_double.rs`): Use two control variables (lambda and mu)
+     - BidValuerDualTarget: Used for MAX_MARGIN_DOUBLE_TARGET campaigns
 
 This design allows flexible combination of any convergence target(s), controller, and bidding strategy.
 
@@ -316,7 +316,7 @@ Campaigns can use one of eight bidding strategies (implemented as `CampaignBidde
    - Requires competition data (for predicted offset)
    - Research observation: Median Bidding improves vs. multiplicative bidding when there is abundance of impressions, but is worse when there is scarcity and high fill rates
 
-8. **Max Margin Double Target** (`MAX_MARGIN_DOUBLE_TARGET`, `CampaignBidderDouble`):
+8. **Max Margin Double Target** (`MAX_MARGIN_DOUBLE_TARGET`, `BidValuerDualTarget`):
    - Uses max margin bidding strategy with dual control variables (lambda and mu)
    - Converges on two targets simultaneously using `CampaignGeneral` with two targets and controllers
    - Requires two convergence targets (e.g., total impressions and average value)
@@ -740,8 +740,8 @@ The system separates:
 - **Impression and auction logic** (`impressions.rs`): Core auction mechanics, impression generation, winner determination
 - **Campaign logic** (`campaign.rs`): Campaign trait, `CampaignGeneral` structure, `CampaignBidderTrait`
 - **Campaign container** (`campaigns.rs`): Campaign container with methods to add campaigns
-- **Campaign bidding strategies (single)** (`campaign_bidders_single.rs`): Single-control-variable bidding strategy implementations (multiplicative, multiplicative additive, max margin variants, cheater, median)
-- **Campaign bidding strategies (double)** (`campaign_bidders_double.rs`): Dual-control-variable bidding strategy implementations (max margin with lambda and mu)
+- **Bid valuers (single)** (`bid_valuers_single.rs`): Single-control-variable bid valuation implementations (multiplicative, multiplicative additive, max margin variants)
+- **Bid valuers (double)** (`bid_valuers_double.rs`): Dual-control-variable bid valuation implementations (max margin with lambda and mu)
 - **Campaign convergence targets** (`campaign_targets.rs`): Campaign convergence target implementations (impressions, budget, average value, none)
 - **Seller logic** (`seller.rs`): Seller trait, `SellerGeneral` structure
 - **Seller container** (`sellers.rs`): Seller container with methods to add sellers
@@ -823,7 +823,7 @@ The framework is designed to be extended without modifying core logic:
 ### New Bidding Strategies
 - Implement `CampaignBidderTrait` trait with new bid calculation methods
 - Add the new bidder to `CampaignType` enum and `Campaigns::add()` method
-- Place single-control bidders in `campaign_bidders_single.rs` or dual-control bidders in `campaign_bidders_double.rs`
+- Place single-control bid valuers in `bid_valuers_single.rs` or dual-control bid valuers in `bid_valuers_double.rs`
 - Examples: All campaigns use `CampaignGeneral` with different `CampaignBidderTrait` implementations
 
 ### New Pricing Models

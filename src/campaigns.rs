@@ -2,8 +2,10 @@ pub use crate::campaign_targets::CampaignTargetTrait;
 pub use crate::controller_state::ControllerStateTrait;
 pub use crate::campaign::CampaignTrait;
 pub use crate::campaign::CampaignGeneral;
-pub use crate::campaign::CampaignBidderTrait;
-pub use crate::campaign_bidders_double::CampaignBidderDouble;
+pub use crate::campaign::BidValuerTrait;
+pub use crate::bid_valuers_double::BidValuerDualTarget;
+pub use crate::bid_optimizers::{BidOptimizerTrait, BidOptimizerTrutful, BidOptimizerMaximumMargin, BidOptimizerCheater, BidOptimizerMedian};
+pub use crate::bid_valuers_single::{BidValuerMultiplicative, BidValuerMultiplicative_AdditiveSupply, BidValuerMultiplicative_ExponentialSupply};
 
 /// Campaign type determining the bidding strategy
 #[allow(non_camel_case_types)]
@@ -34,7 +36,6 @@ pub enum ConvergeTarget {
 pub use crate::campaign_targets::{CampaignTargetTotalImpressions, CampaignTargetTotalBudget, CampaignTargetAvgValue, CampaignTargetNone};
 
 // Re-export bidder types for convenience
-pub use crate::campaign_bidders_single::{CampaignBidderMultiplicative, CampaignBidderMultiplicativeAdditive, BidderMaxMargin, BidderMaxMarginAdditiveSupply, BidderMaxMarginExponentialSupply, CampaignBidderCheaterLastLook};
 
 /// Container for campaigns with methods to add campaigns
 /// Uses trait objects to support different campaign types
@@ -118,73 +119,85 @@ impl Campaigns {
             CampaignType::MULTIPLICATIVE_PACING => {
                 assert_eq!(converge_targets.len(), 1, "MULTIPLICATIVE_PACING requires exactly one converge target");
                 let (converge_target_box, converge_controller) = Self::convert_converge_target(converge_targets[0].clone());
-                let bidder = Box::new(CampaignBidderMultiplicative) as Box<dyn CampaignBidderTrait>;
+                let bid_valuer = Box::new(BidValuerMultiplicative) as Box<dyn BidValuerTrait>;
+                let bid_optimizer = Box::new(BidOptimizerTrutful) as Box<dyn BidOptimizerTrait>;
                 self.campaigns.push(Box::new(CampaignGeneral {
                     campaign_id,
                     campaign_name,
                     converge_targets: vec![converge_target_box],
                     converge_controllers: vec![converge_controller],
-                    bidder,
+                    bid_valuer,
+                    bid_optimizer,
                 }));
             }
             CampaignType::MULTIPLICATIVE_ADDITIVE => {
                 assert_eq!(converge_targets.len(), 1, "MULTIPLICATIVE_ADDITIVE requires exactly one converge target");
                 let (converge_target_box, converge_controller) = Self::convert_converge_target(converge_targets[0].clone());
-                let bidder = Box::new(CampaignBidderMultiplicativeAdditive) as Box<dyn CampaignBidderTrait>;
+                let bid_valuer = Box::new(BidValuerMultiplicative_AdditiveSupply) as Box<dyn BidValuerTrait>;
+                let bid_optimizer = Box::new(BidOptimizerTrutful) as Box<dyn BidOptimizerTrait>;
                 self.campaigns.push(Box::new(CampaignGeneral {
                     campaign_id,
                     campaign_name,
                     converge_targets: vec![converge_target_box],
                     converge_controllers: vec![converge_controller],
-                    bidder,
+                    bid_valuer,
+                    bid_optimizer,
                 }));
             }
             CampaignType::CHEATER => {
                 assert_eq!(converge_targets.len(), 1, "CHEATER requires exactly one converge target");
                 let (converge_target_box, converge_controller) = Self::convert_converge_target(converge_targets[0].clone());
-                let bidder = Box::new(CampaignBidderCheaterLastLook) as Box<dyn CampaignBidderTrait>;
+                let bid_valuer = Box::new(BidValuerMultiplicative) as Box<dyn BidValuerTrait>;
+                let bid_optimizer = Box::new(BidOptimizerCheater) as Box<dyn BidOptimizerTrait>;
                 self.campaigns.push(Box::new(CampaignGeneral {
                     campaign_id,
                     campaign_name,
                     converge_targets: vec![converge_target_box],
                     converge_controllers: vec![converge_controller],
-                    bidder,
+                    bid_valuer,
+                    bid_optimizer,
                 }));
             }
             CampaignType::MAX_MARGIN => {
                 assert_eq!(converge_targets.len(), 1, "MAX_MARGIN requires exactly one converge target");
                 let (converge_target_box, converge_controller) = Self::convert_converge_target(converge_targets[0].clone());
-                let bidder = Box::new(BidderMaxMargin) as Box<dyn CampaignBidderTrait>;
+                let bid_valuer = Box::new(BidValuerMultiplicative) as Box<dyn BidValuerTrait>;
+                let bid_optimizer = Box::new(BidOptimizerMaximumMargin) as Box<dyn BidOptimizerTrait>;
                 self.campaigns.push(Box::new(CampaignGeneral {
                     campaign_id,
                     campaign_name,
                     converge_targets: vec![converge_target_box],
                     converge_controllers: vec![converge_controller],
-                    bidder,
+                    bid_valuer,
+                    bid_optimizer,
                 }));
             }
             CampaignType::MAX_MARGIN_ADDITIVE_SUPPLY => {
                 assert_eq!(converge_targets.len(), 1, "MAX_MARGIN_ADDITIVE_SUPPLY requires exactly one converge target");
                 let (converge_target_box, converge_controller) = Self::convert_converge_target(converge_targets[0].clone());
-                let bidder = Box::new(BidderMaxMarginAdditiveSupply) as Box<dyn CampaignBidderTrait>;
+                let bid_valuer = Box::new(BidValuerMultiplicative_AdditiveSupply) as Box<dyn BidValuerTrait>;
+                let bid_optimizer = Box::new(BidOptimizerMaximumMargin) as Box<dyn BidOptimizerTrait>;
                 self.campaigns.push(Box::new(CampaignGeneral {
                     campaign_id,
                     campaign_name,
                     converge_targets: vec![converge_target_box],
                     converge_controllers: vec![converge_controller],
-                    bidder,
+                    bid_valuer,
+                    bid_optimizer,
                 }));
             }
             CampaignType::MAX_MARGIN_EXPONENTIAL_SUPPLY => {
                 assert_eq!(converge_targets.len(), 1, "MAX_MARGIN_EXPONENTIAL_SUPPLY requires exactly one converge target");
                 let (converge_target_box, converge_controller) = Self::convert_converge_target(converge_targets[0].clone());
-                let bidder = Box::new(BidderMaxMarginExponentialSupply) as Box<dyn CampaignBidderTrait>;
+                let bid_valuer = Box::new(BidValuerMultiplicative_ExponentialSupply) as Box<dyn BidValuerTrait>;
+                let bid_optimizer = Box::new(BidOptimizerMaximumMargin) as Box<dyn BidOptimizerTrait>;
                 self.campaigns.push(Box::new(CampaignGeneral {
                     campaign_id,
                     campaign_name,
                     converge_targets: vec![converge_target_box],
                     converge_controllers: vec![converge_controller],
-                    bidder,
+                    bid_valuer,
+                    bid_optimizer,
                 }));
             }
             CampaignType::MAX_MARGIN_DOUBLE_TARGET => {
@@ -192,7 +205,8 @@ impl Campaigns {
                 let converge_targets_vec: Vec<Box<dyn CampaignTargetTrait>> = converge_targets.iter()
                     .map(|ct| Self::convert_converge_target(ct.clone()).0)
                     .collect();
-                let bidder = Box::new(CampaignBidderDouble) as Box<dyn CampaignBidderTrait>;
+                let bid_valuer = Box::new(BidValuerDualTarget) as Box<dyn BidValuerTrait>;
+                let bid_optimizer = Box::new(BidOptimizerMaximumMargin) as Box<dyn BidOptimizerTrait>;
                 let converge_controllers = vec![
                     Box::new(crate::controllers::ControllerProportionalDerivative::new()) as Box<dyn crate::controllers::ControllerTrait>,
                     Box::new(crate::controllers::ControllerProportionalDerivative::new_advanced(
@@ -208,20 +222,23 @@ impl Campaigns {
                     campaign_name,
                     converge_targets: converge_targets_vec,
                     converge_controllers,
-                    bidder,
+                    bid_valuer,
+                    bid_optimizer,
                 }));
             }
             CampaignType::MEDIAN => {
                 assert_eq!(converge_targets.len(), 1, "MEDIAN requires exactly one converge target");
                 let (converge_target_box, _) = Self::convert_converge_target(converge_targets[0].clone());
                 let converge_controller = Box::new(crate::controllers::ControllerProportionalDerivative::new()) as Box<dyn crate::controllers::ControllerTrait>;
-                let bidder = Box::new(crate::campaign_bidders_single::CampaignBidderMedian) as Box<dyn CampaignBidderTrait>;
+                let bid_valuer = Box::new(BidValuerMultiplicative) as Box<dyn BidValuerTrait>;
+                let bid_optimizer = Box::new(BidOptimizerMedian) as Box<dyn BidOptimizerTrait>;
                 self.campaigns.push(Box::new(CampaignGeneral {
                     campaign_id,
                     campaign_name,
                     converge_targets: vec![converge_target_box],
                     converge_controllers: vec![converge_controller],
-                    bidder,
+                    bid_valuer,
+                    bid_optimizer,
                 }));
             }
         }
@@ -323,7 +340,8 @@ mod tests {
     #[test]
     fn test_get_bid() {
         // Create a campaign with campaign_id = 2
-        let bidder = Box::new(CampaignBidderMultiplicative) as Box<dyn CampaignBidderTrait>;
+        let bid_valuer = Box::new(BidValuerMultiplicative) as Box<dyn BidValuerTrait>;
+        let bid_optimizer = Box::new(BidOptimizerTrutful) as Box<dyn BidOptimizerTrait>;
         let campaign = CampaignGeneral {
             campaign_id: 2,
             campaign_name: "Test Campaign".to_string(),
@@ -331,7 +349,8 @@ mod tests {
                 total_impressions_target: 1000,
             })],
             converge_controllers: vec![Box::new(crate::controllers::ControllerConstant::new(1.0))],
-            bidder,
+            bid_valuer,
+            bid_optimizer,
         };
 
         // Create a campaign converge with pacing = 0.5
@@ -366,7 +385,8 @@ mod tests {
     #[test]
     fn test_get_bid_with_different_campaign_id() {
         // Create a campaign with campaign_id = 0
-        let bidder = Box::new(CampaignBidderMultiplicative) as Box<dyn CampaignBidderTrait>;
+        let bid_valuer = Box::new(BidValuerMultiplicative) as Box<dyn BidValuerTrait>;
+        let bid_optimizer = Box::new(BidOptimizerTrutful) as Box<dyn BidOptimizerTrait>;
         let campaign = CampaignGeneral {
             campaign_id: 0,
             campaign_name: "Test Campaign".to_string(),
@@ -374,7 +394,8 @@ mod tests {
                 total_budget_target: 5000.0,
             })],
             converge_controllers: vec![Box::new(crate::controllers::ControllerConstant::new(1.0))],
-            bidder,
+            bid_valuer,
+            bid_optimizer,
         };
 
         // Create a campaign converge with pacing = 1.0
@@ -408,7 +429,8 @@ mod tests {
     #[test]
     fn test_get_bid_with_zero_pacing() {
         // Create a campaign with campaign_id = 1
-        let bidder = Box::new(CampaignBidderMultiplicative) as Box<dyn CampaignBidderTrait>;
+        let bid_valuer = Box::new(BidValuerMultiplicative) as Box<dyn BidValuerTrait>;
+        let bid_optimizer = Box::new(BidOptimizerTrutful) as Box<dyn BidOptimizerTrait>;
         let campaign = CampaignGeneral {
             campaign_id: 1,
             campaign_name: "Test Campaign".to_string(),
@@ -416,7 +438,8 @@ mod tests {
                 total_impressions_target: 1000,
             })],
             converge_controllers: vec![Box::new(crate::controllers::ControllerConstant::new(1.0))],
-            bidder,
+            bid_valuer,
+            bid_optimizer,
         };
 
         // Create a campaign converge with pacing = 0.0
