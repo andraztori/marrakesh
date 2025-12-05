@@ -17,7 +17,7 @@ impl ControllerProportionalDerivativeCore {
     /// Note: To get proportional-only behavior, use `new_advanced()` with `derivative_gain = 0.0`
     pub fn new() -> Self {
         Self {
-            tolerance_fraction: 0.005,  // 0.5% tolerance
+            tolerance_fraction: 0.002,  // 0.5% tolerance
             max_adjustment_factor: 0.2,  // Max 20% adjustment
             proportional_gain: 0.1,      // 10% of error
             derivative_gain: 0.05,       // 5% of error rate

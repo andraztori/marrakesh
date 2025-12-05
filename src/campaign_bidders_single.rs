@@ -51,68 +51,6 @@ impl CampaignBidderTrait for CampaignBidderMultiplicativeAdditive {
     }
 }
 
-/// Bidder for optimal bidding strategy
-/// Optimal bidding means that all bids are made at the same marginal utility of spend
-/// That gives an optimal total expected value for the total expected budget
-/// This is achieved by using a sigmoid function to model the win probability and then using the Newton-Raphson method to find the bid that maximizes the marginal utility of spend
-/// The sigmoid function is initialized with the competition parameters and the value of the impression
-/// The Newton-Raphson method is used to find the bid that keeps the marginal utility of spend constant 
-/// The quantity of the marginal utility of spend is what needs to converge (for example based on target impressions or budget)
-pub struct CampaignBidderOptimal;
-
-impl CampaignBidderTrait for CampaignBidderOptimal {
-    fn get_bid(&self, value_to_campaign: f64, impression: &Impression, control_variables: &[f64], _converge_targets: &Vec<Box<dyn CampaignTargetTrait>>, seller_control_factor: f64, logger: &mut Logger) -> Option<f64> {
-        assert_eq!(control_variables.len(), 1, "CampaignBidderOptimal requires exactly 1 control variable");
-        let campaign_control_factor = control_variables[0];
-        
-        // Handle zero or very small campaign_control_factor to avoid division by zero
-        if campaign_control_factor <= 1e-10 {
-            warnln!(logger, LogEvent::Simulation, "Campaign control factor is too small, returning 0.0");
-            return Some(0.0);
-        }
-        
-        // a) Calculate marginal_utility_of_spend as 1.0 / campaign_control_factor
-        let marginal_utility_of_spend = 1.0 / campaign_control_factor;
-        let value = seller_control_factor * value_to_campaign;
-        
-        // Get competition data (required for optimal bidding)
-        let competition = impression.competition.as_ref()
-            .expect("Optimal bidding requires competition data. This impression has no competition data.");
-        
-        // c) Initialize sigmoid with offset and scale from impression competition predicted offset and scale, and value from value
-        let sigmoid = Sigmoid::new(
-            competition.win_rate_prediction_sigmoid_offset,
-            competition.win_rate_prediction_sigmoid_scale,
-            value,
-        );
-        
-        // d) Calculate the bid using marginal_utility_of_spend_inverse
-        let bid = match sigmoid.marginal_utility_of_spend_inverse_numerical_2(marginal_utility_of_spend, impression.floor_cpm.max(0.0)) {
-            Some(bid) => bid,
-            None => {
-                warnln!(logger, LogEvent::Simulation,
-                    "Failed to calculate marginal_utility_of_spend_inverse. \
-                    Sigmoid parameters: offset={:.2}, scale={:.2}, value={:.2}. \
-                    Marginal utility of spend={:.2}. \
-                    Competing bid={:.2}. \
-                    Optimal bidding requires this calculation to succeed.",
-                    sigmoid.offset,
-                    sigmoid.scale,
-                    sigmoid.value,
-                    marginal_utility_of_spend,
-                    competition.bid_cpm);
-                return None;
-            }
-        };
-        
-        Some(bid)
-    }
-    
-    fn get_bidding_type(&self) -> String {
-        "Optimal bidding".to_string()
-    }
-}
-
 /// Bidder for max margin bidding strategy
 pub struct BidderMaxMargin;
 
@@ -166,6 +104,35 @@ impl CampaignBidderTrait for BidderMaxMarginAdditiveSupply {
     
     fn get_bidding_type(&self) -> String {
         "Max margin bidding (additive supply)".to_string()
+    }
+}
+
+/// Bidder for max margin bidding strategy with exponential supply factor
+/// Similar to BidderMaxMargin but uses exponential supply boost: full_price = (campaign_control_factor * value_to_campaign) ^ seller_control_factor
+pub struct BidderMaxMarginExponentialSupply;
+
+impl CampaignBidderTrait for BidderMaxMarginExponentialSupply {
+    fn get_bid(&self, value_to_campaign: f64, impression: &Impression, control_variables: &[f64], _converge_targets: &Vec<Box<dyn CampaignTargetTrait>>, seller_control_factor: f64, logger: &mut Logger) -> Option<f64> {
+        assert_eq!(control_variables.len(), 1, "BidderMaxMarginExponentialSupply requires exactly 1 control variable");
+        let campaign_control_factor = control_variables[0];
+        
+        let boosted_price = (campaign_control_factor * value_to_campaign).powf(seller_control_factor);
+        
+        let competition = impression.competition.as_ref()
+            .expect("Max margin bidding (exponential supply) requires competition data. This impression has no competition data.");
+        
+        let sigmoid = Sigmoid::new(
+            competition.win_rate_prediction_sigmoid_offset,
+            competition.win_rate_prediction_sigmoid_scale,
+            1.0,  // Using normalized value of 1.0
+        );
+        
+
+        sigmoid.max_margin_bid_bisection(boosted_price, impression.floor_cpm)
+    }
+    
+    fn get_bidding_type(&self) -> String {
+        "Max margin bidding (exponential supply)".to_string()
     }
 }
 

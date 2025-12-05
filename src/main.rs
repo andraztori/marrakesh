@@ -97,16 +97,7 @@ fn main() {
         use competition::ImpressionCompetition;
         
         // Setup shared resources
-        use campaigns::{CampaignBidderOptimal, BidderMaxMargin};
-        let bidder_optimal = Box::new(CampaignBidderOptimal) as Box<dyn campaign::CampaignBidderTrait>;
-        let campaign_optimal = CampaignGeneral {
-            campaign_id: 0,
-            campaign_name: "Optimal".to_string(),
-            converge_targets: vec![Box::new(CampaignTargetNone)],
-            converge_controllers: vec![Box::new(crate::controllers::ControllerConstant::new(0.8298))],
-            bidder: bidder_optimal,
-        };
-        
+        use campaigns::BidderMaxMargin;
         let bidder_max_margin = Box::new(BidderMaxMargin) as Box<dyn campaign::CampaignBidderTrait>;
         let campaign_max_margin = CampaignGeneral {
             campaign_id: 0,
@@ -116,7 +107,7 @@ fn main() {
             bidder: bidder_max_margin,
         };
         
-        let converge_vars = campaign_optimal.create_controller_state();
+        let converge_vars = campaign_max_margin.create_controller_state();
         let mut logger = Logger::new();
 
         struct TestCase {
@@ -169,10 +160,8 @@ fn main() {
             println!("{}: {:#?}", test_case.name, impression);
             
             let controller_states: Vec<&dyn campaigns::ControllerStateTrait> = converge_vars.iter().map(|cs| cs.as_ref()).collect();
-            let bid_optimal = campaign_optimal.get_bid(&impression, &controller_states, 1.0, test_case.value, &mut logger);
             let bid_max_margin = campaign_max_margin.get_bid(&impression, &controller_states, 1.0, test_case.value, &mut logger);
             
-            println!("Optimal Bid (pacing=0.8298): {:?}", bid_optimal);
             println!("Max Margin Bid (pacing=0.8298): {:?}", bid_max_margin);
         }
         

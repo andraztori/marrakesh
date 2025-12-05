@@ -60,7 +60,7 @@ Marrakesh models a marketplace with two distinct parties, each with different ob
    - Value impressions differently based on context
    - Compete for impressions through bidding
    - Operate under optimal pacing (assumed)
-   - Use different bidding strategies (multiplicative pacing, optimal bidding, strategic cheating)
+   - Use different bidding strategies (multiplicative pacing, max margin bidding, oracle chea, median bidding)
 
 The marketplace itself is the framework that facilitates transactions between sellers and campaigns. It tracks metrics (supply cost, virtual cost, buyer charge), enforces rules (floors, competing demand thresholds), and observes overall market efficiency, but it is not an active participant with its own objectives or constraints.
 
@@ -198,7 +198,7 @@ Boost factors allow sellers to influence how campaigns value their impressions. 
 
 **Multiplicative Boost** (used by most bidding strategies):
 - Applied multiplicatively to campaign bids: `bid = pacing × value × boost_factor`
-- Used by: MULTIPLICATIVE_PACING, OPTIMAL, CHEATER, MAX_MARGIN, MEDIAN
+- Used by: MULTIPLICATIVE_PACING, CHEATER, MAX_MARGIN, MEDIAN
 - Boost factor scales the entire bid proportionally
 
 **Additive Boost** (used by MULTIPLICATIVE_ADDITIVE):
@@ -256,13 +256,13 @@ All campaigns use the unified `CampaignGeneral` structure, which supports any nu
      - **Convergence Targets** (`Vec<Box<dyn CampaignTargetTrait>>`): Defines what to converge to (impressions, budget, average value, or none)
      - **Convergence Controllers** (`Vec<Box<dyn ControllerTrait>>`): Defines how to converge for each target (proportional, constant)
      - **Bidder** (`Box<dyn CampaignBidderTrait>`): Defines the bidding strategy
-   - Used by all campaign types (MULTIPLICATIVE_PACING, MULTIPLICATIVE_ADDITIVE, OPTIMAL, CHEATER, MAX_MARGIN, MEDIAN, MAX_MARGIN_DOUBLE_TARGET)
+   - Used by all campaign types (MULTIPLICATIVE_PACING, MULTIPLICATIVE_ADDITIVE, CHEATER, MAX_MARGIN, MAX_MARGIN_ADDITIVE_SUPPLY, MAX_MARGIN_EXPONENTIAL_SUPPLY, MEDIAN, MAX_MARGIN_DOUBLE_TARGET)
    - Supports single-target campaigns (one target, one controller) and dual-target campaigns (two targets, two controllers)
    - Uses a stack-allocated array (`[f64; MAX_CONTROLLERS]`) for control variables to avoid heap allocations
 
 **Bidding Strategies**:
    - Single-control bidders (in `campaign_bidders_single.rs`): Use one control variable (pacing)
-     - CampaignBidderMultiplicative, CampaignBidderMultiplicativeAdditive, CampaignBidderOptimal, BidderMaxMargin, CampaignBidderCheaterLastLook, CampaignBidderMedian
+     - CampaignBidderMultiplicative, CampaignBidderMultiplicativeAdditive, BidderMaxMargin, BidderMaxMarginAdditiveSupply, BidderMaxMarginExponentialSupply, CampaignBidderCheaterLastLook, CampaignBidderMedian
    - Dual-control bidders (in `campaign_bidders_double.rs`): Use two control variables (lambda and mu)
      - CampaignBidderDouble: Used for MAX_MARGIN_DOUBLE_TARGET campaigns
 
@@ -270,7 +270,7 @@ This design allows flexible combination of any convergence target(s), controller
 
 ### Campaign Types and Bidding Strategies
 
-Campaigns can use one of seven bidding strategies (implemented as `CampaignBidderTrait` trait objects):
+Campaigns can use one of eight bidding strategies (implemented as `CampaignBidderTrait` trait objects):
 
 1. **Multiplicative Pacing** (`MULTIPLICATIVE_PACING`, `CampaignBidderMultiplicative`):
    - Simple bid calculation: `bid = pacing × value × seller_boost_factor`
@@ -281,29 +281,34 @@ Campaigns can use one of seven bidding strategies (implemented as `CampaignBidde
    - Bid calculation uses additive seller boost: `bid = pacing × value + seller_boost_factor`
    - Similar to multiplicative pacing but applies seller boost factor additively rather than multiplicatively
    - Useful for studying how additive vs. multiplicative boost factors affect marketplace dynamics
-   
-3. **Optimal Bidding** (`OPTIMAL`, `CampaignBidderOptimal`):
-   - Uses sigmoid functions to model win probability
-   - Calculates marginal utility of spend from pacing: `marginal_utility = 1.0 / pacing`
-   - Uses bisection method (`marginal_utility_of_spend_inverse_numerical_2`) to find optimal bid
-   - Requires competition data (sigmoid parameters)
-   - More sophisticated, theoretically optimal approach
 
-4. **Cheater/Last Look** (`CHEATER`, `CampaignBidderCheaterLastLook`):
+3. **Cheater/Last Look** (`CHEATER`, `CampaignBidderCheaterLastLook`):
    - Calculates maximum affordable bid: `max_affordable_bid = pacing × value × seller_boost_factor`
    - Calculates minimum winning bid as `max(floor_cpm, competition.bid_cpm) + 0.00001`
    - Bids the minimum winning bid if affordable, otherwise doesn't bid
    - Models strategic bidding that exploits perfect knowledge of competition
    - Simulates second-price auction behavior by bidding just above competition
 
-5. **Max Margin** (`MAX_MARGIN`, `BidderMaxMargin`):
+4. **Max Margin** (`MAX_MARGIN`, `BidderMaxMargin`):
    - Finds the bid that maximizes expected margin: `P(win) × (full_price - bid)`
-   - Where `full_price = pacing × value × seller_boost_factor`
+   - Where `full_price = pacing × value × seller_boost_factor` (multiplicative supply boost)
    - Uses bisection method to find the bid where the derivative of margin is zero
    - Requires competition data (sigmoid parameters)
-   - The simulation has shown that this approach is equal to Optimal Bidding
+   - Theoretically optimal approach for maximizing expected margin
 
-6. **Median Bidding** (`MEDIAN`, `CampaignBidderMedian`):
+5. **Max Margin Additive Supply** (`MAX_MARGIN_ADDITIVE_SUPPLY`, `BidderMaxMarginAdditiveSupply`):
+   - Similar to Max Margin but uses additive supply boost: `full_price = pacing × value + seller_boost_factor`
+   - Finds the bid that maximizes expected margin with additive supply boost
+   - Requires competition data (sigmoid parameters)
+   - Useful for comparing different supply boost strategies
+
+6. **Max Margin Exponential Supply** (`MAX_MARGIN_EXPONENTIAL_SUPPLY`, `BidderMaxMarginExponentialSupply`):
+   - Similar to Max Margin but uses exponential supply boost: `full_price = (pacing × value) ^ seller_boost_factor`
+   - Finds the bid that maximizes expected margin with exponential supply boost
+   - Requires competition data (sigmoid parameters)
+   - Useful for comparing different supply boost strategies
+
+7. **Median Bidding** (`MEDIAN`, `CampaignBidderMedian`):
    - Also known as ALB (Auction Level Bid)
    - Uses multiplicative pacing to calculate initial bid
    - Only bids if the pacing bid is above the predicted offset point
@@ -311,12 +316,14 @@ Campaigns can use one of seven bidding strategies (implemented as `CampaignBidde
    - Requires competition data (for predicted offset)
    - Research observation: Median Bidding improves vs. multiplicative bidding when there is abundance of impressions, but is worse when there is scarcity and high fill rates
 
-7. **Max Margin Double Target** (`MAX_MARGIN_DOUBLE_TARGET`, `CampaignBidderDouble`):
+8. **Max Margin Double Target** (`MAX_MARGIN_DOUBLE_TARGET`, `CampaignBidderDouble`):
    - Uses max margin bidding strategy with dual control variables (lambda and mu)
    - Converges on two targets simultaneously using `CampaignGeneral` with two targets and controllers
    - Requires two convergence targets (e.g., total impressions and average value)
    - Uses two independent `ControllerProportionalDerivative` instances to manage dual convergence
    - Useful for campaigns with multiple objectives (e.g., reach and quality targets)
+
+   
 ### Convergence Mechanism
 
 The system uses an **iterative feedback loop** to find optimal pacing and boost factors:
@@ -466,13 +473,13 @@ The `CompetitionGeneratorLogNormal` implementation uses several key consideratio
   - Compare predicted vs. actual win rates
   - Understand the impact of prediction errors on bidding strategies
   - Validate that the competition generation process produces realistic distributions
-  - Debug issues with optimal bidding algorithms that depend on win rate predictions
+  - Debug issues with max margin bidding algorithms that depend on win rate predictions
 
 This multi-step process ensures that the generated competition data reflects realistic auction dynamics while providing the flexibility to study the impact of prediction errors and modeling imperfections on bidding strategies.
 
 ---
 
-## Sigmoid Functions and Optimal Bidding
+## Sigmoid Functions and Max Margin Bidding
 
 ### Sigmoid Model
 
@@ -501,33 +508,26 @@ The system uses sigmoid functions to model win probability in auctions:
   - Solves for bid where derivative of margin is zero: `scale * (1 - P(bid)) * (full_price - bid) - 1 = 0`
   - Uses bisection method between `min_x` and `full_price`
 
-### Optimal Bidding Algorithm
-
-Optimal bidding uses the following process:
-
-1. Calculate marginal utility of spend from pacing: `marginal_utility = 1.0 / pacing`
-2. Calculate impression value: `value = seller_boost_factor × impression.value`
-3. Initialize sigmoid with competition parameters and value
-4. Find optimal bid: `bid = sigmoid.marginal_utility_of_spend_inverse_numerical_2(marginal_utility, floor_cpm.max(0.0))`
-   - Uses bisection method with `floor_cpm` as the minimum bid constraint
-   - Handles edge cases (both bounds negative, both positive, etc.)
-   - Ensures bids respect floor prices
-5. Return bid (or `None` if calculation fails or bid is below floor)
-
-This approach ensures campaigns bid optimally given their budget constraints and competition, while respecting minimum bid requirements.
-
 ### Max Margin Bidding Algorithm
 
-Max margin bidding finds the bid that maximizes the expected margin:
-`margin(bid) = P(win|bid) × (full_price - bid)`
+Max margin bidding finds the bid that maximizes the expected margin. The algorithm varies based on the supply boost strategy:
 
-Where `full_price` is the maximum willingness to pay (`pacing × value`).
-
-The algorithm:
-1. Calculates `full_price` based on pacing and value
+**Multiplicative Supply Boost** (`MAX_MARGIN`):
+1. Calculates `full_price = pacing × value × seller_boost_factor`
 2. Uses `max_margin_bid_bisection` to find the bid where the derivative of the margin function is zero
 3. Solves `scale × (1 - P(bid)) × (full_price - bid) - 1 = 0`
 4. Returns the optimal bid for maximizing immediate margin
+
+**Additive Supply Boost** (`MAX_MARGIN_ADDITIVE_SUPPLY`):
+1. Calculates `full_price = pacing × value + seller_boost_factor`
+2. Uses the same bisection method to find the optimal bid
+
+**Exponential Supply Boost** (`MAX_MARGIN_EXPONENTIAL_SUPPLY`):
+1. Calculates `full_price = (pacing × value) ^ seller_boost_factor`
+2. Uses the same bisection method to find the optimal bid
+
+This approach ensures campaigns bid optimally to maximize expected margin given their constraints and competition, while respecting minimum bid requirements.
+
 
 ---
 
@@ -546,10 +546,10 @@ With optimal pacing assumed, researchers can focus on:
 - How do different valuation models affect outcomes?
 - What happens when campaigns have correlated vs. uncorrelated valuations?
 - How do campaign objectives (impressions vs. budget) affect bidding?
-- How does optimal bidding compare to multiplicative pacing?
+- How does max margin bidding compare to multiplicative pacing?
 - What is the impact of strategic bidding (cheating) on marketplace outcomes?
 - How does Median Bidding (ALB) perform compared to other strategies?
-- How do max margin and optimal bidding compare (they appear to be equivalent)?
+- How do different supply boost strategies (multiplicative, additive, exponential) affect max margin bidding?
 
 **Marketplace Design**:
 - How do floors and competing demand thresholds affect outcomes?
@@ -611,7 +611,7 @@ Once converged, analyze:
 Researchers can then vary:
 - Seller pricing models (fixed cost, first price, boost strategies)
 - Campaign objectives and constraints (impressions vs. budget vs. average value)
-- Campaign bidding strategies (multiplicative pacing, optimal bidding, cheater, median bidding, max margin)
+- Campaign bidding strategies (multiplicative pacing, max margin bidding variants, cheater, median bidding)
 - Impression valuations and competition data
 - Marketplace rules (floors, thresholds)
 - Supply composition
@@ -641,10 +641,13 @@ The system includes a scenario framework for structured experimentation:
   - Variant A: Fixed boost (no convergence) with MULTIPLICATIVE_PACING
   - Variant B: Dynamic boost with MULTIPLICATIVE_PACING
   - Variant C: Dynamic boost with MULTIPLICATIVE_ADDITIVE (uses advanced controller parameters)
+- `supply_controlled_boost_2` (from `scenarios/supply_controlled_boost_2.rs`): Comparison of max margin bidding with different supply boost strategies
+  - Variant A: MAX_MARGIN with multiplicative supply boost
+  - Variant B: MAX_MARGIN_ADDITIVE_SUPPLY with additive supply boost
+  - Variant C: MAX_MARGIN_EXPONENTIAL_SUPPLY with exponential supply boost
 - `viewability` (from `scenarios/viewability.rs`): Demonstrates dual-target convergence using MAX_MARGIN_DOUBLE_TARGET
   - Converges on both total impressions and average value targets simultaneously
-- `basic_bidding_strategies` (from `scenarios/basic_bidding_strategies.rs`): Comparison of all bidding strategies (multiplicative pacing, median bidding, optimal bidding, max margin, cheater)
-- `maxmargin_equality` (from `scenarios/maxmargin_equality.rs`): Comparison of Optimal Bidding and Max Margin strategies. This scenario demonstrates that Max Margin and Optimal Bidding appear to be equivalent when configured correctly.
+- `basic_bidding_strategies` (from `scenarios/basic_bidding_strategies.rs`): Comparison of bidding strategies (multiplicative pacing, median bidding, max margin, cheater)
 - `median_bidder` (from `scenarios/median_bidder.rs`): Comparison of Median Bidding (ALB) with other strategies under varying supply conditions
 
 ---
@@ -737,7 +740,7 @@ The system separates:
 - **Impression and auction logic** (`impressions.rs`): Core auction mechanics, impression generation, winner determination
 - **Campaign logic** (`campaign.rs`): Campaign trait, `CampaignGeneral` structure, `CampaignBidderTrait`
 - **Campaign container** (`campaigns.rs`): Campaign container with methods to add campaigns
-- **Campaign bidding strategies (single)** (`campaign_bidders_single.rs`): Single-control-variable bidding strategy implementations (multiplicative, multiplicative additive, optimal, max margin, cheater, median)
+- **Campaign bidding strategies (single)** (`campaign_bidders_single.rs`): Single-control-variable bidding strategy implementations (multiplicative, multiplicative additive, max margin variants, cheater, median)
 - **Campaign bidding strategies (double)** (`campaign_bidders_double.rs`): Dual-control-variable bidding strategy implementations (max margin with lambda and mu)
 - **Campaign convergence targets** (`campaign_targets.rs`): Campaign convergence target implementations (impressions, budget, average value, none)
 - **Seller logic** (`seller.rs`): Seller trait, `SellerGeneral` structure
@@ -861,7 +864,7 @@ The framework is designed to be extended without modifying core logic:
 - Optimize marketplace rules
 - Validate pricing mechanisms
 - Develop marketplace optimization techniques
-- Compare bidding strategies (pacing vs. optimal vs. strategic)
+- Compare bidding strategies (pacing vs. max margin vs. strategic)
 
 ---
 

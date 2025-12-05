@@ -1,12 +1,15 @@
-/// In this scenario we compare two variants:
+/// In this scenario we compare three variants:
 ///
 /// - MAX_MARGIN: Uses max margin bidding with multiplicative supply boost
 ///   full_price = campaign_control_factor * seller_control_factor * value_to_campaign
 ///
 /// - MAX_MARGIN_ADDITIVE_SUPPLY: Uses max margin bidding with additive supply boost
 ///   full_price = campaign_control_factor * value_to_campaign + seller_control_factor
+///
+/// - MAX_MARGIN_EXPONENTIAL_SUPPLY: Uses max margin bidding with exponential supply boost
+///   full_price = (campaign_control_factor * value_to_campaign) ^ seller_control_factor
 /// 
-/// Both variants use dynamic boost for MRG seller and competition data for both sellers.
+/// All variants use dynamic boost for MRG seller and competition data for both sellers.
 
 use crate::simulationrun::{Marketplace, SimulationType};
 use crate::sellers::Sellers;
@@ -62,7 +65,7 @@ fn prepare_variant(campaign_type: CampaignType) -> SimulationConverge {
     let target_total_cost = (impressions_on_offer_mrg as f64) * fixed_cost_cpm / 1000.0;
     // Use aggressive controller setup for both variants to ensure faster convergence
     let controller = crate::controllers::ControllerProportionalDerivative::new_advanced(
-        0.005, // tolerance_fraction
+        0.002, // tolerance_fraction
         0.3,   // max_adjustment_factor
         0.2,   // proportional_gain (aggressive: 100% of error)
         0.05,  // derivative_gain (half of proportional_gain)
@@ -94,7 +97,7 @@ fn prepare_variant(campaign_type: CampaignType) -> SimulationConverge {
     let seller_hb: Box<dyn SellerTrait> = Box::new(SellerGeneral {
         seller_id: 0,  // Will be set by add_advanced
         seller_name: "HB".to_string(),
-        impressions_on_offer: 10000,
+        impressions_on_offer: 5000,
         converge_targets: vec![Box::new(SellerTargetNone)],
         converge_controllers: vec![Box::new(crate::controllers::ControllerConstant::new(1.0))],
         competition_generator: CompetitionGeneratorLogNormal::new(10.0),
@@ -117,21 +120,26 @@ fn prepare_variant(campaign_type: CampaignType) -> SimulationConverge {
 }
 
 
-/// Scenario comparing MAX_MARGIN with multiplicative vs additive supply boost
+/// Scenario comparing MAX_MARGIN with multiplicative vs additive vs exponential supply boost
 /// 
 /// This scenario compares max margin bidding with:
 /// - Multiplicative supply boost: full_price = campaign_control_factor * seller_control_factor * value_to_campaign
 /// - Additive supply boost: full_price = campaign_control_factor * value_to_campaign + seller_control_factor
+/// - Exponential supply boost: full_price = (campaign_control_factor * value_to_campaign) ^ seller_control_factor
 /// 
-/// Both variants use dynamic boost for MRG seller and competition data for both sellers.
+/// All variants use dynamic boost for MRG seller and competition data for both sellers.
 pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::error::Error>> {
     // Run variant A with MAX_MARGIN (multiplicative supply boost)
     let simulation_converge_a = prepare_variant(CampaignType::MAX_MARGIN);
-    let stats_a = simulation_converge_a.run_variant("Running MAX_MARGIN with multiplicative supply boost", scenario_name, "max_margin", 100, logger)?;
+    let stats_a = simulation_converge_a.run_variant("Running MAX_MARGIN with multiplicative supply boost", scenario_name, "max_margin_multiplicative_supply", 100, logger)?;
     
     // Run variant B with MAX_MARGIN_ADDITIVE_SUPPLY (additive supply boost)
     let simulation_converge_b = prepare_variant(CampaignType::MAX_MARGIN_ADDITIVE_SUPPLY);
     let stats_b = simulation_converge_b.run_variant("Running MAX_MARGIN_ADDITIVE_SUPPLY with additive supply boost", scenario_name, "max_margin_additive_supply", 100, logger)?;
+    
+    // Run variant C with MAX_MARGIN_EXPONENTIAL_SUPPLY (exponential supply boost)
+    let simulation_converge_c = prepare_variant(CampaignType::MAX_MARGIN_EXPONENTIAL_SUPPLY);
+    let stats_c = simulation_converge_c.run_variant("Running MAX_MARGIN_EXPONENTIAL_SUPPLY with exponential supply boost", scenario_name, "max_margin_exponential_supply", 100, logger)?;
     
     // Validate expected marketplace behavior
     logln!(logger, LogEvent::Scenario, "");
@@ -164,6 +172,22 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
         supply_cost_b, virtual_cost_b, diff_b, max_diff_b
     );
     if diff_b <= max_diff_b {
+        logln!(logger, LogEvent::Scenario, "✓ {}", msg);
+    } else {
+        errors.push(msg.clone());
+        errln!(logger, LogEvent::Scenario, "{}", msg);
+    }
+    
+    // Check: Variant C (MAX_MARGIN_EXPONENTIAL_SUPPLY) - total overall supply and virtual cost should be nearly equal (max 1% off)
+    let supply_cost_c = stats_c.overall_stat.total_supply_cost;
+    let virtual_cost_c = stats_c.overall_stat.total_virtual_cost;
+    let diff_c = (supply_cost_c - virtual_cost_c).abs();
+    let max_diff_c = supply_cost_c.max(virtual_cost_c) * 0.01; // 1% of the larger value
+    let msg = format!(
+        "Variant C (MAX_MARGIN_EXPONENTIAL_SUPPLY) - Total overall supply and virtual cost are nearly equal (within 1%): supply={:.2}, virtual={:.2}, diff={:.2}, max_diff={:.2}",
+        supply_cost_c, virtual_cost_c, diff_c, max_diff_c
+    );
+    if diff_c <= max_diff_c {
         logln!(logger, LogEvent::Scenario, "✓ {}", msg);
     } else {
         errors.push(msg.clone());
@@ -207,6 +231,17 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
     } else {
         errors.push(msg.clone());
         errln!(logger, LogEvent::Scenario, "{}", msg);
+    }
+    
+    // Check: Variant C (MAX_MARGIN_EXPONENTIAL_SUPPLY) - compare value-to-cost ratio with other variants
+    if supply_cost_c > 0.0 {
+        let value_c = stats_c.overall_stat.total_value;
+        let ratio_c = value_c / supply_cost_c;
+        let msg = format!(
+            "Variant C (MAX_MARGIN_EXPONENTIAL_SUPPLY) value-to-cost ratio: {:.4}",
+            ratio_c
+        );
+        logln!(logger, LogEvent::Scenario, "✓ {}", msg);
     }
     
     if errors.is_empty() {

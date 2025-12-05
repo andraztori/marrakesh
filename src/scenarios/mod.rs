@@ -35,7 +35,6 @@ pub mod basic_bidding_strategies;
 pub mod supply_simple_boost;
 pub mod supply_controlled_boost;
 pub mod supply_controlled_boost_2;
-pub mod maxmargin_equality;
 pub mod median_bidder;
 pub mod viewability;
 pub mod value_groups;
