@@ -11,54 +11,51 @@ use crate::utils::get_seed;
 use crate::utils::VERBOSE_AUCTION;
 use std::sync::atomic::Ordering;
 
-/// Represents the winner of an auction
+/// Represents the result of an auction
 #[allow(non_camel_case_types)]
 #[derive(Debug, Clone, PartialEq)]
-pub enum Winner {
+pub enum AuctionResult {
     Campaign { 
         campaign_id: usize, 
-        virtual_cost: f64,
-        buyer_charge: f64,
+        supply_cost: f64,
+        net_supply_cost: f64,
+        gross_buyer_charge: f64,
     },
-    LOST,
-    NO_DEMAND,
+    LOST {
+        supply_cost: f64,
+    },
+    NO_DEMAND {
+        supply_cost: f64,
+    },
 }
 
 /// Represents a fractional winner in a fractional auction
+/// Note: net_supply_cost, gross_buyer_charge, and supply_cost are here not yet multiplied by win_fraction
 #[derive(Debug, Clone, PartialEq)]
 pub struct FractionalWinner {
     pub campaign_id: usize,
-    pub virtual_cost: f64,
-    pub buyer_charge: f64,
-    pub win_fraction: f64,
-    pub bid_cpm: f64,
     pub supply_cost: f64,
+    pub net_supply_cost: f64,
+    pub gross_buyer_charge: f64,
+    pub win_fraction: f64,
 }
 
-/// Represents the winners of a fractional auction (can have multiple campaigns winning fractions)
+/// Represents the result of a fractional auction (can have multiple campaigns winning fractions)
 #[allow(non_camel_case_types)]
 #[derive(Debug, Clone, PartialEq)]
-pub enum FractionalWinners {
+pub enum FractionalAuctionResult {
     Campaigns {
         winners: Vec<FractionalWinner>,
+        // Supply cost is under each individual winner, fractionally
     },
-    LOST,
-    NO_DEMAND,
+    LOST {
+        supply_cost: f64,
+    },
+    NO_DEMAND {
+        supply_cost: f64,
+    },
 }
 
-/// Represents the result of an auction, subsuming the winner with cost information
-#[derive(Debug, Clone, PartialEq)]
-pub struct AuctionResult {
-    pub winner: Winner,
-    pub supply_cost: f64,
-}
-
-/// Represents the result of a fractional auction, subsuming the winners with cost information
-#[derive(Debug, Clone, PartialEq)]
-pub struct FractionalAuctionResult {
-    pub winner: FractionalWinners,
-    pub supply_cost: f64,
-}
 
 /// Object-safe wrapper for Distribution<f64> that works with StdRng
 /// This is needed because Distribution<f64> cannot be made into a trait object
@@ -115,8 +112,7 @@ impl Impression {
     /// Returns the auction result
     pub fn run_auction(&self, campaigns: &Campaigns, campaign_converges: &[Vec<&dyn crate::controllers::ControllerStateTrait>], seller: &dyn SellerTrait, seller_converge: &dyn crate::controllers::ControllerStateTrait, logger: &mut crate::logger::Logger) -> AuctionResult {
         // Get bids from all campaigns
-        let mut winning_bid_cpm = 0.0;
-        let mut winning_campaign_id: Option<usize> = None;
+        let mut winning_campaign: Option<(usize, crate::campaign::CampaignBid)> = None;
         let mut all_bids = if VERBOSE_AUCTION.load(Ordering::Relaxed) {
             Some(Vec::new())
         } else {
@@ -133,56 +129,61 @@ impl Impression {
             let group_id = campaigns.campaign_to_value_group_mapping[campaign_id];
             let value_to_campaign = self.value_to_campaign_group[group_id];
             // Use the trait method for get_bid
-            if let Some(bid) = campaign.get_bid(self, &campaign_converge, seller_control_factor, value_to_campaign, logger) {
+            if let Some(campaign_bid) = campaign.get_bid(self, &campaign_converge, seller_control_factor, value_to_campaign, logger) {
                 // Check if bid is below zero - skip negative bids
-                if bid < 0.0 {
-                    errln!(logger, LogEvent::Simulation, "Bid below zero: {:.4} from campaign_id: {}, skipping", bid, campaign_id);
+                if campaign_bid.gross_bid < 0.0 {
+                    errln!(logger, LogEvent::Simulation, "Bid below zero: {:.4} from campaign_id: {}, skipping", campaign_bid.gross_bid, campaign_id);
                     continue;
                 }
                 if let Some(bids) = &mut all_bids {
-                    bids.push((campaign_id, bid));
+                    bids.push((campaign_id, campaign_bid.gross_bid));
                 }
-                if bid > winning_bid_cpm {
-                    winning_bid_cpm = bid;
-                    winning_campaign_id = Some(campaign_id);
-                    //println!("Winning bid: {:.4}, campaign_id: {}", bid, campaign_id);
+                let current_winning_bid = winning_campaign.as_ref().map(|(_, b)| b.gross_bid).unwrap_or(0.0);
+                if campaign_bid.gross_bid > current_winning_bid {
+                    winning_campaign = Some((campaign_id, campaign_bid));
+                    //println!("Winning bid: {:.4}, campaign_id: {}", campaign_bid.gross_bid, campaign_id);
                 }
             }
             // If get_bid returns None, skip this campaign (warning already logged)
         }
 
+        // Extract winning bid CPM for logging before moving winning_campaign
+        let winning_bid_cpm_for_logging = winning_campaign.as_ref().map(|(_, b)| b.gross_bid).unwrap_or(0.0);
+
         // Determine the result based on winning bid
         // Check all failure conditions first, then create winner in one place
-        let (winner, supply_cost) = 'result: {
+        let winner = 'result: {
             // No campaigns participated
-            let campaign_id = match winning_campaign_id {
-                Some(id) => id,
-                None => break 'result (Winner::NO_DEMAND, seller.get_supply_cost_cpm(0.0) / 1000.0),
+            let (campaign_id, winning_bid) = match winning_campaign {
+                Some((id, bid)) => (id, bid),
+                None => {
+                    let supply_cost = seller.get_supply_cost_cpm(0.0) / 1000.0;
+                    break 'result AuctionResult::NO_DEMAND { supply_cost };
+                },
             };
             
             // Winning bid is below z or below competition - no winner (LOST)
-            let minimum_cpm_to_win = if let Some(competition) = &self.competition {
-                self.floor_cpm.max(competition.bid_cpm)
-            } else {
-                self.floor_cpm
-            };
+            let competition_bid = self.competition.as_ref().map(|c| c.bid_cpm).unwrap_or(0.0);
+            let minimum_cpm_to_win = self.floor_cpm.max(competition_bid);
             
-            if winning_bid_cpm < minimum_cpm_to_win {
-                break 'result (Winner::LOST, seller.get_supply_cost_cpm(0.0) / 1000.0);
+            if winning_bid.gross_bid < minimum_cpm_to_win {
+                let supply_cost = seller.get_supply_cost_cpm(0.0) / 1000.0;
+                break 'result AuctionResult::LOST { supply_cost };
             }
             
             // Valid winner - bid passes all checks (floor and competition if present)
-            // Set cost values - virtual_cost and buyer_charge are always the winning bid
-            let supply_cost = seller.get_supply_cost_cpm(winning_bid_cpm) / 1000.0;
-            let virtual_cost = winning_bid_cpm / 1000.0;
-            let buyer_charge = winning_bid_cpm / 1000.0;
+            // Use net_bid and gross_bid from the CampaignBid object
+            let supply_cost = seller.get_supply_cost_cpm(winning_bid.gross_bid) / 1000.0;
+            let net_supply_cost = winning_bid.net_bid / 1000.0;
+            let gross_buyer_charge = winning_bid.gross_bid / 1000.0;
             
             // Convert from CPM to actual cost by dividing by 1000
-            (Winner::Campaign {
+            AuctionResult::Campaign {
                 campaign_id,
-                virtual_cost,
-                buyer_charge,
-            }, supply_cost)
+                supply_cost,
+                net_supply_cost,
+                gross_buyer_charge,
+            }
         };
 
         // Log auction data in CSV format
@@ -197,14 +198,14 @@ impl Impression {
             
             // demand_id (winner identifier)
             let demand_id = match &winner {
-                Winner::Campaign { campaign_id, .. } => format!("{}", campaign_id),
-                Winner::LOST => "LOST".to_string(),
-                Winner::NO_DEMAND => "NO_DEMAND".to_string(),
+                AuctionResult::Campaign { campaign_id, .. } => format!("{}", campaign_id),
+                AuctionResult::LOST { .. } => "LOST".to_string(),
+                AuctionResult::NO_DEMAND { .. } => "NO_DEMAND".to_string(),
             };
             csv_fields.push(demand_id);
             
             // winning_bid
-            csv_fields.push(format!("{:.4}", winning_bid_cpm));
+            csv_fields.push(format!("{:.4}", winning_bid_cpm_for_logging));
             
             // floor_cpm
             csv_fields.push(format!("{:.4}", self.floor_cpm));
@@ -243,10 +244,7 @@ impl Impression {
             logln!(logger, LogEvent::Auction, "{}", csv_fields.join(","));
         }
 
-        AuctionResult {
-            winner,
-            supply_cost,
-        }
+        winner
     }
 
     /// Run a fractional auction for this impression with the given campaigns, campaign converges, seller, and seller convergence parameters
@@ -259,11 +257,8 @@ impl Impression {
     pub fn run_fractional_auction(&self, campaigns: &Campaigns, campaign_converges: &[Vec<&dyn crate::controllers::ControllerStateTrait>], seller: &dyn SellerTrait, seller_converge: &dyn crate::controllers::ControllerStateTrait, softmax_temperature: f64, logger: &mut crate::logger::Logger) -> FractionalAuctionResult {
         // Calculate minimum CPM needed to win this impression
         // Must be at least the floor, and if competition exists, must beat the competing bid
-        let minimum_cpm_to_win = if let Some(competition) = &self.competition {
-            self.floor_cpm.max(competition.bid_cpm)
-        } else {
-            self.floor_cpm
-        };
+        let competition_bid = self.competition.as_ref().map(|c| c.bid_cpm).unwrap_or(0.0);
+        let minimum_cpm_to_win = self.floor_cpm.max(competition_bid);
 
         // Collect all campaigns with bids above minimum_cpm_to_win
         let mut fractional_winners: Vec<FractionalWinner> = Vec::new();
@@ -279,43 +274,38 @@ impl Impression {
             let group_id = campaigns.campaign_to_value_group_mapping[campaign_id];
             let value_to_campaign = self.value_to_campaign_group[group_id];
             // Use the trait method for get_bid
-            if let Some(bid) = campaign.get_bid(self, &campaign_converge, seller_control_factor, value_to_campaign, logger) {
-                
+            if let Some(campaign_bid) = campaign.get_bid(self, &campaign_converge, seller_control_factor, value_to_campaign, logger) {
                 any_bids_made = true;
                 // Check if bid is below zero - skip negative bids
-                if bid < 0.0 {
-                    errln!(logger, LogEvent::Simulation, "Bid below zero: {:.4} from campaign_id: {}, skipping", bid, campaign_id);
+                if campaign_bid.gross_bid < 0.0 {
+                    errln!(logger, LogEvent::Simulation, "Bid below zero: {:.4} from campaign_id: {}, skipping", campaign_bid.gross_bid, campaign_id);
                     continue;
                 }                
                 // If bid is above minimum_cpm_to_win, add to winners list
-                if bid >= minimum_cpm_to_win {
-                    let virtual_cost = bid / 1000.0;
-                    let buyer_charge = bid / 1000.0;
-                    let supply_cost = seller.get_supply_cost_cpm(bid) / 1000.0;
+                if campaign_bid.gross_bid >= minimum_cpm_to_win {
                     fractional_winners.push(FractionalWinner {
                         campaign_id,
-                        virtual_cost,
-                        buyer_charge,
+                        supply_cost: seller.get_supply_cost_cpm(campaign_bid.gross_bid) / 1000.0,
+                        net_supply_cost: campaign_bid.net_bid / 1000.0,
+                        gross_buyer_charge: campaign_bid.gross_bid / 1000.0,
                         win_fraction: 1.0,
-                        bid_cpm: bid,
-                        supply_cost,
                     });
                 }
             }
             // If get_bid returns None, skip this campaign (warning already logged)
         }
 
-        // Calculate win_fraction using softmax based on bid_cpm with temperature
+        // Calculate win_fraction using softmax based on gross_buyer_charge with temperature
         // Temperature controls the sharpness: lower = sharper (more concentrated on highest bid), higher = smoother (more uniform)
         if !fractional_winners.is_empty() {
             // Find maximum bid for numerical stability (log-sum-exp trick)
             let max_bid = fractional_winners.iter()
-                .map(|w| w.bid_cpm)
+                .map(|w| w.gross_buyer_charge)
                 .fold(f64::NEG_INFINITY, f64::max);
             
-            // Calculate exp((bid_cpm - max_bid) / temperature) for each winner
+            // Calculate exp((gross_buyer_charge - max_bid) / temperature) for each winner
             let exp_values: Vec<f64> = fractional_winners.iter()
-                .map(|w| ((w.bid_cpm - max_bid) / softmax_temperature).exp())
+                .map(|w| ((w.gross_buyer_charge - max_bid) / softmax_temperature).exp())
                 .collect();
             
             // Calculate sum of exp values
@@ -328,30 +318,25 @@ impl Impression {
         }
 
         // Determine the result based on collected winners
-        // Check all failure conditions first, then create winner in one place
-        let (winner, supply_cost) = if fractional_winners.is_empty() {
+        // Check all failure conditions first, then create winners in one place
+        let winners = if fractional_winners.is_empty() {
             // Distinguish between no bids (NO_DEMAND) and bids below threshold (LOST)
             // Even when impression is not sold, calculate supply cost (0.0 for first price, fixed_cost_cpm for fixed price)
             let supply_cost = seller.get_supply_cost_cpm(0.0) / 1000.0;
-            let winner = if any_bids_made {
-                FractionalWinners::LOST
+            if any_bids_made {
+                FractionalAuctionResult::LOST { supply_cost }
             } else {
-                FractionalWinners::NO_DEMAND
-            };
-            (winner, supply_cost)
+                FractionalAuctionResult::NO_DEMAND { supply_cost }
+            }
         } else {
             // Valid winners - all passed the minimum_cpm_to_win threshold
             // For fractional auctions with winners, supply cost is calculated per winner
-            // We'll use 0.0 here as a placeholder since supply cost is calculated per fractional winner
             // The actual supply cost will be aggregated from individual winners in statistics
-            (FractionalWinners::Campaigns {
+            FractionalAuctionResult::Campaigns {
                 winners: fractional_winners,
-            }, 0.0)
+            }
         };
-        FractionalAuctionResult {
-            winner,
-            supply_cost,
-        }
+        winners
     }
 }
 

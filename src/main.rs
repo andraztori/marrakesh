@@ -91,6 +91,36 @@ fn main() {
         return;
     }
     
+    // Check if "oneoff" argument is provided
+    if args.len() > 1 && args[1] == "oneoff" {
+        use crate::sigmoid::Sigmoid;
+        
+        // Create sigmoid with scale=2, offset=1, value=1
+        let sigmoid = Sigmoid::new(1.0, 2.0, 1.0);
+        
+        // Find optimal bid for value=1.5 using bisection
+        let full_price = 1.5;
+        let min_bid = 0.0;
+        
+        match sigmoid.max_margin_bid_bisection(full_price, min_bid) {
+            Some(optimal_bid) => {
+                println!("Optimal bid: {:.6}", optimal_bid);
+            }
+            None => {
+                println!("Could not find optimal bid (max_bid <= min_bid)");
+            }
+        }
+        
+        // Calculate win rates at specific bid values
+        let bids = vec![0.86, 1.08, 1.0];
+        for bid in bids {
+            let win_rate = sigmoid.get_probability(bid);
+            println!("Win rate at bid {:.2}: {:.6}", bid, win_rate);
+        }
+        
+        return;
+    }
+    
     // Check if "test" argument is provided
     if args.len() > 1 && args[1] == "test" {
         use campaigns::{CampaignGeneral, CampaignTargetNone, CampaignTrait};
@@ -166,7 +196,7 @@ fn main() {
             let controller_states: Vec<&dyn campaigns::ControllerStateTrait> = converge_vars.iter().map(|cs| cs.as_ref()).collect();
             let bid_max_margin = campaign_max_margin.get_bid(&impression, &controller_states, 1.0, test_case.value, &mut logger);
             
-            println!("Max Margin Bid (pacing=0.8298): {:?}", bid_max_margin);
+            println!("Max Margin Bid (pacing=0.8298): {:?}", bid_max_margin.as_ref().map(|b| b.gross_bid));
         }
         
         return;

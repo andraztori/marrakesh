@@ -62,17 +62,17 @@ Marrakesh models a marketplace with two distinct parties, each with different ob
    - Operate under optimal pacing (assumed)
    - Use different bidding strategies (multiplicative pacing, max margin bidding, oracle chea, median bidding)
 
-The marketplace itself is the framework that facilitates transactions between sellers and campaigns. It tracks metrics (supply cost, virtual cost, buyer charge), enforces rules (floors, competing demand thresholds), and observes overall market efficiency, but it is not an active participant with its own objectives or constraints.
+The marketplace itself is the framework that facilitates transactions between sellers and campaigns. It tracks metrics (supply cost, net supply cost, gross buyer charge), enforces rules (floors, competing demand thresholds), and observes overall market efficiency, but it is not an active participant with its own objectives or constraints.
 
 ### Cost Accounting Model
 
 The system tracks three distinct cost metrics to model realistic marketplace economics:
 
 - **Supply Cost**: What sellers actually receive
-- **Virtual Cost**: What the marketplace tracks internally (currently `winning_bid_cpm / 1000.0`)
-- **Buyer Charge**: What campaigns actually pay (currently `winning_bid_cpm / 1000.0`)
+- **Net Supply Cost**: What the marketplace tracks internally (currently `net_bid / 1000.0` from `CampaignBid`)
+- **Gross Buyer Charge**: What campaigns actually pay (currently `gross_bid / 1000.0` from `CampaignBid`)
 
-In the current implementation, virtual cost and buyer charge are identical (both equal the winning bid converted from CPM to actual cost), but the separation allows for future modeling of marketplace fees, margins, discounts, or other platform mechanisms.
+Campaigns return bids as `CampaignBid` objects containing both `net_bid` and `gross_bid` fields. In the current implementation, `net_bid` and `gross_bid` are identical (both equal the winning bid), but the separation allows for future modeling of marketplace fees, margins, discounts, or other platform mechanisms. When aggregated into statistics, these become `total_net_supply_cost` and `total_gross_buyer_charge`.
 
 ---
 
@@ -96,10 +96,17 @@ The auction uses a **first-price sealed-bid** model with additional constraints:
 - Bids must exceed competing external demand (`bid_cpm` from `ImpressionCompetition`) - if competition data exists
 - Highest valid bid wins
 
-The auction outcomes:
-1. **LOST**: Bid is below seller's floor price or below competing external demand
-2. **Campaign wins**: Valid bid that passes all checks
-3. **NO_DEMAND**: No campaigns participated
+The auction outcomes are represented by the `AuctionResult` enum:
+1. **LOST**: Bid is below seller's floor price or below competing external demand (contains `supply_cost`)
+2. **Campaign wins**: Valid bid that passes all checks (contains `campaign_id`, `supply_cost`, `net_supply_cost`, `gross_buyer_charge`)
+3. **NO_DEMAND**: No campaigns participated (contains `supply_cost`)
+
+For fractional auctions, the `FractionalAuctionResult` enum represents:
+1. **Campaigns**: Multiple campaigns winning fractions (contains `Vec<FractionalWinner>`)
+2. **LOST**: No valid bids above threshold (contains `supply_cost`)
+3. **NO_DEMAND**: No campaigns participated (contains `supply_cost`)
+
+The `FractionalWinner` struct contains: `campaign_id`, `supply_cost`, `net_supply_cost`, `gross_buyer_charge`, and `win_fraction` (in that order).
 
 This models realistic marketplace constraints where campaigns compete not just with each other, but also with:
 - External demand sources (modeled via `ImpressionCompetition`)
@@ -113,9 +120,10 @@ Marrakesh supports two auction types: **Standard** and **Fractional Internal Auc
 **How Fractional Auctions Work**:
 - Instead of a single winner taking the entire impression, multiple campaigns can win fractions of an impression
 - All campaigns with bids above the minimum CPM threshold (floor or competition) are considered winners
-- Win fractions are calculated using a softmax function based on bid CPM values: `win_fraction_i = exp(bid_cpm_i) / Σ exp(bid_cpm_j)`
+- Win fractions are calculated using a softmax function based on gross buyer charge values: `win_fraction_i = exp(gross_buyer_charge_i) / Σ exp(gross_buyer_charge_j)`
 - Each fractional winner receives a proportional share of the impression based on their win fraction
-- Supply costs, virtual costs, and buyer charges are weighted by win fractions when aggregating statistics
+- Supply costs, net supply costs, and gross buyer charges are weighted by win fractions when aggregating statistics
+- Note: The `FractionalWinner` struct stores `net_supply_cost`, `gross_buyer_charge`, and `supply_cost` values that are not yet multiplied by `win_fraction`; the multiplication happens during statistics aggregation
 
 **Benefits of Fractional Auctions**:
 - **Improved Convergence Stability**: By allowing multiple campaigns to share impressions, the system reduces the impact of discrete auction outcomes on convergence. Small changes in pacing don't cause dramatic shifts in win/loss patterns.
@@ -256,6 +264,7 @@ All campaigns use the unified `CampaignGeneral` structure, which supports any nu
      - **Convergence Targets** (`Vec<Box<dyn CampaignTargetTrait>>`): Defines what to converge to (impressions, budget, average value, or none)
      - **Convergence Controllers** (`Vec<Box<dyn ControllerTrait>>`): Defines how to converge for each target (proportional, constant)
      - **Bidder** (`Box<dyn CampaignBidderTrait>`): Defines the bidding strategy
+   - The `get_bid()` method returns `Option<CampaignBid>`, where `CampaignBid` contains both `net_bid` and `gross_bid` fields
    - Used by all campaign types (MULTIPLICATIVE_PACING, MULTIPLICATIVE_ADDITIVE, CHEATER, MAX_MARGIN, MAX_MARGIN_ADDITIVE_SUPPLY, MAX_MARGIN_EXPONENTIAL_SUPPLY, MEDIAN, MAX_MARGIN_DOUBLE_TARGET)
    - Supports single-target campaigns (one target, one controller) and dual-target campaigns (two targets, two controllers)
    - Uses a stack-allocated array (`[f64; MAX_CONTROLLERS]`) for control variables to avoid heap allocations
@@ -387,7 +396,7 @@ The system uses a **strategy pattern** for convergence with trait-based dynamic 
 
 **Campaign Convergence Targets**:
 - `CampaignTargetTotalImpressions`: Target is total impressions obtained
-- `CampaignTargetTotalBudget`: Target is total budget spent (uses `total_buyer_charge`)
+- `CampaignTargetTotalBudget`: Target is total budget spent (uses `total_gross_buyer_charge`)
 - `CampaignTargetAvgValue`: Target is average value per impression (uses `total_value / impressions_obtained`)
   - Target value is specified as `avg_impression_value_to_campaign` (scaled by 1000 when instantiated)
   - Useful for quality-focused campaigns (e.g., viewability targets)
@@ -395,7 +404,7 @@ The system uses a **strategy pattern** for convergence with trait-based dynamic 
 
 **Seller Convergence Targets**:
 - `SellerTargetNone`: No target (constant boost factor, with configurable default value)
-- `SellerTargetTotalCost`: Target is total cost (uses `total_virtual_cost` from seller statistics)
+- `SellerTargetTotalCost`: Target is total cost (uses `total_net_supply_cost` from seller statistics)
 
 **Design Benefits**:
 - Clear separation: Convergence targets define what to converge to, controllers define how to converge
@@ -660,7 +669,7 @@ The system provides statistics at three levels:
 
 1. **Campaign Level**: Performance of individual campaigns
    - Impressions obtained vs. targets
-   - Costs (supply, virtual, buyer)
+   - Costs (supply, net supply, gross buyer charge)
    - Value obtained
    - Efficiency metrics
 
@@ -709,7 +718,7 @@ The system uses a structured logging framework with event-based filtering and mu
 - `auctions-<variant_name>-iter<iteration_number>.csv`: Detailed auction data for each iteration
   - Contains full impression data (competition and floor)
   - Lists all bidders for each impression (irrespective of winning)
-  - Includes auction result (winner, bid amount, etc.)
+  - Includes auction result (`AuctionResult` or `FractionalAuctionResult`, bid amounts, etc.)
   - One dense line per auction in CSV format
   - Only logs value for the first campaign to reduce file size
 

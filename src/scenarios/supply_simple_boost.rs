@@ -111,9 +111,9 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
     let msg = format!(
         "Variant A (MRG boost 1.0) is unprofitable (supply_cost > buyer_charge): {:.2} > {:.2}",
         stats_a.overall_stat.total_supply_cost,
-        stats_a.overall_stat.total_buyer_charge
+        stats_a.overall_stat.total_gross_buyer_charge
     );
-    if stats_a.overall_stat.total_supply_cost > stats_a.overall_stat.total_buyer_charge {
+    if stats_a.overall_stat.total_supply_cost > stats_a.overall_stat.total_gross_buyer_charge {
         logln!(logger, LogEvent::Scenario, "✓ {}", msg);
     } else {
         errors.push(msg.clone());
@@ -124,9 +124,9 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
     let msg = format!(
         "Variant B (MRG boost 2.0) is profitable (supply_cost < buyer_charge): {:.2} < {:.2}",
         stats_b.overall_stat.total_supply_cost,
-        stats_b.overall_stat.total_buyer_charge
+        stats_b.overall_stat.total_gross_buyer_charge
     );
-    if stats_b.overall_stat.total_supply_cost < stats_b.overall_stat.total_buyer_charge {
+    if stats_b.overall_stat.total_supply_cost < stats_b.overall_stat.total_gross_buyer_charge {
         logln!(logger, LogEvent::Scenario, "✓ {}", msg);
     } else {
         errors.push(msg.clone());
@@ -137,9 +137,9 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
     let msg = format!(
         "Seller 0 (MRG) in variant A (MRG boost 1.0) is unprofitable (supply_cost > buyer_charge): {:.2} > {:.2}",
         stats_a.seller_stats[0].total_supply_cost,
-        stats_a.seller_stats[0].total_buyer_charge
+        stats_a.seller_stats[0].total_gross_buyer_charge
     );
-    if stats_a.seller_stats[0].total_supply_cost > stats_a.seller_stats[0].total_buyer_charge {
+    if stats_a.seller_stats[0].total_supply_cost > stats_a.seller_stats[0].total_gross_buyer_charge {
         logln!(logger, LogEvent::Scenario, "✓ {}", msg);
     } else {
         errors.push(msg.clone());
@@ -150,9 +150,9 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
     let msg = format!(
         "Seller 0 (MRG) in variant B (MRG boost 2.0) is profitable (supply_cost < buyer_charge): {:.2} < {:.2}",
         stats_b.seller_stats[0].total_supply_cost,
-        stats_b.seller_stats[0].total_buyer_charge
+        stats_b.seller_stats[0].total_gross_buyer_charge
     );
-    if stats_b.seller_stats[0].total_supply_cost < stats_b.seller_stats[0].total_buyer_charge {
+    if stats_b.seller_stats[0].total_supply_cost < stats_b.seller_stats[0].total_gross_buyer_charge {
         logln!(logger, LogEvent::Scenario, "✓ {}", msg);
     } else {
         errors.push(msg.clone());
@@ -175,10 +175,10 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
     // Check: Variant A has lower total cost than variant B
     let msg = format!(
         "Variant A (MRG boost 1.0) has lower total cost than variant B (MRG boost 2.0): {:.2} < {:.2}",
-        stats_a.overall_stat.total_buyer_charge,
-        stats_b.overall_stat.total_buyer_charge
+        stats_a.overall_stat.total_gross_buyer_charge,
+        stats_b.overall_stat.total_gross_buyer_charge
     );
-    if stats_a.overall_stat.total_buyer_charge < stats_b.overall_stat.total_buyer_charge {
+    if stats_a.overall_stat.total_gross_buyer_charge < stats_b.overall_stat.total_gross_buyer_charge {
         logln!(logger, LogEvent::Scenario, "✓ {}", msg);
     } else {
         errors.push(msg.clone());

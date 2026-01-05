@@ -171,8 +171,8 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
     }
     
     // Check that variant A spend was lower than variant B spend
-    let spend_a = stats_a.campaign_stats[0].total_buyer_charge;
-    let spend_b = stats_b.campaign_stats[0].total_buyer_charge;
+    let spend_a = stats_a.campaign_stats[0].total_gross_buyer_charge;
+    let spend_b = stats_b.campaign_stats[0].total_gross_buyer_charge;
     
     if spend_a < spend_b {
         logln!(logger, LogEvent::Scenario, "✓ Variant A had lower spend ({:.2}) than variant B ({:.2})", spend_a, spend_b);

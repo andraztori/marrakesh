@@ -379,7 +379,7 @@ mod tests {
         let mut logger = crate::logger::Logger::new();
         let controller_states = vec![campaign_converge.as_ref()];
         let bid = campaign.get_bid(&impression, &controller_states, 1.0, 20.0, &mut logger);
-        assert_eq!(bid, Some(10.0));
+        assert_eq!(bid.as_ref().map(|b| b.gross_bid), Some(10.0));
     }
 
     #[test]
@@ -423,7 +423,7 @@ mod tests {
         // Expected bid = 1.0 * 15.0 * 1.0 = 15.0
         let mut logger = crate::logger::Logger::new();
         let bid = campaign.get_bid(&impression, campaign_converge.as_ref(), 1.0, 15.0, &mut logger);
-        assert_eq!(bid, Some(15.0));
+        assert_eq!(bid.as_ref().map(|b| b.gross_bid), Some(15.0));
     }
 
     #[test]
@@ -467,7 +467,7 @@ mod tests {
         // Expected bid = 0.0 * 100.0 * 1.0 = 0.0
         let mut logger = crate::logger::Logger::new();
         let bid = campaign.get_bid(&impression, campaign_converge.as_ref(), 1.0, 100.0, &mut logger);
-        assert_eq!(bid, Some(0.0));
+        assert_eq!(bid.as_ref().map(|b| b.gross_bid), Some(0.0));
     }
 
     #[test]
@@ -497,8 +497,8 @@ mod tests {
         let campaign_stat = crate::simulationrun::CampaignStat {
             impressions_obtained: 100.0,
             total_supply_cost: 0.0,
-            total_virtual_cost: 0.0,
-            total_buyer_charge: 50.0,
+            total_net_supply_cost: 0.0,
+            total_gross_buyer_charge: 50.0,
             total_value: 200.0,
         };
         let mut next_state = campaign.create_controller_state();
@@ -535,7 +535,7 @@ mod tests {
         let mut logger = crate::logger::Logger::new();
         let controller_states: Vec<&dyn crate::controllers::ControllerStateTrait> = converge_vars.iter().map(|cs| cs.as_ref()).collect();
         let bid = campaign.get_bid(&impression, &controller_states, 1.0, 30.0, &mut logger);
-        assert_eq!(bid, Some(22.5));
+        assert_eq!(bid.as_ref().map(|b| b.gross_bid), Some(22.5));
     }
 
     #[test]

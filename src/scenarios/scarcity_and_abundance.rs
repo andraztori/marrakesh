@@ -108,10 +108,10 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
     // Check: Variant A has higher total cost charged to buyers
     let msg = format!(
         "Variant A (Scarce HB) has higher total buyer charge than variant B (Abundant HB): {:.2} > {:.2}",
-        stats_a.overall_stat.total_buyer_charge,
-        stats_b.overall_stat.total_buyer_charge
+        stats_a.overall_stat.total_gross_buyer_charge,
+        stats_b.overall_stat.total_gross_buyer_charge
     );
-    if stats_a.overall_stat.total_buyer_charge > stats_b.overall_stat.total_buyer_charge {
+    if stats_a.overall_stat.total_gross_buyer_charge > stats_b.overall_stat.total_gross_buyer_charge {
         logln!(logger, LogEvent::Scenario, "✓ {}", msg);
     } else {
         errors.push(msg.clone());
@@ -135,9 +135,9 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
     let msg = format!(
         "Variant A (Scarce HB) is profitable (supply_cost < buyer_charge): {:.2} < {:.2}",
         stats_a.overall_stat.total_supply_cost,
-        stats_a.overall_stat.total_buyer_charge
+        stats_a.overall_stat.total_gross_buyer_charge
     );
-    if stats_a.overall_stat.total_supply_cost < stats_a.overall_stat.total_buyer_charge {
+    if stats_a.overall_stat.total_supply_cost < stats_a.overall_stat.total_gross_buyer_charge {
         logln!(logger, LogEvent::Scenario, "✓ {}", msg);
     } else {
         errors.push(msg.clone());
@@ -148,9 +148,9 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
     let msg = format!(
         "Variant B (Abundant HB) is unprofitable (supply_cost > buyer_charge): {:.2} > {:.2}",
         stats_b.overall_stat.total_supply_cost,
-        stats_b.overall_stat.total_buyer_charge
+        stats_b.overall_stat.total_gross_buyer_charge
     );
-    if stats_b.overall_stat.total_supply_cost > stats_b.overall_stat.total_buyer_charge {
+    if stats_b.overall_stat.total_supply_cost > stats_b.overall_stat.total_gross_buyer_charge {
         logln!(logger, LogEvent::Scenario, "✓ {}", msg);
     } else {
         errors.push(msg.clone());

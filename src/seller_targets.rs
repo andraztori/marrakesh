@@ -46,7 +46,7 @@ pub struct SellerTargetTotalCost {
 
 impl SellerTargetTrait for SellerTargetTotalCost {
     fn get_actual_and_target(&self, seller_stat: &crate::simulationrun::SellerStat) -> (f64, f64) {
-        let actual = seller_stat.total_virtual_cost;
+        let actual = seller_stat.total_net_supply_cost;
         let target = self.target_cost;
         (actual, target)
     }

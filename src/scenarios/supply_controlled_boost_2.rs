@@ -148,7 +148,7 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
     
     // Check: Variant A (MAX_MARGIN) - total overall supply and virtual cost should be nearly equal (max 1% off)
     let supply_cost_a = stats_a.overall_stat.total_supply_cost;
-    let virtual_cost_a = stats_a.overall_stat.total_virtual_cost;
+    let virtual_cost_a = stats_a.overall_stat.total_net_supply_cost;
     let diff_a = (supply_cost_a - virtual_cost_a).abs();
     let max_diff_a = supply_cost_a.max(virtual_cost_a) * 0.01; // 1% of the larger value
     let msg = format!(
@@ -164,7 +164,7 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
     
     // Check: Variant B (MAX_MARGIN_ADDITIVE_SUPPLY) - total overall supply and virtual cost should be nearly equal (max 1% off)
     let supply_cost_b = stats_b.overall_stat.total_supply_cost;
-    let virtual_cost_b = stats_b.overall_stat.total_virtual_cost;
+    let virtual_cost_b = stats_b.overall_stat.total_net_supply_cost;
     let diff_b = (supply_cost_b - virtual_cost_b).abs();
     let max_diff_b = supply_cost_b.max(virtual_cost_b) * 0.01; // 1% of the larger value
     let msg = format!(
@@ -180,7 +180,7 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
     
     // Check: Variant C (MAX_MARGIN_EXPONENTIAL_SUPPLY) - total overall supply and virtual cost should be nearly equal (max 1% off)
     let supply_cost_c = stats_c.overall_stat.total_supply_cost;
-    let virtual_cost_c = stats_c.overall_stat.total_virtual_cost;
+    let virtual_cost_c = stats_c.overall_stat.total_net_supply_cost;
     let diff_c = (supply_cost_c - virtual_cost_c).abs();
     let max_diff_c = supply_cost_c.max(virtual_cost_c) * 0.01; // 1% of the larger value
     let msg = format!(

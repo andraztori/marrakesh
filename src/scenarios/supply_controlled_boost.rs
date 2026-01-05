@@ -159,9 +159,9 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
     let msg = format!(
         "Variant A (no boost) - Seller 0 (MRG) is not profitable (supply_cost > virtual_cost): {:.2} > {:.2}",
         stats_a.seller_stats[0].total_supply_cost,
-        stats_a.seller_stats[0].total_virtual_cost
+        stats_a.seller_stats[0].total_net_supply_cost
     );
-    if stats_a.seller_stats[0].total_supply_cost > stats_a.seller_stats[0].total_virtual_cost {
+    if stats_a.seller_stats[0].total_supply_cost > stats_a.seller_stats[0].total_net_supply_cost {
         logln!(logger, LogEvent::Scenario, "✓ {}", msg);
     } else {
         errors.push(msg.clone());
@@ -170,7 +170,7 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
     
     // Check: Variant B (dynamic boost, Multiplicative) - total overall supply and virtual cost should be nearly equal (max 1% off)
     let supply_cost = stats_b.overall_stat.total_supply_cost;
-    let virtual_cost = stats_b.overall_stat.total_virtual_cost;
+    let virtual_cost = stats_b.overall_stat.total_net_supply_cost;
     let diff = (supply_cost - virtual_cost).abs();
     let max_diff = supply_cost.max(virtual_cost) * 0.01; // 1% of the larger value
     let msg = format!(
@@ -187,7 +187,7 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
 
     // Check: Variant C (dynamic boost with MULTIPLICATIVE_ADDITIVE) - total overall supply and virtual cost should be nearly equal (max 1% off)
     let supply_cost_c = stats_c.overall_stat.total_supply_cost;
-    let virtual_cost_c = stats_c.overall_stat.total_virtual_cost;
+    let virtual_cost_c = stats_c.overall_stat.total_net_supply_cost;
     let diff_c = (supply_cost_c - virtual_cost_c).abs();
     let max_diff_c = supply_cost_c.max(virtual_cost_c) * 0.01; // 1% of the larger value
     let msg = format!(

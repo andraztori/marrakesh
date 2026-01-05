@@ -47,7 +47,7 @@ pub struct CampaignTargetTotalBudget {
 
 impl CampaignTargetTrait for CampaignTargetTotalBudget {
     fn get_actual_and_target(&self, campaign_stat: &crate::simulationrun::CampaignStat) -> (f64, f64) {
-        (campaign_stat.total_buyer_charge, self.total_budget_target)
+        (campaign_stat.total_gross_buyer_charge, self.total_budget_target)
     }
     
     fn get_target_value(&self) -> f64 {
