@@ -3,6 +3,7 @@ use crate::campaign_targets::CampaignTargetTrait;
 use crate::controllers::ControllerTrait;
 use crate::logger::Logger;
 use crate::bid_optimizers::BidOptimizerTrait;
+use crate::margins::MarginTrait;
 use std::any::Any;
 
 /// Maximum number of controllers supported by campaigns
@@ -81,6 +82,7 @@ pub struct CampaignGeneral {
     pub converge_controllers: Vec<Box<dyn ControllerTrait>>,
     pub bid_valuer: Box<dyn BidValuerTrait>,
     pub bid_optimizer: Box<dyn BidOptimizerTrait>,
+    pub margin: Box<dyn MarginTrait>,
 }
 
 impl CampaignTrait for CampaignGeneral {
@@ -108,11 +110,8 @@ impl CampaignTrait for CampaignGeneral {
             None => return None,
         };
         
-        // Return CampaignBid with net_bid and gross_bid set to the same value
-        Some(CampaignBid {
-            net_bid: optimized_bid,
-            gross_bid: optimized_bid,
-        })
+        // Apply margin to get net_bid and gross_bid
+        Some(self.margin.apply_margin(impression, self, optimized_bid))
     }
     
     fn next_controller_state(&self, previous_states: &[Box<dyn crate::controllers::ControllerStateTrait>], next_states: &mut [Box<dyn crate::controllers::ControllerStateTrait>], campaign_stat: &crate::simulationrun::CampaignStat) -> bool {

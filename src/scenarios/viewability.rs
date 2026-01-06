@@ -23,6 +23,7 @@ use crate::competition::CompetitionGeneratorLogNormal;
 use crate::floors;
 use crate::utils;
 use crate::logger::{Logger, LogEvent};
+use crate::margins::MarginNone;
 use crate::logln;
 use crate::errln;
 
@@ -81,6 +82,7 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
         converge_controllers: vec![Box::new(crate::controllers::ControllerProportionalDerivative::new())],
         bid_valuer: Box::new(BidValuerMultiplicative),
         bid_optimizer: Box::new(BidOptimizerMaximumMargin) as Box<dyn BidOptimizerTrait>,
+        margin: Box::new(MarginNone::new()),
     });
     let simulation_converge_a = prepare_simulationconverge(num_impressions, campaign_a);
     let stats_a = simulation_converge_a.run_variant(&format!("Running with max margin bidding ({} impressions)", TARGET_IMPRESSIONS), scenario_name, "max-margin-impressions", 100, logger)?;
@@ -105,6 +107,7 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
              ))],
         bid_valuer: Box::new(BidValuerDualTarget),
         bid_optimizer: Box::new(BidOptimizerMaximumMargin) as Box<dyn BidOptimizerTrait>,
+        margin: Box::new(MarginNone::new()),
     });
     let simulation_converge_b = prepare_simulationconverge(num_impressions, campaign_b);
     let stats_b = simulation_converge_b.run_variant(&format!("Running with max margin double target ({} impressions, avg value {})", TARGET_IMPRESSIONS, TARGET_AVG_VALUE), scenario_name, "max-margin-double", 1000, logger)?;

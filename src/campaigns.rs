@@ -6,6 +6,7 @@ pub use crate::campaign::BidValuerTrait;
 pub use crate::bid_valuers_double::BidValuerDualTarget;
 pub use crate::bid_optimizers::{BidOptimizerTrait, BidOptimizerTrutful, BidOptimizerMaximumMargin, BidOptimizerCheater, BidOptimizerMedian};
 pub use crate::bid_valuers_single::{BidValuerMultiplicative, BidValuerMultiplicative_AdditiveSupply, BidValuerMultiplicative_ExponentialSupply};
+pub use crate::margins::{MarginTrait, MarginNone};
 
 /// Campaign type determining the bidding strategy
 #[allow(non_camel_case_types)]
@@ -128,6 +129,7 @@ impl Campaigns {
                     converge_controllers: vec![converge_controller],
                     bid_valuer,
                     bid_optimizer,
+                    margin: Box::new(MarginNone::new()),
                 }));
             }
             CampaignType::MULTIPLICATIVE_ADDITIVE => {
@@ -142,6 +144,7 @@ impl Campaigns {
                     converge_controllers: vec![converge_controller],
                     bid_valuer,
                     bid_optimizer,
+                    margin: Box::new(MarginNone::new()),
                 }));
             }
             CampaignType::CHEATER => {
@@ -156,6 +159,7 @@ impl Campaigns {
                     converge_controllers: vec![converge_controller],
                     bid_valuer,
                     bid_optimizer,
+                    margin: Box::new(MarginNone::new()),
                 }));
             }
             CampaignType::MAX_MARGIN => {
@@ -170,6 +174,7 @@ impl Campaigns {
                     converge_controllers: vec![converge_controller],
                     bid_valuer,
                     bid_optimizer,
+                    margin: Box::new(MarginNone::new()),
                 }));
             }
             CampaignType::MAX_MARGIN_ADDITIVE_SUPPLY => {
@@ -184,6 +189,7 @@ impl Campaigns {
                     converge_controllers: vec![converge_controller],
                     bid_valuer,
                     bid_optimizer,
+                    margin: Box::new(MarginNone::new()),
                 }));
             }
             CampaignType::MAX_MARGIN_EXPONENTIAL_SUPPLY => {
@@ -198,6 +204,7 @@ impl Campaigns {
                     converge_controllers: vec![converge_controller],
                     bid_valuer,
                     bid_optimizer,
+                    margin: Box::new(MarginNone::new()),
                 }));
             }
             CampaignType::MAX_MARGIN_DOUBLE_TARGET => {
@@ -224,6 +231,7 @@ impl Campaigns {
                     converge_controllers,
                     bid_valuer,
                     bid_optimizer,
+                    margin: Box::new(MarginNone::new()),
                 }));
             }
             CampaignType::MEDIAN => {
@@ -239,6 +247,7 @@ impl Campaigns {
                     converge_controllers: vec![converge_controller],
                     bid_valuer,
                     bid_optimizer,
+                    margin: Box::new(MarginNone::new()),
                 }));
             }
         }
@@ -351,6 +360,7 @@ mod tests {
             converge_controllers: vec![Box::new(crate::controllers::ControllerConstant::new(1.0))],
             bid_valuer,
             bid_optimizer,
+            margin: Box::new(MarginNone::new()),
         };
 
         // Create a campaign converge with pacing = 0.5

@@ -23,6 +23,7 @@ mod controller_state;
 mod controller_core;
 mod controllers;
 mod bid_optimizers;
+mod margins;
 
 
 use sellers::{SellerType, SellerConvergeStrategy, Sellers};
@@ -130,6 +131,7 @@ fn main() {
         // Setup shared resources
         use crate::bid_valuers_single::BidValuerMultiplicative;
         use crate::bid_optimizers::{BidOptimizerTrait, BidOptimizerMaximumMargin};
+        use crate::margins::MarginNone;
         let bid_valuer = Box::new(BidValuerMultiplicative) as Box<dyn campaign::BidValuerTrait>;
         let bid_optimizer = Box::new(BidOptimizerMaximumMargin) as Box<dyn BidOptimizerTrait>;
         let campaign_max_margin = CampaignGeneral {
@@ -139,6 +141,7 @@ fn main() {
             converge_controllers: vec![Box::new(crate::controllers::ControllerConstant::new(0.8298))],
             bid_valuer,
             bid_optimizer,
+            margin: Box::new(MarginNone::new()),
         };
         
         let converge_vars = campaign_max_margin.create_controller_state();
