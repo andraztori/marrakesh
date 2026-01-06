@@ -112,7 +112,7 @@ impl Impression {
     /// Returns the auction result
     pub fn run_auction(&self, campaigns: &Campaigns, campaign_converges: &[Vec<&dyn crate::controllers::ControllerStateTrait>], seller: &dyn SellerTrait, seller_converge: &dyn crate::controllers::ControllerStateTrait, logger: &mut crate::logger::Logger) -> AuctionResult {
         // Get bids from all campaigns
-        let mut winning_campaign: Option<(usize, crate::campaign::CampaignBid)> = None;
+        let mut winning_campaign: Option<(usize, crate::campaign::CompleteBid)> = None;
         let mut all_bids = if VERBOSE_AUCTION.load(Ordering::Relaxed) {
             Some(Vec::new())
         } else {
@@ -172,7 +172,7 @@ impl Impression {
             }
             
             // Valid winner - bid passes all checks (floor and competition if present)
-            // Use net_bid and gross_bid from the CampaignBid object
+            // Use net_bid and gross_bid from the CompleteBid object
             let supply_cost = seller.get_supply_cost_cpm(winning_bid.gross_bid) / 1000.0;
             let net_supply_cost = winning_bid.net_bid / 1000.0;
             let gross_buyer_charge = winning_bid.gross_bid / 1000.0;

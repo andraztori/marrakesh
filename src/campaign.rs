@@ -3,14 +3,14 @@ use crate::campaign_targets::CampaignTargetTrait;
 use crate::controllers::ControllerTrait;
 use crate::logger::Logger;
 use crate::bid_optimizers::BidOptimizerTrait;
-use crate::margins::MarginTrait;
+use crate::bid_determination::BidDeterminationTrait;
 use std::any::Any;
 
 /// Maximum number of controllers supported by campaigns
 const MAX_CONTROLLERS: usize = 10;
 
-/// Represents a campaign bid with net and gross bid values
-pub struct CampaignBid {
+/// Represents a complete bid with net and gross bid values
+pub struct CompleteBid {
     pub net_bid: f64,
     pub gross_bid: f64,
 }
@@ -26,7 +26,7 @@ pub trait CampaignTrait: Any {
     /// Calculate the bid for this campaign given an impression, convergence parameter, and seller control factor
     /// Bid = campaign_control_factor * value_to_campaign * seller_control_factor
     /// Returns None if bid cannot be calculated (logs warning via logger)
-    fn get_bid(&self, impression: &Impression, controller_states: &[&dyn crate::controllers::ControllerStateTrait], seller_control_factor: f64, value_to_campaign: f64, logger: &mut crate::logger::Logger) -> Option<CampaignBid>;
+    fn get_bid(&self, impression: &Impression, controller_states: &[&dyn crate::controllers::ControllerStateTrait], seller_control_factor: f64, value_to_campaign: f64, logger: &mut crate::logger::Logger) -> Option<CompleteBid>;
     
     /// Create a new convergence parameter for this campaign type
     fn create_controller_state(&self) -> Vec<Box<dyn crate::controllers::ControllerStateTrait>>;
@@ -82,7 +82,7 @@ pub struct CampaignGeneral {
     pub converge_controllers: Vec<Box<dyn ControllerTrait>>,
     pub bid_valuer: Box<dyn BidValuerTrait>,
     pub bid_optimizer: Box<dyn BidOptimizerTrait>,
-    pub margin: Box<dyn MarginTrait>,
+    pub net_and_gross: Box<dyn BidDeterminationTrait>,
 }
 
 impl CampaignTrait for CampaignGeneral {
@@ -94,7 +94,7 @@ impl CampaignTrait for CampaignGeneral {
         &self.campaign_name
     }
     
-    fn get_bid(&self, impression: &Impression, controller_states: &[&dyn crate::controllers::ControllerStateTrait], seller_control_factor: f64, value_to_campaign: f64, logger: &mut crate::logger::Logger) -> Option<CampaignBid> {
+    fn get_bid(&self, impression: &Impression, controller_states: &[&dyn crate::controllers::ControllerStateTrait], seller_control_factor: f64, value_to_campaign: f64, logger: &mut crate::logger::Logger) -> Option<CompleteBid> {
         // Setup control variables in a static array
         let mut control_variables = [0.0; MAX_CONTROLLERS];
         for (i, (converge_controller, controller_state)) in self.converge_controllers.iter().zip(controller_states.iter()).enumerate() {
@@ -110,8 +110,8 @@ impl CampaignTrait for CampaignGeneral {
             None => return None,
         };
         
-        // Apply margin to get net_bid and gross_bid
-        Some(self.margin.apply_margin(impression, self, optimized_bid))
+        // Get complete bid with net_bid and gross_bid
+        Some(self.net_and_gross.get_complete_bid(impression, self, optimized_bid))
     }
     
     fn next_controller_state(&self, previous_states: &[Box<dyn crate::controllers::ControllerStateTrait>], next_states: &mut [Box<dyn crate::controllers::ControllerStateTrait>], campaign_stat: &crate::simulationrun::CampaignStat) -> bool {
