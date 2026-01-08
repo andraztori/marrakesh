@@ -10,7 +10,7 @@ Marrakesh is a research tool designed to study marketplace phenomena under the a
 
 - **Two-party marketplace model**: Sellers (supply) and Campaigns (demand) with distinct objectives
 - **Multiple pricing models**: Fixed-price and first-price auction sellers
-- **Various bidding strategies**: Multiplicative pacing, optimal bidding, max margin, cheater/last look, and Median Bidding (also known as ALB - Auction Level Bid)
+- **Various bidding strategies**: Multiplicative pacing, optimal bidding, cheater/last look, and Median Bidding (also known as ALB - Auction Level Bid)
 - **Convergence framework**: Automatic calibration to optimal pacing and boost factors
 - **Deterministic simulations**: Seeded random number generation for reproducibility
 - **Comprehensive logging**: Structured logging with multiple receivers and event types
@@ -45,10 +45,18 @@ The simulation is run multiple times and the convergence mechanism is used to co
 ### Bidding Strategies
 
 1. **Multiplicative Pacing**: Simple bid calculation `bid = pacing × value × seller_boost_factor`
-2. **Optimal Bidding**: Uses sigmoid functions to model win probability and finds optimal bids based on marginal utility of spend
-3. **Max Margin**: Maximizes expected margin `P(win) × (full_price - bid)` where `full_price = pacing × value × seller_boost_factor` (equivalent to Optimal Bidding)
-4. **Cheater/Last Look**: Strategic bidding that exploits competition knowledge by bidding just above the competition
-5. **Median Bidding** (ALB): Bids at the predicted offset point if the pacing bid exceeds it, otherwise doesn't bid
+2. **Optimal Bidding**: Uses sigmoid functions to model win probability and finds optimal bids based on marginal utility of spend. This is sometimes called "Max Margin Bidding", however we are not in a regime of billing the shadow price, so this is just an optimization method to go from shadow price to actual bid.
+3. **Cheater/Last Look**: Strategic bidding that exploits competition knowledge by bidding just above the competition
+4. **Median Bidding** (ALB): Bids at the predicted offset point if the pacing bid exceeds it, otherwise doesn't bid
+
+### Bid Determination and Margins
+
+The framework supports different approaches to determining net and gross bid values:
+- **No Margin**: Net bid equals gross bid (no margin applied)
+- **Fixed Margin (Optimal)**: Gross bid is adjusted to achieve target margin: `gross_bid = optimized_bid / (1 - margin)`
+- **Fixed Margin (Unoptimal)**: Net bid is reduced to achieve target margin: `net_bid = optimized_bid × (1 - margin)`
+
+The `basic_margin` scenario demonstrates these approaches and validates that optimal margin application yields better value while maintaining the same publisher payout and advertiser charge.
 
 ### Convergence
 
@@ -104,9 +112,9 @@ Simulation logs are organized in the `log/` directory:
 With optimal pacing assumed, researchers can study:
 
 - **Pricing Mechanisms**: Fixed-price vs. auction-based sellers
-- **Bidding Strategies**: Comparison of different bidding approaches (multiplicative, optimal, max margin, cheater, median bidding)
+- **Bidding Strategies**: Comparison of different bidding approaches (multiplicative, optimal, cheater, median bidding)
+- **Margin Application**: Study of optimal vs. unoptimal margin application methods and their impact on value capture
 - **Marketplace Design**: Impact of floors, competition thresholds, and rules
 - **Supply and Demand Dynamics**: How supply composition affects outcomes
 - **Value Distribution**: How value is distributed between parties
 - **Convergence Strategies**: Fixed vs. dynamic boost factors for sellers
-- **Strategy Equivalence**: Comparison of optimal bidding and max margin (seem to be equivalent)
