@@ -60,7 +60,7 @@ Marrakesh models a marketplace with two distinct parties, each with different ob
    - Value impressions differently based on context
    - Compete for impressions through bidding
    - Operate under optimal pacing (assumed)
-   - Use different bidding strategies (multiplicative pacing, max margin bidding, oracle chea, median bidding)
+   - Use different bidding strategies (multiplicative pacing, optimal bidding, cheater, median bidding)
 
 The marketplace itself is the framework that facilitates transactions between sellers and campaigns. It tracks metrics (supply cost, net supply cost, gross buyer charge), enforces rules (floors, competing demand thresholds), and observes overall market efficiency, but it is not an active participant with its own objectives or constraints.
 
@@ -69,10 +69,15 @@ The marketplace itself is the framework that facilitates transactions between se
 The system tracks three distinct cost metrics to model realistic marketplace economics:
 
 - **Supply Cost**: What sellers actually receive
-- **Net Supply Cost**: What the marketplace tracks internally (currently `net_bid / 1000.0` from `CampaignBid`)
-- **Gross Buyer Charge**: What campaigns actually pay (currently `gross_bid / 1000.0` from `CampaignBid`)
+- **Net Supply Cost**: What the marketplace tracks internally (currently `net_bid / 1000.0` from `CompleteBid`)
+- **Gross Buyer Charge**: What campaigns actually pay (currently `gross_bid / 1000.0` from `CompleteBid`)
 
-Campaigns return bids as `CampaignBid` objects containing both `net_bid` and `gross_bid` fields. In the current implementation, `net_bid` and `gross_bid` are identical (both equal the winning bid), but the separation allows for future modeling of marketplace fees, margins, discounts, or other platform mechanisms. When aggregated into statistics, these become `total_net_supply_cost` and `total_gross_buyer_charge`.
+Campaigns return bids as `CompleteBid` objects containing both `net_bid` and `gross_bid` fields. The framework supports different approaches to determining net and gross bid values through the `BidDeterminationTrait`:
+- **No Margin**: Net bid equals gross bid (no margin applied)
+- **Fixed Margin (Optimal)**: Gross bid is adjusted to achieve target margin: `gross_bid = optimized_bid / (1 - margin)`
+- **Fixed Margin (Unoptimal)**: Net bid is reduced to achieve target margin: `net_bid = optimized_bid × (1 - margin)`
+
+When aggregated into statistics, these become `total_net_supply_cost` and `total_gross_buyer_charge`.
 
 ---
 
@@ -206,7 +211,7 @@ Boost factors allow sellers to influence how campaigns value their impressions. 
 
 **Multiplicative Boost** (used by most bidding strategies):
 - Applied multiplicatively to campaign bids: `bid = pacing × value × boost_factor`
-- Used by: MULTIPLICATIVE_PACING, CHEATER, MAX_MARGIN, MEDIAN
+- Used by: MULTIPLICATIVE_PACING, CHEATER, OPTIMAL_BIDDING, MEDIAN
 - Boost factor scales the entire bid proportionally
 
 **Additive Boost** (used by MULTIPLICATIVE_ADDITIVE):
@@ -253,7 +258,7 @@ These models represent the fundamental trade-offs in advertising:
 - **Different optimization objectives**: Impression targets optimize for volume; budget targets optimize for cost control
 - **Quality vs. Quantity**: Average value targets optimize for quality metrics while maintaining volume
 
-**Dual-Target Campaigns**: The `MAX_MARGIN_DOUBLE_TARGET` campaign type can converge on two targets simultaneously (e.g., total impressions AND average value), using independent control variables (lambda and mu) for each target via `BidValuerDualTarget`.
+**Dual-Target Campaigns**: The `OPTIMAL_BIDDING_DOUBLE_TARGET` campaign type can converge on two targets simultaneously (e.g., total impressions AND average value), using independent control variables (lambda and mu) for each target via `BidValuerDualTarget`.
 
 ### Campaign Architecture
 
@@ -264,16 +269,17 @@ All campaigns use the unified `CampaignGeneral` structure, which supports any nu
      - **Convergence Targets** (`Vec<Box<dyn CampaignTargetTrait>>`): Defines what to converge to (impressions, budget, average value, or none)
      - **Convergence Controllers** (`Vec<Box<dyn ControllerTrait>>`): Defines how to converge for each target (proportional, constant)
      - **Bidder** (`Box<dyn CampaignBidderTrait>`): Defines the bidding strategy
-   - The `get_bid()` method returns `Option<CampaignBid>`, where `CampaignBid` contains both `net_bid` and `gross_bid` fields
-   - Used by all campaign types (MULTIPLICATIVE_PACING, MULTIPLICATIVE_ADDITIVE, CHEATER, MAX_MARGIN, MAX_MARGIN_ADDITIVE_SUPPLY, MAX_MARGIN_EXPONENTIAL_SUPPLY, MEDIAN, MAX_MARGIN_DOUBLE_TARGET)
+   - The `get_bid()` method returns `Option<CompleteBid>`, where `CompleteBid` contains both `net_bid` and `gross_bid` fields
+   - Used by all campaign types (MULTIPLICATIVE_PACING, MULTIPLICATIVE_ADDITIVE, CHEATER, OPTIMAL_BIDDING, OPTIMAL_BIDDING_ADDITIVE_SUPPLY, OPTIMAL_BIDDING_EXPONENTIAL_SUPPLY, MEDIAN, OPTIMAL_BIDDING_DOUBLE_TARGET)
+   - Includes `net_and_gross: Box<dyn BidDeterminationTrait>` field for determining net and gross bid values from optimized bids
    - Supports single-target campaigns (one target, one controller) and dual-target campaigns (two targets, two controllers)
    - Uses a stack-allocated array (`[f64; MAX_CONTROLLERS]`) for control variables to avoid heap allocations
 
 **Bidding Strategies**:
    - Single-control bid valuers (in `bid_valuers_single.rs`): Use one control variable (pacing)
-     - CampaignBidderMultiplicative, CampaignBidderMultiplicativeAdditive, BidderMaxMargin, BidderMaxMarginAdditiveSupply, BidderMaxMarginExponentialSupply, CampaignBidderCheaterLastLook, CampaignBidderMedian
+     - CampaignBidderMultiplicative, CampaignBidderMultiplicativeAdditive, BidderOptimalBidding, BidderOptimalBiddingAdditiveSupply, BidderOptimalBiddingExponentialSupply, CampaignBidderCheaterLastLook, CampaignBidderMedian
    - Dual-control bid valuers (in `bid_valuers_double.rs`): Use two control variables (lambda and mu)
-     - BidValuerDualTarget: Used for MAX_MARGIN_DOUBLE_TARGET campaigns
+     - BidValuerDualTarget: Used for OPTIMAL_BIDDING_DOUBLE_TARGET campaigns
 
 This design allows flexible combination of any convergence target(s), controller, and bidding strategy.
 
@@ -298,21 +304,22 @@ Campaigns can use one of eight bidding strategies (implemented as `CampaignBidde
    - Models strategic bidding that exploits perfect knowledge of competition
    - Simulates second-price auction behavior by bidding just above competition
 
-4. **Max Margin** (`MAX_MARGIN`, `BidderMaxMargin`):
+4. **Optimal Bidding** (`OPTIMAL_BIDDING`, `BidderOptimalBidding`):
    - Finds the bid that maximizes expected margin: `P(win) × (full_price - bid)`
    - Where `full_price = pacing × value × seller_boost_factor` (multiplicative supply boost)
    - Uses bisection method to find the bid where the derivative of margin is zero
    - Requires competition data (sigmoid parameters)
    - Theoretically optimal approach for maximizing expected margin
+   - This is sometimes called "Max Margin Bidding", however we are not in a regime of billing the shadow price, so this is just an optimization method to go from shadow price to actual bid
 
-5. **Max Margin Additive Supply** (`MAX_MARGIN_ADDITIVE_SUPPLY`, `BidderMaxMarginAdditiveSupply`):
-   - Similar to Max Margin but uses additive supply boost: `full_price = pacing × value + seller_boost_factor`
+5. **Optimal Bidding Additive Supply** (`OPTIMAL_BIDDING_ADDITIVE_SUPPLY`, `BidderOptimalBiddingAdditiveSupply`):
+   - Similar to Optimal Bidding but uses additive supply boost: `full_price = pacing × value + seller_boost_factor`
    - Finds the bid that maximizes expected margin with additive supply boost
    - Requires competition data (sigmoid parameters)
    - Useful for comparing different supply boost strategies
 
-6. **Max Margin Exponential Supply** (`MAX_MARGIN_EXPONENTIAL_SUPPLY`, `BidderMaxMarginExponentialSupply`):
-   - Similar to Max Margin but uses exponential supply boost: `full_price = (pacing × value) ^ seller_boost_factor`
+6. **Optimal Bidding Exponential Supply** (`OPTIMAL_BIDDING_EXPONENTIAL_SUPPLY`, `BidderOptimalBiddingExponentialSupply`):
+   - Similar to Optimal Bidding but uses exponential supply boost: `full_price = (pacing × value) ^ seller_boost_factor`
    - Finds the bid that maximizes expected margin with exponential supply boost
    - Requires competition data (sigmoid parameters)
    - Useful for comparing different supply boost strategies
@@ -325,8 +332,8 @@ Campaigns can use one of eight bidding strategies (implemented as `CampaignBidde
    - Requires competition data (for predicted offset)
    - Research observation: Median Bidding improves vs. multiplicative bidding when there is abundance of impressions, but is worse when there is scarcity and high fill rates
 
-8. **Max Margin Double Target** (`MAX_MARGIN_DOUBLE_TARGET`, `BidValuerDualTarget`):
-   - Uses max margin bidding strategy with dual control variables (lambda and mu)
+8. **Optimal Bidding Double Target** (`OPTIMAL_BIDDING_DOUBLE_TARGET`, `BidValuerDualTarget`):
+   - Uses optimal bidding strategy with dual control variables (lambda and mu)
    - Converges on two targets simultaneously using `CampaignGeneral` with two targets and controllers
    - Requires two convergence targets (e.g., total impressions and average value)
    - Uses two independent `ControllerProportionalDerivative` instances to manage dual convergence
@@ -482,13 +489,13 @@ The `CompetitionGeneratorLogNormal` implementation uses several key consideratio
   - Compare predicted vs. actual win rates
   - Understand the impact of prediction errors on bidding strategies
   - Validate that the competition generation process produces realistic distributions
-  - Debug issues with max margin bidding algorithms that depend on win rate predictions
+  - Debug issues with optimal bidding algorithms that depend on win rate predictions
 
 This multi-step process ensures that the generated competition data reflects realistic auction dynamics while providing the flexibility to study the impact of prediction errors and modeling imperfections on bidding strategies.
 
 ---
 
-## Sigmoid Functions and Max Margin Bidding
+## Sigmoid Functions and Optimal Bidding
 
 ### Sigmoid Model
 
@@ -513,29 +520,43 @@ The system uses sigmoid functions to model win probability in auctions:
   - Handles edge cases (both bounds negative, both positive, etc.)
   - Ensures the result respects the minimum bid constraint (`min_x`, typically the floor price)
   - Returns `None` if no solution found in the search range
-- `max_margin_bid_bisection(full_price, min_x)`: Finds bid that maximizes expected margin
+- `optimal_bid_bisection(full_price, min_x)`: Finds bid that maximizes expected margin
   - Solves for bid where derivative of margin is zero: `scale * (1 - P(bid)) * (full_price - bid) - 1 = 0`
   - Uses bisection method between `min_x` and `full_price`
 
-### Max Margin Bidding Algorithm
+### Optimal Bidding Algorithm
 
-Max margin bidding finds the bid that maximizes the expected margin. The algorithm varies based on the supply boost strategy:
+Optimal bidding finds the bid that maximizes the expected margin. The algorithm varies based on the supply boost strategy:
 
-**Multiplicative Supply Boost** (`MAX_MARGIN`):
+**Multiplicative Supply Boost** (`OPTIMAL_BIDDING`):
 1. Calculates `full_price = pacing × value × seller_boost_factor`
-2. Uses `max_margin_bid_bisection` to find the bid where the derivative of the margin function is zero
+2. Uses `optimal_bid_bisection` to find the bid where the derivative of the margin function is zero
 3. Solves `scale × (1 - P(bid)) × (full_price - bid) - 1 = 0`
 4. Returns the optimal bid for maximizing immediate margin
 
-**Additive Supply Boost** (`MAX_MARGIN_ADDITIVE_SUPPLY`):
+**Additive Supply Boost** (`OPTIMAL_BIDDING_ADDITIVE_SUPPLY`):
 1. Calculates `full_price = pacing × value + seller_boost_factor`
 2. Uses the same bisection method to find the optimal bid
 
-**Exponential Supply Boost** (`MAX_MARGIN_EXPONENTIAL_SUPPLY`):
+**Exponential Supply Boost** (`OPTIMAL_BIDDING_EXPONENTIAL_SUPPLY`):
 1. Calculates `full_price = (pacing × value) ^ seller_boost_factor`
 2. Uses the same bisection method to find the optimal bid
 
 This approach ensures campaigns bid optimally to maximize expected margin given their constraints and competition, while respecting minimum bid requirements.
+
+### Bid Determination and Margins
+
+After calculating the optimal bid, campaigns use `BidDeterminationTrait` to determine the final `net_bid` and `gross_bid` values:
+
+**BidDeterminationTrait** (`bid_determination.rs`):
+- `get_complete_bid(impression, campaign, optimized_bid) -> CompleteBid`: Converts optimized bid to complete bid with net and gross values
+
+**Implementations**:
+- `BidDeterminationNoMargin`: Sets both `net_bid` and `gross_bid` to `optimized_bid` (no margin)
+- `BidDeterminationBidFixedMargin`: Applies margin optimally by adjusting gross bid: `net_bid = optimized_bid`, `gross_bid = optimized_bid / (1 - margin)`
+- `BidDeterminationFixedMarginUnoptimal`: Applies margin unoptimally by reducing net bid: `net_bid = optimized_bid × (1 - margin)`, `gross_bid = optimized_bid`
+
+The `basic_margin` scenario demonstrates these approaches and validates that optimal margin application yields better value while maintaining the same publisher payout and advertiser charge.
 
 
 ---
@@ -555,10 +576,11 @@ With optimal pacing assumed, researchers can focus on:
 - How do different valuation models affect outcomes?
 - What happens when campaigns have correlated vs. uncorrelated valuations?
 - How do campaign objectives (impressions vs. budget) affect bidding?
-- How does max margin bidding compare to multiplicative pacing?
+- How does optimal bidding compare to multiplicative pacing?
 - What is the impact of strategic bidding (cheating) on marketplace outcomes?
 - How does Median Bidding (ALB) perform compared to other strategies?
-- How do different supply boost strategies (multiplicative, additive, exponential) affect max margin bidding?
+- How do different supply boost strategies (multiplicative, additive, exponential) affect optimal bidding?
+- How do different margin application methods (optimal vs. unoptimal) affect value capture?
 
 **Marketplace Design**:
 - How do floors and competing demand thresholds affect outcomes?
@@ -620,7 +642,7 @@ Once converged, analyze:
 Researchers can then vary:
 - Seller pricing models (fixed cost, first price, boost strategies)
 - Campaign objectives and constraints (impressions vs. budget vs. average value)
-- Campaign bidding strategies (multiplicative pacing, max margin bidding variants, cheater, median bidding)
+- Campaign bidding strategies (multiplicative pacing, optimal bidding variants, cheater, median bidding)
 - Impression valuations and competition data
 - Marketplace rules (floors, thresholds)
 - Supply composition
@@ -650,13 +672,15 @@ The system includes a scenario framework for structured experimentation:
   - Variant A: Fixed boost (no convergence) with MULTIPLICATIVE_PACING
   - Variant B: Dynamic boost with MULTIPLICATIVE_PACING
   - Variant C: Dynamic boost with MULTIPLICATIVE_ADDITIVE (uses advanced controller parameters)
-- `supply_controlled_boost_2` (from `scenarios/supply_controlled_boost_2.rs`): Comparison of max margin bidding with different supply boost strategies
-  - Variant A: MAX_MARGIN with multiplicative supply boost
-  - Variant B: MAX_MARGIN_ADDITIVE_SUPPLY with additive supply boost
-  - Variant C: MAX_MARGIN_EXPONENTIAL_SUPPLY with exponential supply boost
-- `viewability` (from `scenarios/viewability.rs`): Demonstrates dual-target convergence using MAX_MARGIN_DOUBLE_TARGET
+- `supply_controlled_boost_2` (from `scenarios/supply_controlled_boost_2.rs`): Comparison of optimal bidding with different supply boost strategies
+  - Variant A: OPTIMAL_BIDDING with multiplicative supply boost
+  - Variant B: OPTIMAL_BIDDING_ADDITIVE_SUPPLY with additive supply boost
+  - Variant C: OPTIMAL_BIDDING_EXPONENTIAL_SUPPLY with exponential supply boost
+- `viewability` (from `scenarios/viewability.rs`): Demonstrates dual-target convergence using OPTIMAL_BIDDING_DOUBLE_TARGET
   - Converges on both total impressions and average value targets simultaneously
-- `basic_bidding_strategies` (from `scenarios/basic_bidding_strategies.rs`): Comparison of bidding strategies (multiplicative pacing, median bidding, max margin, cheater)
+- `basic_bidding_strategies` (from `scenarios/basic_bidding_strategies.rs`): Comparison of bidding strategies (multiplicative pacing, median bidding, optimal bidding, cheater)
+- `basic_margin` (from `scenarios/basic_margin.rs`): Comparison of margin application methods (no margin, optimal margin, unoptimal margin)
+  - Validates that optimal margin application yields better value while maintaining same publisher payout and advertiser charge
 - `median_bidder` (from `scenarios/median_bidder.rs`): Comparison of Median Bidding (ALB) with other strategies under varying supply conditions
 
 ---
@@ -749,8 +773,9 @@ The system separates:
 - **Impression and auction logic** (`impressions.rs`): Core auction mechanics, impression generation, winner determination
 - **Campaign logic** (`campaign.rs`): Campaign trait, `CampaignGeneral` structure, `CampaignBidderTrait`
 - **Campaign container** (`campaigns.rs`): Campaign container with methods to add campaigns
-- **Bid valuers (single)** (`bid_valuers_single.rs`): Single-control-variable bid valuation implementations (multiplicative, multiplicative additive, max margin variants)
-- **Bid valuers (double)** (`bid_valuers_double.rs`): Dual-control-variable bid valuation implementations (max margin with lambda and mu)
+- **Bid valuers (single)** (`bid_valuers_single.rs`): Single-control-variable bid valuation implementations (multiplicative, multiplicative additive, optimal bidding variants)
+- **Bid valuers (double)** (`bid_valuers_double.rs`): Dual-control-variable bid valuation implementations (optimal bidding with lambda and mu)
+- **Bid determination** (`bid_determination.rs`): Bid determination trait and implementations for converting optimized bids to complete bids with net and gross values
 - **Campaign convergence targets** (`campaign_targets.rs`): Campaign convergence target implementations (impressions, budget, average value, none)
 - **Seller logic** (`seller.rs`): Seller trait, `SellerGeneral` structure
 - **Seller container** (`sellers.rs`): Seller container with methods to add sellers
@@ -873,7 +898,7 @@ The framework is designed to be extended without modifying core logic:
 - Optimize marketplace rules
 - Validate pricing mechanisms
 - Develop marketplace optimization techniques
-- Compare bidding strategies (pacing vs. max margin vs. strategic)
+- Compare bidding strategies (pacing vs. optimal bidding vs. strategic)
 
 ---
 
