@@ -95,8 +95,8 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
         Box::new(BidDeterminationFixedMarginUnoptimal::new(MARGIN)),
         Box::new(crate::controllers::ControllerProportionalDerivative::new_advanced(
             0.005,  // tolerance_fraction
-            0.03,   // max_adjustment_factor (slower: 3% vs default 20%)
-            0.03,   // proportional_gain (slower: 3% vs default 10%)
+            0.1,   // max_adjustment_factor (slower: 3% vs default 20%)
+            0.05,   // proportional_gain (slower: 3% vs default 10%)
             0.015,  // derivative_gain (slower: 1.5% vs default 5%)
             true,   // rescaling (default)
         ))
