@@ -166,23 +166,19 @@ impl Impression {
             let competition_bid = self.competition.as_ref().map(|c| c.bid_cpm).unwrap_or(0.0);
             let minimum_cpm_to_win = self.floor_cpm.max(competition_bid);
             
-            if winning_bid.gross_bid < minimum_cpm_to_win {
+            if winning_bid.net_bid < minimum_cpm_to_win {
                 let supply_cost = seller.get_supply_cost_cpm(0.0) / 1000.0;
                 break 'result AuctionResult::LOST { supply_cost };
             }
             
             // Valid winner - bid passes all checks (floor and competition if present)
             // Use net_bid and gross_bid from the CompleteBid object
-            let supply_cost = seller.get_supply_cost_cpm(winning_bid.gross_bid) / 1000.0;
-            let net_supply_cost = winning_bid.net_bid / 1000.0;
-            let gross_buyer_charge = winning_bid.gross_bid / 1000.0;
-            
             // Convert from CPM to actual cost by dividing by 1000
             AuctionResult::Campaign {
                 campaign_id,
-                supply_cost,
-                net_supply_cost,
-                gross_buyer_charge,
+                supply_cost: seller.get_supply_cost_cpm(winning_bid.net_bid) / 1000.0,
+                net_supply_cost: winning_bid.net_bid / 1000.0,
+                gross_buyer_charge: winning_bid.gross_bid / 1000.0,
             }
         };
 
@@ -277,15 +273,15 @@ impl Impression {
             if let Some(campaign_bid) = campaign.get_bid(self, &campaign_converge, seller_control_factor, value_to_campaign, logger) {
                 any_bids_made = true;
                 // Check if bid is below zero - skip negative bids
-                if campaign_bid.gross_bid < 0.0 {
+                if campaign_bid.net_bid < 0.0 {
                     errln!(logger, LogEvent::Simulation, "Bid below zero: {:.4} from campaign_id: {}, skipping", campaign_bid.gross_bid, campaign_id);
                     continue;
                 }                
                 // If bid is above minimum_cpm_to_win, add to winners list
-                if campaign_bid.gross_bid >= minimum_cpm_to_win {
+                if campaign_bid.net_bid >= minimum_cpm_to_win {
                     fractional_winners.push(FractionalWinner {
                         campaign_id,
-                        supply_cost: seller.get_supply_cost_cpm(campaign_bid.gross_bid) / 1000.0,
+                        supply_cost: seller.get_supply_cost_cpm(campaign_bid.net_bid) / 1000.0,
                         net_supply_cost: campaign_bid.net_bid / 1000.0,
                         gross_buyer_charge: campaign_bid.gross_bid / 1000.0,
                         win_fraction: 1.0,
@@ -295,17 +291,17 @@ impl Impression {
             // If get_bid returns None, skip this campaign (warning already logged)
         }
 
-        // Calculate win_fraction using softmax based on gross_buyer_charge with temperature
+        // Calculate win_fraction using softmax based on  net_supply_cost with temperature
         // Temperature controls the sharpness: lower = sharper (more concentrated on highest bid), higher = smoother (more uniform)
         if !fractional_winners.is_empty() {
             // Find maximum bid for numerical stability (log-sum-exp trick)
             let max_bid = fractional_winners.iter()
-                .map(|w| w.gross_buyer_charge)
+                .map(|w| w.net_supply_cost)
                 .fold(f64::NEG_INFINITY, f64::max);
             
-            // Calculate exp((gross_buyer_charge - max_bid) / temperature) for each winner
+            // Calculate exp((net_supply_cost - max_bid) / temperature) for each winner
             let exp_values: Vec<f64> = fractional_winners.iter()
-                .map(|w| ((w.gross_buyer_charge - max_bid) / softmax_temperature).exp())
+                .map(|w| ((w.net_supply_cost - max_bid) / softmax_temperature).exp())
                 .collect();
             
             // Calculate sum of exp values

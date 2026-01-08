@@ -8,7 +8,7 @@
 ///
 /// - Variant B: Median Bidding
 ///
-/// - Variant C: Max margin bidding (optimizes expected margin)
+/// - Variant C: Optimal bidding (optimizes expected margin)
 ///
 /// - Variant D: Cheater bidding (has perfect information about competition)
 
@@ -79,9 +79,9 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
     let simulation_converge_b = prepare_simulationconverge(CampaignType::MEDIAN);
     let stats_b = simulation_converge_b.run_variant("Running with Median Bidding", scenario_name, "median", 100, logger)?;
     
-    // Run variant C with max margin bidding
-    let simulation_converge_c = prepare_simulationconverge(CampaignType::MAX_MARGIN);
-    let stats_c = simulation_converge_c.run_variant("Running with max margin bidding", scenario_name, "max-margin", 100, logger)?;
+    // Run variant C with optimal bidding
+    let simulation_converge_c = prepare_simulationconverge(CampaignType::OPTIMAL_BIDDING);
+    let stats_c = simulation_converge_c.run_variant("Running with optimal bidding", scenario_name, "optimal-bidding", 100, logger)?;
     
     // Run variant D with cheater bidding
     let simulation_converge_d = prepare_simulationconverge(CampaignType::CHEATER);
@@ -90,7 +90,7 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
     // Validate expected marketplace behavior
     // Variant A (multiplicative pacing) uses MULTIPLICATIVE_PACING with TOTAL_BUDGET
     // Variant B (Median Bidding) uses MEDIAN with TOTAL_BUDGET
-    // Variant C (max margin bidding) uses MAX_MARGIN with TOTAL_BUDGET
+    // Variant C (optimal bidding) uses OPTIMAL_BIDDING with TOTAL_BUDGET
     // Variant D (cheater bidding) uses CHEATER with TOTAL_BUDGET
     
     logln!(logger, LogEvent::Scenario, "");
@@ -111,9 +111,9 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
         errln!(logger, LogEvent::Scenario, "✗ {}", msg);
     }
     
-    // Check: Variant D (cheater) obtained value > Variant C (max margin) obtained value
+    // Check: Variant D (cheater) obtained value > Variant C (optimal bidding) obtained value
     let msg = format!(
-        "Variant D (Cheater) obtained value is greater than Variant C (Max margin): {:.2} > {:.2}",
+        "Variant D (Cheater) obtained value is greater than Variant C (Optimal bidding): {:.2} > {:.2}",
         stats_d.overall_stat.total_value,
         stats_c.overall_stat.total_value
     );

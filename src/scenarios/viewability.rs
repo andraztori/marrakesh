@@ -1,10 +1,10 @@
-/// This scenario compares Max Margin bidding with single and double targets.
+/// This scenario compares Optimal Bidding with single and double targets.
 ///
 /// It compares two bidding strategies:
 ///
-/// - Variant A: Max margin bidding converging to 1000 impressions
+/// - Variant A: Optimal bidding converging to 1000 impressions
 ///
-/// - Variant B: Max margin double target bidding converging to 1000 impressions and avg value of 0.8
+/// - Variant B: Optimal bidding double target converging to 1000 impressions and avg value of 0.8
 /// This is very much the example of needing to buy certain amount of impressions
 /// while hitting 80% viewability rate
 /// 
@@ -72,22 +72,22 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
     const TARGET_IMPRESSIONS: i32 = 1000;
     const TARGET_AVG_VALUE: f64 = 0.92;
     
-    // Run variant A with max margin bidding
+    // Run variant A with optimal bidding
     // Converging to TARGET_IMPRESSIONS impressions
-    use crate::bid_optimizers::{BidOptimizerTrait, BidOptimizerMaximumMargin};
+    use crate::bid_optimizers::{BidOptimizerTrait, BidOptimizerOptimal};
     let campaign_a: Box<dyn CampaignTrait> = Box::new(CampaignGeneral {
         campaign_id: 0, // Will be set by add_advanced
         campaign_name: "C0".to_string(),
         converge_targets: vec![Box::new(CampaignTargetTotalImpressions { total_impressions_target: TARGET_IMPRESSIONS })],
         converge_controllers: vec![Box::new(crate::controllers::ControllerProportionalDerivative::new())],
         bid_valuer: Box::new(BidValuerMultiplicative),
-        bid_optimizer: Box::new(BidOptimizerMaximumMargin) as Box<dyn BidOptimizerTrait>,
+        bid_optimizer: Box::new(BidOptimizerOptimal) as Box<dyn BidOptimizerTrait>,
         net_and_gross: Box::new(BidDeterminationNoMargin::new()),
     });
     let simulation_converge_a = prepare_simulationconverge(num_impressions, campaign_a);
-    let stats_a = simulation_converge_a.run_variant(&format!("Running with max margin bidding ({} impressions)", TARGET_IMPRESSIONS), scenario_name, "max-margin-impressions", 100, logger)?;
+    let stats_a = simulation_converge_a.run_variant(&format!("Running with optimal bidding ({} impressions)", TARGET_IMPRESSIONS), scenario_name, "optimal-bidding-impressions", 100, logger)?;
     
-    // Run variant B with max margin double target bidding
+    // Run variant B with optimal bidding double target
     // Converging to TARGET_IMPRESSIONS impressions and avg value of TARGET_AVG_VALUE
     let campaign_b: Box<dyn CampaignTrait> = Box::new(CampaignGeneral {
         campaign_id: 0, // Will be set by add_advanced
@@ -106,11 +106,11 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
                  true,  // rescaling
              ))],
         bid_valuer: Box::new(BidValuerDualTarget),
-        bid_optimizer: Box::new(BidOptimizerMaximumMargin) as Box<dyn BidOptimizerTrait>,
+        bid_optimizer: Box::new(BidOptimizerOptimal) as Box<dyn BidOptimizerTrait>,
         net_and_gross: Box::new(BidDeterminationNoMargin::new()),
     });
     let simulation_converge_b = prepare_simulationconverge(num_impressions, campaign_b);
-    let stats_b = simulation_converge_b.run_variant(&format!("Running with max margin double target ({} impressions, avg value {})", TARGET_IMPRESSIONS, TARGET_AVG_VALUE), scenario_name, "max-margin-double", 1000, logger)?;
+    let stats_b = simulation_converge_b.run_variant(&format!("Running with optimal bidding double target ({} impressions, avg value {})", TARGET_IMPRESSIONS, TARGET_AVG_VALUE), scenario_name, "optimal-bidding-double", 1000, logger)?;
     
     logln!(logger, LogEvent::Scenario, "");
     

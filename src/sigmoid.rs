@@ -239,8 +239,8 @@ impl Sigmoid {
     /// * `min_bid` - Minimum bid (typically floor price)
     /// 
     /// # Returns
-    /// The bid that maximizes margin, or None if max_bid <= min_bid
-    pub fn max_margin_bid_bisection(&self, full_price: f64, min_bid: f64) -> Option<f64> {
+    /// The optimal bid, or None if max_bid <= min_bid
+    pub fn optimal_bid_bisection(&self, full_price: f64, min_bid: f64) -> Option<f64> {
         const MAX_ITERATIONS: usize = 100;
         const TOLERANCE: f64 = 1e-6;
         

@@ -1,12 +1,12 @@
 /// In this scenario we compare three variants:
 ///
-/// - MAX_MARGIN: Uses max margin bidding with multiplicative supply boost
+/// - OPTIMAL_BIDDING: Uses optimal bidding with multiplicative supply boost
 ///   full_price = campaign_control_factor * seller_control_factor * value_to_campaign
 ///
-/// - MAX_MARGIN_ADDITIVE_SUPPLY: Uses max margin bidding with additive supply boost
+/// - OPTIMAL_BIDDING_ADDITIVE_SUPPLY: Uses optimal bidding with additive supply boost
 ///   full_price = campaign_control_factor * value_to_campaign + seller_control_factor
 ///
-/// - MAX_MARGIN_EXPONENTIAL_SUPPLY: Uses max margin bidding with exponential supply boost
+/// - OPTIMAL_BIDDING_EXPONENTIAL_SUPPLY: Uses optimal bidding with exponential supply boost
 ///   full_price = (campaign_control_factor * value_to_campaign) ^ seller_control_factor
 /// 
 /// All variants use dynamic boost for MRG seller and competition data for both sellers.
@@ -38,8 +38,8 @@ fn prepare_variant(campaign_type: CampaignType) -> SimulationConverge {
     let mut campaigns = Campaigns::new();
     let mut sellers = Sellers::new();
 
-    // Check if this is MAX_MARGIN_ADDITIVE_SUPPLY variant before campaign_type is moved
-    let is_additive_supply = campaign_type == CampaignType::MAX_MARGIN_ADDITIVE_SUPPLY;
+    // Check if this is OPTIMAL_BIDDING_ADDITIVE_SUPPLY variant before campaign_type is moved
+    let is_additive_supply = campaign_type == CampaignType::OPTIMAL_BIDDING_ADDITIVE_SUPPLY;
 
     // Add two hardcoded campaigns (IDs are automatically set to match Vec index)
     campaigns.add(
@@ -120,39 +120,39 @@ fn prepare_variant(campaign_type: CampaignType) -> SimulationConverge {
 }
 
 
-/// Scenario comparing MAX_MARGIN with multiplicative vs additive vs exponential supply boost
+/// Scenario comparing OPTIMAL_BIDDING with multiplicative vs additive vs exponential supply boost
 /// 
-/// This scenario compares max margin bidding with:
+/// This scenario compares optimal bidding with:
 /// - Multiplicative supply boost: full_price = campaign_control_factor * seller_control_factor * value_to_campaign
 /// - Additive supply boost: full_price = campaign_control_factor * value_to_campaign + seller_control_factor
 /// - Exponential supply boost: full_price = (campaign_control_factor * value_to_campaign) ^ seller_control_factor
 /// 
 /// All variants use dynamic boost for MRG seller and competition data for both sellers.
 pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::error::Error>> {
-    // Run variant A with MAX_MARGIN (multiplicative supply boost)
-    let simulation_converge_a = prepare_variant(CampaignType::MAX_MARGIN);
-    let stats_a = simulation_converge_a.run_variant("Running MAX_MARGIN with multiplicative supply boost", scenario_name, "max_margin_multiplicative_supply", 100, logger)?;
+    // Run variant A with OPTIMAL_BIDDING (multiplicative supply boost)
+    let simulation_converge_a = prepare_variant(CampaignType::OPTIMAL_BIDDING);
+    let stats_a = simulation_converge_a.run_variant("Running OPTIMAL_BIDDING with multiplicative supply boost", scenario_name, "optimal_bidding_multiplicative_supply", 100, logger)?;
     
-    // Run variant B with MAX_MARGIN_ADDITIVE_SUPPLY (additive supply boost)
-    let simulation_converge_b = prepare_variant(CampaignType::MAX_MARGIN_ADDITIVE_SUPPLY);
-    let stats_b = simulation_converge_b.run_variant("Running MAX_MARGIN_ADDITIVE_SUPPLY with additive supply boost", scenario_name, "max_margin_additive_supply", 100, logger)?;
+    // Run variant B with OPTIMAL_BIDDING_ADDITIVE_SUPPLY (additive supply boost)
+    let simulation_converge_b = prepare_variant(CampaignType::OPTIMAL_BIDDING_ADDITIVE_SUPPLY);
+    let stats_b = simulation_converge_b.run_variant("Running OPTIMAL_BIDDING_ADDITIVE_SUPPLY with additive supply boost", scenario_name, "optimal_bidding_additive_supply", 100, logger)?;
     
-    // Run variant C with MAX_MARGIN_EXPONENTIAL_SUPPLY (exponential supply boost)
-    let simulation_converge_c = prepare_variant(CampaignType::MAX_MARGIN_EXPONENTIAL_SUPPLY);
-    let stats_c = simulation_converge_c.run_variant("Running MAX_MARGIN_EXPONENTIAL_SUPPLY with exponential supply boost", scenario_name, "max_margin_exponential_supply", 100, logger)?;
+    // Run variant C with OPTIMAL_BIDDING_EXPONENTIAL_SUPPLY (exponential supply boost)
+    let simulation_converge_c = prepare_variant(CampaignType::OPTIMAL_BIDDING_EXPONENTIAL_SUPPLY);
+    let stats_c = simulation_converge_c.run_variant("Running OPTIMAL_BIDDING_EXPONENTIAL_SUPPLY with exponential supply boost", scenario_name, "optimal_bidding_exponential_supply", 100, logger)?;
     
     // Validate expected marketplace behavior
     logln!(logger, LogEvent::Scenario, "");
     
     let mut errors: Vec<String> = Vec::new();
     
-    // Check: Variant A (MAX_MARGIN) - total overall supply and virtual cost should be nearly equal (max 1% off)
+    // Check: Variant A (OPTIMAL_BIDDING) - total overall supply and virtual cost should be nearly equal (max 1% off)
     let supply_cost_a = stats_a.overall_stat.total_supply_cost;
     let virtual_cost_a = stats_a.overall_stat.total_net_supply_cost;
     let diff_a = (supply_cost_a - virtual_cost_a).abs();
     let max_diff_a = supply_cost_a.max(virtual_cost_a) * 0.01; // 1% of the larger value
     let msg = format!(
-        "Variant A (MAX_MARGIN) - Total overall supply and virtual cost are nearly equal (within 1%): supply={:.2}, virtual={:.2}, diff={:.2}, max_diff={:.2}",
+        "Variant A (OPTIMAL_BIDDING) - Total overall supply and virtual cost are nearly equal (within 1%): supply={:.2}, virtual={:.2}, diff={:.2}, max_diff={:.2}",
         supply_cost_a, virtual_cost_a, diff_a, max_diff_a
     );
     if diff_a <= max_diff_a {
@@ -162,13 +162,13 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
         errln!(logger, LogEvent::Scenario, "{}", msg);
     }
     
-    // Check: Variant B (MAX_MARGIN_ADDITIVE_SUPPLY) - total overall supply and virtual cost should be nearly equal (max 1% off)
+    // Check: Variant B (OPTIMAL_BIDDING_ADDITIVE_SUPPLY) - total overall supply and virtual cost should be nearly equal (max 1% off)
     let supply_cost_b = stats_b.overall_stat.total_supply_cost;
     let virtual_cost_b = stats_b.overall_stat.total_net_supply_cost;
     let diff_b = (supply_cost_b - virtual_cost_b).abs();
     let max_diff_b = supply_cost_b.max(virtual_cost_b) * 0.01; // 1% of the larger value
     let msg = format!(
-        "Variant B (MAX_MARGIN_ADDITIVE_SUPPLY) - Total overall supply and virtual cost are nearly equal (within 1%): supply={:.2}, virtual={:.2}, diff={:.2}, max_diff={:.2}",
+        "Variant B (OPTIMAL_BIDDING_ADDITIVE_SUPPLY) - Total overall supply and virtual cost are nearly equal (within 1%): supply={:.2}, virtual={:.2}, diff={:.2}, max_diff={:.2}",
         supply_cost_b, virtual_cost_b, diff_b, max_diff_b
     );
     if diff_b <= max_diff_b {
@@ -178,13 +178,13 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
         errln!(logger, LogEvent::Scenario, "{}", msg);
     }
     
-    // Check: Variant C (MAX_MARGIN_EXPONENTIAL_SUPPLY) - total overall supply and virtual cost should be nearly equal (max 1% off)
+    // Check: Variant C (OPTIMAL_BIDDING_EXPONENTIAL_SUPPLY) - total overall supply and virtual cost should be nearly equal (max 1% off)
     let supply_cost_c = stats_c.overall_stat.total_supply_cost;
     let virtual_cost_c = stats_c.overall_stat.total_net_supply_cost;
     let diff_c = (supply_cost_c - virtual_cost_c).abs();
     let max_diff_c = supply_cost_c.max(virtual_cost_c) * 0.01; // 1% of the larger value
     let msg = format!(
-        "Variant C (MAX_MARGIN_EXPONENTIAL_SUPPLY) - Total overall supply and virtual cost are nearly equal (within 1%): supply={:.2}, virtual={:.2}, diff={:.2}, max_diff={:.2}",
+        "Variant C (OPTIMAL_BIDDING_EXPONENTIAL_SUPPLY) - Total overall supply and virtual cost are nearly equal (within 1%): supply={:.2}, virtual={:.2}, diff={:.2}, max_diff={:.2}",
         supply_cost_c, virtual_cost_c, diff_c, max_diff_c
     );
     if diff_c <= max_diff_c {
@@ -194,14 +194,14 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
         errln!(logger, LogEvent::Scenario, "{}", msg);
     }
 
-    // Check: Variant A (MAX_MARGIN) should have better value-to-cost ratio than Variant B (MAX_MARGIN_ADDITIVE_SUPPLY)
+    // Check: Variant A (OPTIMAL_BIDDING) should have better value-to-cost ratio than Variant B (OPTIMAL_BIDDING_ADDITIVE_SUPPLY)
     if supply_cost_a > 0.0 && supply_cost_b > 0.0 {
         let value_a = stats_a.overall_stat.total_value;
         let value_b = stats_b.overall_stat.total_value;
         let ratio_a = value_a / supply_cost_a;
         let ratio_b = value_b / supply_cost_b;
         let msg = format!(
-            "Variant A (MAX_MARGIN) has better value-to-cost ratio than Variant B (MAX_MARGIN_ADDITIVE_SUPPLY): {:.4} > {:.4}",
+            "Variant A (OPTIMAL_BIDDING) has better value-to-cost ratio than Variant B (OPTIMAL_BIDDING_ADDITIVE_SUPPLY): {:.4} > {:.4}",
             ratio_a, ratio_b
         );
         if ratio_a > ratio_b {
@@ -219,11 +219,11 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
         errln!(logger, LogEvent::Scenario, "{}", msg);
     }
 
-    // Check: Variant A (MAX_MARGIN) should have higher total value than Variant B (MAX_MARGIN_ADDITIVE_SUPPLY)
+    // Check: Variant A (OPTIMAL_BIDDING) should have higher total value than Variant B (OPTIMAL_BIDDING_ADDITIVE_SUPPLY)
     let value_a = stats_a.overall_stat.total_value;
     let value_b = stats_b.overall_stat.total_value;
     let msg = format!(
-        "Variant A (MAX_MARGIN) has higher total value than Variant B (MAX_MARGIN_ADDITIVE_SUPPLY): {:.2} > {:.2}",
+        "Variant A (OPTIMAL_BIDDING) has higher total value than Variant B (OPTIMAL_BIDDING_ADDITIVE_SUPPLY): {:.2} > {:.2}",
         value_a, value_b
     );
     if value_a > value_b {
@@ -233,12 +233,12 @@ pub fn run(scenario_name: &str, logger: &mut Logger) -> Result<(), Box<dyn std::
         errln!(logger, LogEvent::Scenario, "{}", msg);
     }
     
-    // Check: Variant C (MAX_MARGIN_EXPONENTIAL_SUPPLY) - compare value-to-cost ratio with other variants
+    // Check: Variant C (OPTIMAL_BIDDING_EXPONENTIAL_SUPPLY) - compare value-to-cost ratio with other variants
     if supply_cost_c > 0.0 {
         let value_c = stats_c.overall_stat.total_value;
         let ratio_c = value_c / supply_cost_c;
         let msg = format!(
-            "Variant C (MAX_MARGIN_EXPONENTIAL_SUPPLY) value-to-cost ratio: {:.4}",
+            "Variant C (OPTIMAL_BIDDING_EXPONENTIAL_SUPPLY) value-to-cost ratio: {:.4}",
             ratio_c
         );
         logln!(logger, LogEvent::Scenario, "✓ {}", msg);

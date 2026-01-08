@@ -36,13 +36,16 @@ impl BidOptimizerTrait for BidOptimizerTrutful {
     }
 }
 
-/// Maximum margin bid optimizer that uses sigmoid-based optimization
-pub struct BidOptimizerMaximumMargin;
+/// Optimal bid optimizer that uses sigmoid-based optimization
+/// 
+/// This is sometimes called "Max Margin Bidding", however we are not in a regime of billing
+/// the shadow price, so this is just an optimization method to go from shadow price to actual bid.
+pub struct BidOptimizerOptimal;
 
-impl BidOptimizerTrait for BidOptimizerMaximumMargin {
+impl BidOptimizerTrait for BidOptimizerOptimal {
     fn get_optimized_bid(&self, value: f64, impression: &Impression) -> Option<f64> {
         let competition = impression.competition.as_ref()
-            .expect("Maximum margin optimizer requires competition data. This impression has no competition data.");
+            .expect("Optimal optimizer requires competition data. This impression has no competition data.");
         
         let sigmoid = Sigmoid::new(
             competition.win_rate_prediction_sigmoid_offset,
@@ -50,11 +53,11 @@ impl BidOptimizerTrait for BidOptimizerMaximumMargin {
             1.0,  // Using normalized value of 1.0
         );
         
-        sigmoid.max_margin_bid_bisection(value, impression.floor_cpm)
+        sigmoid.optimal_bid_bisection(value, impression.floor_cpm)
     }
     
     fn get_optimizer_type(&self) -> String {
-        "MaxMargin".to_string()
+        "Optimal".to_string()
     }
 }
 

@@ -103,7 +103,7 @@ fn main() {
         let full_price = 1.5;
         let min_bid = 0.0;
         
-        match sigmoid.max_margin_bid_bisection(full_price, min_bid) {
+        match sigmoid.optimal_bid_bisection(full_price, min_bid) {
             Some(optimal_bid) => {
                 println!("Optimal bid: {:.6}", optimal_bid);
             }
@@ -130,13 +130,13 @@ fn main() {
         
         // Setup shared resources
         use crate::bid_valuers_single::BidValuerMultiplicative;
-        use crate::bid_optimizers::{BidOptimizerTrait, BidOptimizerMaximumMargin};
+        use crate::bid_optimizers::{BidOptimizerTrait, BidOptimizerOptimal};
         use crate::bid_determination::BidDeterminationNoMargin;
         let bid_valuer = Box::new(BidValuerMultiplicative) as Box<dyn campaign::BidValuerTrait>;
-        let bid_optimizer = Box::new(BidOptimizerMaximumMargin) as Box<dyn BidOptimizerTrait>;
-        let campaign_max_margin = CampaignGeneral {
+        let bid_optimizer = Box::new(BidOptimizerOptimal) as Box<dyn BidOptimizerTrait>;
+        let campaign_optimal_bidding = CampaignGeneral {
             campaign_id: 0,
-            campaign_name: "MaxMargin".to_string(),
+            campaign_name: "OptimalBidding".to_string(),
             converge_targets: vec![Box::new(CampaignTargetNone)],
             converge_controllers: vec![Box::new(crate::controllers::ControllerConstant::new(0.8298))],
             bid_valuer,
@@ -144,7 +144,7 @@ fn main() {
             net_and_gross: Box::new(BidDeterminationNoMargin::new()),
         };
         
-        let converge_vars = campaign_max_margin.create_controller_state();
+        let converge_vars = campaign_optimal_bidding.create_controller_state();
         let mut logger = Logger::new();
 
         struct TestCase {
@@ -197,9 +197,9 @@ fn main() {
             println!("{}: {:#?}", test_case.name, impression);
             
             let controller_states: Vec<&dyn campaigns::ControllerStateTrait> = converge_vars.iter().map(|cs| cs.as_ref()).collect();
-            let bid_max_margin = campaign_max_margin.get_bid(&impression, &controller_states, 1.0, test_case.value, &mut logger);
+            let bid_optimal_bidding = campaign_optimal_bidding.get_bid(&impression, &controller_states, 1.0, test_case.value, &mut logger);
             
-            println!("Max Margin Bid (pacing=0.8298): {:?}", bid_max_margin.as_ref().map(|b| b.gross_bid));
+            println!("Optimal Bidding Bid (pacing=0.8298): {:?}", bid_optimal_bidding.as_ref().map(|b| b.gross_bid));
         }
         
         return;

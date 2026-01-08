@@ -13,7 +13,7 @@ use crate::campaign::BidValuerTrait;
 
 
 
-/// Bid valuer for dual control factor bidding strategy (max margin with lambda and mu)
+/// Bid valuer for dual control factor bidding strategy (optimal bidding with lambda and mu)
 /// Used by CampaignGeneral for campaigns that converge to both primary and secondary targets
 pub struct BidValuerDualTarget;
 
@@ -35,7 +35,7 @@ impl BidValuerTrait for BidValuerDualTarget {
     }
     
     fn get_valuer_type(&self) -> String {
-        "Max margin dual opt)".to_string()
+        "Optimal bidding dual opt)".to_string()
     }
 }
 

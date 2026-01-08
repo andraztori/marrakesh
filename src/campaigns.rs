@@ -4,7 +4,7 @@ pub use crate::campaign::CampaignTrait;
 pub use crate::campaign::CampaignGeneral;
 pub use crate::campaign::BidValuerTrait;
 pub use crate::bid_valuers_double::BidValuerDualTarget;
-pub use crate::bid_optimizers::{BidOptimizerTrait, BidOptimizerTrutful, BidOptimizerMaximumMargin, BidOptimizerCheater, BidOptimizerMedian};
+pub use crate::bid_optimizers::{BidOptimizerTrait, BidOptimizerTrutful, BidOptimizerOptimal, BidOptimizerCheater, BidOptimizerMedian};
 pub use crate::bid_valuers_single::{BidValuerMultiplicative, BidValuerMultiplicative_AdditiveSupply, BidValuerMultiplicative_ExponentialSupply};
 pub use crate::bid_determination::{BidDeterminationTrait, BidDeterminationNoMargin};
 
@@ -15,10 +15,10 @@ pub enum CampaignType {
     MULTIPLICATIVE_PACING,
     MULTIPLICATIVE_ADDITIVE,
     CHEATER,
-    MAX_MARGIN,
-    MAX_MARGIN_ADDITIVE_SUPPLY,
-    MAX_MARGIN_EXPONENTIAL_SUPPLY,
-    MAX_MARGIN_DOUBLE_TARGET,
+    OPTIMAL_BIDDING,
+    OPTIMAL_BIDDING_ADDITIVE_SUPPLY,
+    OPTIMAL_BIDDING_EXPONENTIAL_SUPPLY,
+    OPTIMAL_BIDDING_DOUBLE_TARGET,
     MEDIAN,
 }
 
@@ -162,11 +162,11 @@ impl Campaigns {
                     net_and_gross: Box::new(BidDeterminationNoMargin::new()),
                 }));
             }
-            CampaignType::MAX_MARGIN => {
-                assert_eq!(converge_targets.len(), 1, "MAX_MARGIN requires exactly one converge target");
+            CampaignType::OPTIMAL_BIDDING => {
+                assert_eq!(converge_targets.len(), 1, "OPTIMAL_BIDDING requires exactly one converge target");
                 let (converge_target_box, converge_controller) = Self::convert_converge_target(converge_targets[0].clone());
                 let bid_valuer = Box::new(BidValuerMultiplicative) as Box<dyn BidValuerTrait>;
-                let bid_optimizer = Box::new(BidOptimizerMaximumMargin) as Box<dyn BidOptimizerTrait>;
+                let bid_optimizer = Box::new(BidOptimizerOptimal) as Box<dyn BidOptimizerTrait>;
                 self.campaigns.push(Box::new(CampaignGeneral {
                     campaign_id,
                     campaign_name,
@@ -177,11 +177,11 @@ impl Campaigns {
                     net_and_gross: Box::new(BidDeterminationNoMargin::new()),
                 }));
             }
-            CampaignType::MAX_MARGIN_ADDITIVE_SUPPLY => {
-                assert_eq!(converge_targets.len(), 1, "MAX_MARGIN_ADDITIVE_SUPPLY requires exactly one converge target");
+            CampaignType::OPTIMAL_BIDDING_ADDITIVE_SUPPLY => {
+                assert_eq!(converge_targets.len(), 1, "OPTIMAL_BIDDING_ADDITIVE_SUPPLY requires exactly one converge target");
                 let (converge_target_box, converge_controller) = Self::convert_converge_target(converge_targets[0].clone());
                 let bid_valuer = Box::new(BidValuerMultiplicative_AdditiveSupply) as Box<dyn BidValuerTrait>;
-                let bid_optimizer = Box::new(BidOptimizerMaximumMargin) as Box<dyn BidOptimizerTrait>;
+                let bid_optimizer = Box::new(BidOptimizerOptimal) as Box<dyn BidOptimizerTrait>;
                 self.campaigns.push(Box::new(CampaignGeneral {
                     campaign_id,
                     campaign_name,
@@ -192,11 +192,11 @@ impl Campaigns {
                     net_and_gross: Box::new(BidDeterminationNoMargin::new()),
                 }));
             }
-            CampaignType::MAX_MARGIN_EXPONENTIAL_SUPPLY => {
-                assert_eq!(converge_targets.len(), 1, "MAX_MARGIN_EXPONENTIAL_SUPPLY requires exactly one converge target");
+            CampaignType::OPTIMAL_BIDDING_EXPONENTIAL_SUPPLY => {
+                assert_eq!(converge_targets.len(), 1, "OPTIMAL_BIDDING_EXPONENTIAL_SUPPLY requires exactly one converge target");
                 let (converge_target_box, converge_controller) = Self::convert_converge_target(converge_targets[0].clone());
                 let bid_valuer = Box::new(BidValuerMultiplicative_ExponentialSupply) as Box<dyn BidValuerTrait>;
-                let bid_optimizer = Box::new(BidOptimizerMaximumMargin) as Box<dyn BidOptimizerTrait>;
+                let bid_optimizer = Box::new(BidOptimizerOptimal) as Box<dyn BidOptimizerTrait>;
                 self.campaigns.push(Box::new(CampaignGeneral {
                     campaign_id,
                     campaign_name,
@@ -207,13 +207,13 @@ impl Campaigns {
                     net_and_gross: Box::new(BidDeterminationNoMargin::new()),
                 }));
             }
-            CampaignType::MAX_MARGIN_DOUBLE_TARGET => {
-                assert_eq!(converge_targets.len(), 2, "MAX_MARGIN_DOUBLE_TARGET requires exactly two converge targets");
+            CampaignType::OPTIMAL_BIDDING_DOUBLE_TARGET => {
+                assert_eq!(converge_targets.len(), 2, "OPTIMAL_BIDDING_DOUBLE_TARGET requires exactly two converge targets");
                 let converge_targets_vec: Vec<Box<dyn CampaignTargetTrait>> = converge_targets.iter()
                     .map(|ct| Self::convert_converge_target(ct.clone()).0)
                     .collect();
                 let bid_valuer = Box::new(BidValuerDualTarget) as Box<dyn BidValuerTrait>;
-                let bid_optimizer = Box::new(BidOptimizerMaximumMargin) as Box<dyn BidOptimizerTrait>;
+                let bid_optimizer = Box::new(BidOptimizerOptimal) as Box<dyn BidOptimizerTrait>;
                 let converge_controllers = vec![
                     Box::new(crate::controllers::ControllerProportionalDerivative::new()) as Box<dyn crate::controllers::ControllerTrait>,
                     Box::new(crate::controllers::ControllerProportionalDerivative::new_advanced(
