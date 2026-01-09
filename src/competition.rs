@@ -18,6 +18,24 @@ pub struct ImpressionCompetition {
     pub win_rate_prediction_sigmoid_scale: f64,
 }
 
+impl ImpressionCompetition {
+    /// Get the predicted win probability for a given bid using prediction sigmoid parameters
+    /// 
+    /// # Arguments
+    /// * `bid` - The bid amount (CPM) to calculate win probability for
+    /// 
+    /// # Returns
+    /// The predicted win probability (0.0 to 1.0) for the given bid
+    pub fn get_predicted_win_probability(&self, bid: f64) -> f64 {
+        let sigmoid = crate::sigmoid::Sigmoid::new(
+            self.win_rate_prediction_sigmoid_offset,
+            self.win_rate_prediction_sigmoid_scale,
+            1.0, // value parameter not needed for probability calculation
+        );
+        sigmoid.get_probability(bid)
+    }
+}
+
 /// Trait for generating impression competition information
 pub trait CompetitionGeneratorTrait {
     /// Generate competition information for an impression

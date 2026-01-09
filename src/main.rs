@@ -24,6 +24,7 @@ mod controller_core;
 mod controllers;
 mod bid_optimizers;
 mod bid_determination;
+mod auction_mechanism;
 
 
 use sellers::{SellerType, SellerConvergeStrategy, Sellers};
